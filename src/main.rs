@@ -90,8 +90,8 @@ fn run_detection_loop(cfg: &config::Config) {
         }
     };
     
-    // Initialize OCR manager
-    let mut ocr_manager = match ocr::OcrManager::new(cfg.ocr_threshold) {
+    // Initialize OCR manager with full configuration
+    let mut ocr_manager = match ocr::OcrManager::new_with_options(cfg.ocr_threshold, cfg.enable_morph_open) {
         Ok(manager) => {
             println!("✓ OCR manager initialized");
             manager
@@ -254,7 +254,7 @@ fn run_benchmark(cfg: &config::Config) {
         }
     };
     
-    let audio_manager = match audio::AudioManager::new(&audio_path) {
+    let _audio_manager = match audio::AudioManager::new(&audio_path) {
         Ok(manager) => {
             println!("✓ Audio manager initialized");
             manager
@@ -278,8 +278,8 @@ fn run_benchmark(cfg: &config::Config) {
         }
     };
     
-    // Initialize OCR manager
-    let mut ocr_manager = match ocr::OcrManager::new(cfg.ocr_threshold) {
+    // Initialize OCR manager with full configuration
+    let mut ocr_manager = match ocr::OcrManager::new_with_options(cfg.ocr_threshold, cfg.enable_morph_open) {
         Ok(manager) => {
             println!("✓ OCR manager initialized");
             manager
@@ -397,13 +397,13 @@ fn test_audio(cfg: &config::Config) {
     };
     
     match audio::AudioManager::new(&audio_path) {
-        Ok(audio_manager) => {
+        Ok(_audio_manager) => {
             println!("✓ Audio manager initialized");
             println!("  Audio file: {}", audio_path.display());
             
             // Uncomment to test playback
             // println!("  Playing test sound...");
-            // if let Err(e) = audio_manager.play_sound() {
+            // if let Err(e) = _audio_manager.play_sound() {
             //     eprintln!("  ✗ Failed to play: {}", e);
             // }
             // std::thread::sleep(std::time::Duration::from_secs(2));
@@ -456,7 +456,7 @@ fn test_capture(cfg: &config::Config) {
 fn test_ocr(cfg: &config::Config) {
     println!("=== OCR Test ===");
     
-    let mut ocr_manager = match ocr::OcrManager::new(cfg.ocr_threshold) {
+    let mut ocr_manager = match ocr::OcrManager::new_with_options(cfg.ocr_threshold, cfg.enable_morph_open) {
         Ok(manager) => {
             println!("✓ OCR manager initialized");
             manager

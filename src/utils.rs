@@ -102,6 +102,7 @@ impl Debouncer {
     }
     
     /// Reset the debouncer
+    #[allow(dead_code)]
     pub fn reset(&mut self) {
         self.last_trigger = None;
     }
@@ -152,6 +153,7 @@ impl IterationTiming {
         }
     }
     
+    #[allow(dead_code)]
     pub fn total_ms(&self) -> f64 {
         self.total_us / 1000.0
     }
@@ -185,10 +187,12 @@ impl LatencyStats {
         self.timings.push(timing);
     }
     
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.timings.len()
     }
     
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.timings.is_empty()
     }
@@ -342,5 +346,137 @@ mod tests {
         
         let elapsed = timer.elapsed_ms();
         assert!(elapsed >= 50.0 && elapsed < 100.0);
+    }
+    
+    #[test]
+    fn test_timer_microseconds() {
+        let timer = Timer::start();
+        thread::sleep(Duration::from_millis(10));
+        
+        let elapsed_us = timer.elapsed_us();
+        let elapsed_ms = timer.elapsed_ms();
+        
+        // Microseconds should be ~1000x milliseconds
+        assert!(elapsed_us >= 10000.0);
+        assert!(elapsed_ms >= 10.0);
+        assert!((elapsed_us / 1000.0 - elapsed_ms).abs() < 1.0);
+    }
+    
+    #[test]
+    fn test_debouncer_reset() {
+        let mut debouncer = Debouncer::new(100);
+        
+        // Trigger once
+        assert!(debouncer.should_trigger());
+        
+        // Should be in debounce period
+        assert!(!debouncer.should_trigger());
+        
+        // Reset
+        debouncer.reset();
+        
+        // Should be able to trigger immediately after reset
+        assert!(debouncer.should_trigger());
+    }
+    
+    #[test]
+    fn test_iteration_timing() {
+        let timing = IterationTiming::new();
+        
+        assert_eq!(timing.capture_us, 0.0);
+        assert_eq!(timing.preprocess_us, 0.0);
+        assert_eq!(timing.ocr_us, 0.0);
+        assert_eq!(timing.audio_trigger_us, 0.0);
+        assert_eq!(timing.total_us, 0.0);
+    }
+    
+    #[test]
+    fn test_iteration_timing_total_ms() {
+        let mut timing = IterationTiming::new();
+        timing.total_us = 50000.0; // 50ms in microseconds
+        
+        assert_eq!(timing.total_ms(), 50.0);
+    }
+    
+    #[test]
+    fn test_latency_stats_empty() {
+        let stats = LatencyStats::new();
+        
+        assert_eq!(stats.len(), 0);
+        assert!(stats.is_empty());
+    }
+    
+    #[test]
+    fn test_latency_stats_add() {
+        let mut stats = LatencyStats::new();
+        
+        let timing = IterationTiming {
+            capture_us: 10000.0,
+            preprocess_us: 5000.0,
+            ocr_us: 15000.0,
+            audio_trigger_us: 100.0,
+            total_us: 30100.0,
+        };
+        
+        stats.add(timing);
+        
+        assert_eq!(stats.len(), 1);
+        assert!(!stats.is_empty());
+    }
+    
+    #[test]
+    fn test_latency_stats_with_capacity() {
+        let stats = LatencyStats::with_capacity(500);
+        
+        assert_eq!(stats.len(), 0);
+        assert!(stats.is_empty());
+    }
+    
+    #[test]
+    fn test_app_state_clone() {
+        let state1 = AppState::new();
+        let state2 = state1.clone();
+        
+        // Both should share the same atomic values
+        state1.set_paused(true);
+        assert!(state2.is_paused());
+        
+        state2.stop();
+        assert!(!state1.is_running());
+    }
+    
+    #[test]
+    fn test_app_state_toggle_returns_new_state() {
+        let state = AppState::new();
+        
+        assert!(!state.is_paused());
+        
+        let new_state = state.toggle_pause();
+        assert!(new_state);
+        assert!(state.is_paused());
+        
+        let new_state = state.toggle_pause();
+        assert!(!new_state);
+        assert!(!state.is_paused());
+    }
+    
+    #[test]
+    fn test_debouncer_multiple_cycles() {
+        let mut debouncer = Debouncer::new(50);
+        
+        // Cycle 1
+        assert!(debouncer.should_trigger());
+        assert!(!debouncer.should_trigger());
+        
+        thread::sleep(Duration::from_millis(60));
+        
+        // Cycle 2
+        assert!(debouncer.should_trigger());
+        assert!(!debouncer.should_trigger());
+        
+        thread::sleep(Duration::from_millis(60));
+        
+        // Cycle 3
+        assert!(debouncer.should_trigger());
     }
 }

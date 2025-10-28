@@ -4,11 +4,19 @@ use leptess::{LepTess, Variable};
 /// OCR manager that reuses Tesseract instance for optimal performance
 pub struct OcrManager {
     tess: LepTess,
+    manual_threshold: Option<u8>,
+    enable_morph_open: bool,
 }
 
 impl OcrManager {
-    /// Create a new OcrManager with the specified binary threshold
-    pub fn new(threshold: u8) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Create a new OcrManager with optional manual threshold and morphological opening
+    /// If threshold is 0, uses automatic Otsu thresholding
+    pub fn new(_threshold: u8) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::new_with_options(_threshold, false)
+    }
+    
+    /// Create OcrManager with full configuration options
+    pub fn new_with_options(threshold: u8, enable_morph_open: bool) -> Result<Self, Box<dyn std::error::Error>> {
         println!("Initializing Tesseract OCR...");
         
         // Initialize Tesseract
@@ -21,10 +29,22 @@ impl OcrManager {
         // Don't use whitelist - allow all characters so we can find "GOAL" in longer text
         // tess.set_variable(Variable::TesseditCharWhitelist, "GOAL")?;
         
+        let manual_threshold = if threshold == 0 { None } else { Some(threshold) };
+        
         println!("✓ Tesseract OCR initialized");
         println!("  Mode: PSM_AUTO (searches entire image)");
+        println!("  Threshold: {}", if manual_threshold.is_some() { 
+            format!("Manual ({})", threshold) 
+        } else { 
+            "Automatic (Otsu)".to_string() 
+        });
+        println!("  Morphological opening: {}", if enable_morph_open { "Enabled" } else { "Disabled" });
         
-        Ok(Self { tess })
+        Ok(Self { 
+            tess,
+            manual_threshold,
+            enable_morph_open,
+        })
     }
     
     /// Detect if "GOAL" text is present in the image
@@ -33,23 +53,28 @@ impl OcrManager {
         // Step 1: Convert RGBA to grayscale
         let gray = self.rgba_to_grayscale(image);
         
-        // Step 2: Apply adaptive binary threshold
+        // Step 2: Apply binary threshold (manual or automatic)
         let (width, height) = gray.dimensions();
         let mut binary_img = GrayImage::new(width, height);
         
-        // Calculate automatic threshold using Otsu's method (simple approximation)
-        // This works for any color combination
-        let auto_threshold = self.calculate_otsu_threshold(&gray);
+        // Determine threshold to use
+        let threshold_to_use = match self.manual_threshold {
+            Some(t) => t,
+            None => self.calculate_otsu_threshold(&gray),
+        };
         
-        // Use the automatic threshold for better results
-        let threshold_to_use = auto_threshold;
-        
+        // Apply threshold
         for (x, y, pixel) in gray.enumerate_pixels() {
             let value = if pixel[0] >= threshold_to_use { 255 } else { 0 };
             binary_img.put_pixel(x, y, Luma([value]));
         }
         
-        // Check if we need to invert (text should be black, background white)
+        // Step 3: Apply morphological opening if enabled (noise reduction)
+        if self.enable_morph_open {
+            binary_img = self.morphological_opening(&binary_img);
+        }
+        
+        // Step 4: Check if we need to invert (text should be black, background white)
         // Count white vs black pixels - if more white, text is probably white, so invert
         let white_pixels = binary_img.pixels().filter(|p| p[0] > 127).count();
         let total_pixels = (width * height) as usize;
@@ -59,18 +84,18 @@ impl OcrManager {
             image::imageops::invert(&mut binary_img);
         }
         
-        // Step 3: Save to temp file (leptess requires file path)
+        // Step 5: Save to temp file (leptess requires file path)
         let temp_path = std::env::temp_dir().join("ocr_temp.png");
         binary_img.save(&temp_path)?;
         
-        // Step 4: Set image for OCR
+        // Step 6: Set image for OCR
         self.tess.set_image(&temp_path)?;
         
-        // Step 5: Get text
+        // Step 7: Get text
         let text = self.tess.get_utf8_text()?;
         let text = text.trim().to_uppercase();
         
-        // Step 6: Check if "GOAL FOR" is detected exactly
+        // Step 8: Check if "GOAL FOR" is detected exactly
         // Look for the exact phrase "GOAL FOR" which appears in Football Manager
         let detected = text.contains("GOAL FOR");
         
@@ -78,6 +103,57 @@ impl OcrManager {
         let _ = std::fs::remove_file(&temp_path);
         
         Ok(detected)
+    }
+    
+    /// Apply morphological opening (erosion followed by dilation)
+    /// This removes small noise while preserving larger text structures
+    fn morphological_opening(&self, image: &GrayImage) -> GrayImage {
+        let (width, height) = image.dimensions();
+        
+        // Use a 3x3 structuring element (cross shape)
+        // Erosion first - removes small white noise
+        let mut eroded = GrayImage::new(width, height);
+        for y in 1..height-1 {
+            for x in 1..width-1 {
+                // Check if all neighbors in cross pattern are white
+                let center = image.get_pixel(x, y)[0];
+                let top = image.get_pixel(x, y-1)[0];
+                let bottom = image.get_pixel(x, y+1)[0];
+                let left = image.get_pixel(x-1, y)[0];
+                let right = image.get_pixel(x+1, y)[0];
+                
+                // Erosion: pixel is white only if all neighbors are white
+                let value = if center > 127 && top > 127 && bottom > 127 && left > 127 && right > 127 {
+                    255
+                } else {
+                    0
+                };
+                eroded.put_pixel(x, y, Luma([value]));
+            }
+        }
+        
+        // Dilation - restores the size of remaining structures
+        let mut dilated = GrayImage::new(width, height);
+        for y in 1..height-1 {
+            for x in 1..width-1 {
+                // Check if any neighbor in cross pattern is white
+                let center = eroded.get_pixel(x, y)[0];
+                let top = eroded.get_pixel(x, y-1)[0];
+                let bottom = eroded.get_pixel(x, y+1)[0];
+                let left = eroded.get_pixel(x-1, y)[0];
+                let right = eroded.get_pixel(x+1, y)[0];
+                
+                // Dilation: pixel is white if any neighbor is white
+                let value = if center > 127 || top > 127 || bottom > 127 || left > 127 || right > 127 {
+                    255
+                } else {
+                    0
+                };
+                dilated.put_pixel(x, y, Luma([value]));
+            }
+        }
+        
+        dilated
     }
     
     /// Calculate optimal threshold using Otsu's method
@@ -153,15 +229,24 @@ impl OcrManager {
     pub fn get_text(&mut self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<String, Box<dyn std::error::Error>> {
         let gray = self.rgba_to_grayscale(image);
         
-        // Apply adaptive binary threshold
+        // Apply binary threshold (manual or automatic)
         let (width, height) = gray.dimensions();
         let mut binary_img = GrayImage::new(width, height);
         
-        let auto_threshold = self.calculate_otsu_threshold(&gray);
+        // Determine threshold to use
+        let threshold_to_use = match self.manual_threshold {
+            Some(t) => t,
+            None => self.calculate_otsu_threshold(&gray),
+        };
         
         for (x, y, pixel) in gray.enumerate_pixels() {
-            let value = if pixel[0] >= auto_threshold { 255 } else { 0 };
+            let value = if pixel[0] >= threshold_to_use { 255 } else { 0 };
             binary_img.put_pixel(x, y, Luma([value]));
+        }
+        
+        // Apply morphological opening if enabled
+        if self.enable_morph_open {
+            binary_img = self.morphological_opening(&binary_img);
         }
         
         // Auto-invert if needed
@@ -190,11 +275,195 @@ impl OcrManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::{Rgba, RgbaImage};
+    
+    /// Helper function to create a test image with text
+    fn create_test_image_with_text(width: u32, height: u32, text: &str, text_color: Rgba<u8>, bg_color: Rgba<u8>) -> RgbaImage {
+        // Create a simple test image
+        // In real testing, you'd use imageproc or similar to render actual text
+        // For now, we create a basic image that can be used for testing the pipeline
+        let mut img = RgbaImage::from_pixel(width, height, bg_color);
+        
+        // Add some "text-like" patterns in the center
+        // This is a simplified version - real text rendering would use a font library
+        if text.contains("GOAL") {
+            // Draw some rectangular patterns to simulate text
+            for y in height / 3..2 * height / 3 {
+                for x in width / 4..3 * width / 4 {
+                    if (x / 10) % 2 == 0 {
+                        img.put_pixel(x, y, text_color);
+                    }
+                }
+            }
+        }
+        
+        img
+    }
     
     #[test]
     fn test_ocr_manager_creation() {
-        let result = OcrManager::new(150);
+        // Test with auto threshold
+        let result = OcrManager::new(0);
+        assert!(result.is_ok());
+        
+        // Test with manual threshold
+        let result = OcrManager::new_with_options(150, false);
+        assert!(result.is_ok());
+        
+        // Test with morphological opening
+        let result = OcrManager::new_with_options(0, true);
         assert!(result.is_ok());
     }
     
+    #[test]
+    fn test_rgba_to_grayscale() {
+        let manager = OcrManager::new(0).expect("Failed to create OCR manager");
+        
+        // Create a simple RGBA image
+        let mut img = RgbaImage::new(10, 10);
+        img.put_pixel(0, 0, Rgba([255, 0, 0, 255])); // Red
+        img.put_pixel(1, 0, Rgba([0, 255, 0, 255])); // Green
+        img.put_pixel(2, 0, Rgba([0, 0, 255, 255])); // Blue
+        img.put_pixel(3, 0, Rgba([255, 255, 255, 255])); // White
+        img.put_pixel(4, 0, Rgba([0, 0, 0, 255])); // Black
+        
+        let gray = manager.rgba_to_grayscale(&img);
+        
+        // Check dimensions
+        assert_eq!(gray.width(), 10);
+        assert_eq!(gray.height(), 10);
+        
+        // Check grayscale conversion (approximate values)
+        // Red: 0.299*255 ≈ 76
+        assert!(gray.get_pixel(0, 0)[0] > 70 && gray.get_pixel(0, 0)[0] < 82);
+        
+        // Green: 0.587*255 ≈ 150
+        assert!(gray.get_pixel(1, 0)[0] > 145 && gray.get_pixel(1, 0)[0] < 155);
+        
+        // Blue: 0.114*255 ≈ 29
+        assert!(gray.get_pixel(2, 0)[0] > 25 && gray.get_pixel(2, 0)[0] < 35);
+        
+        // White should be 255
+        assert_eq!(gray.get_pixel(3, 0)[0], 255);
+        
+        // Black should be 0
+        assert_eq!(gray.get_pixel(4, 0)[0], 0);
     }
+    
+    #[test]
+    fn test_calculate_otsu_threshold() {
+        let manager = OcrManager::new(0).expect("Failed to create OCR manager");
+        
+        // Create a bimodal image (half black, half white)
+        let mut gray = GrayImage::new(100, 100);
+        for y in 0..100 {
+            for x in 0..100 {
+                if x < 50 {
+                    gray.put_pixel(x, y, Luma([0])); // Black
+                } else {
+                    gray.put_pixel(x, y, Luma([255])); // White
+                }
+            }
+        }
+        
+        let threshold = manager.calculate_otsu_threshold(&gray);
+        
+        // For a perfect bimodal distribution, threshold should be around 127
+        assert!(threshold > 100 && threshold < 150, "Threshold was {}", threshold);
+    }
+    
+    #[test]
+    fn test_morphological_opening() {
+        let manager = OcrManager::new_with_options(0, true).expect("Failed to create OCR manager");
+        
+        // Create an image with noise
+        let mut img = GrayImage::new(10, 10);
+        
+        // Fill with black
+        for y in 0..10 {
+            for x in 0..10 {
+                img.put_pixel(x, y, Luma([0]));
+            }
+        }
+        
+        // Add a single white pixel (noise)
+        img.put_pixel(5, 5, Luma([255]));
+        
+        // Add a larger white structure
+        for x in 2..5 {
+            for y in 2..5 {
+                img.put_pixel(x, y, Luma([255]));
+            }
+        }
+        
+        let result = manager.morphological_opening(&img);
+        
+        // The single pixel should be removed (or reduced)
+        // The larger structure should remain (though possibly smaller)
+        assert_eq!(result.width(), 10);
+        assert_eq!(result.height(), 10);
+        
+        // Single pixel should be gone or reduced
+        let center_pixel = result.get_pixel(5, 5)[0];
+        assert!(center_pixel < 255, "Noise pixel should be removed or reduced");
+    }
+    
+    #[test]
+    fn test_empty_image_detection() {
+        let mut manager = OcrManager::new(0).expect("Failed to create OCR manager");
+        
+        // Create an empty black image
+        let img = RgbaImage::from_pixel(200, 100, Rgba([0, 0, 0, 255]));
+        
+        // Should not detect "GOAL FOR" in empty image
+        let result = manager.detect_goal(&img);
+        
+        // This might fail or return false - either is acceptable
+        match result {
+            Ok(detected) => assert!(!detected, "Should not detect GOAL in empty image"),
+            Err(_) => {} // OCR error is acceptable for empty image
+        }
+    }
+    
+    #[test]
+    fn test_white_image_detection() {
+        let mut manager = OcrManager::new(0).expect("Failed to create OCR manager");
+        
+        // Create a white image
+        let img = RgbaImage::from_pixel(200, 100, Rgba([255, 255, 255, 255]));
+        
+        // Should not detect "GOAL FOR" in white image
+        let result = manager.detect_goal(&img);
+        
+        match result {
+            Ok(detected) => assert!(!detected, "Should not detect GOAL in white image"),
+            Err(_) => {} // OCR error is acceptable
+        }
+    }
+    
+    #[test]
+    fn test_manual_vs_auto_threshold() {
+        // Test that both manual and auto threshold modes work
+        let manager_auto = OcrManager::new_with_options(0, false);
+        let manager_manual = OcrManager::new_with_options(128, false);
+        
+        assert!(manager_auto.is_ok());
+        assert!(manager_manual.is_ok());
+        
+        let manager_auto = manager_auto.unwrap();
+        let manager_manual = manager_manual.unwrap();
+        
+        // Verify threshold settings
+        assert_eq!(manager_auto.manual_threshold, None);
+        assert_eq!(manager_manual.manual_threshold, Some(128));
+    }
+    
+    #[test]
+    fn test_morphological_opening_flag() {
+        let manager_disabled = OcrManager::new_with_options(0, false).unwrap();
+        let manager_enabled = OcrManager::new_with_options(0, true).unwrap();
+        
+        assert!(!manager_disabled.enable_morph_open);
+        assert!(manager_enabled.enable_morph_open);
+    }
+}

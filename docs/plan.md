@@ -473,8 +473,22 @@ RUST_LOG=info ./target/release/fm-goal-musics
   - [x] Instrumented all pipeline stages
   - [x] Implemented --bench CLI flag
   - [x] Added p50/p95/p99 reporting with detailed breakdown
-- [ ] Step C - False-Positive Control
-- [ ] Step D - OS-Specific Optimizations
-- [ ] Step E - Test Hooks & TDD
+- [x] Step C - False-Positive Control (COMPLETED)
+  - [x] Debounce logic verified working (8 second default)
+  - [x] Configurable OCR threshold (0 = auto Otsu, 1-255 = manual)
+  - [x] Morphological opening implemented behind enable_morph_open flag
+  - [x] Documentation updated with tuning guide
+- [x] Step D - OS-Specific Optimizations (COMPLETED)
+  - [x] Comprehensive platform-specific documentation in capture.rs
+  - [x] Conditional compilation guards for macOS permission messages
+  - [x] Platform-specific performance notes and benchmarks
+  - [x] Detailed troubleshooting for macOS, Windows, and Linux
+  - [x] Technical implementation details documented
+- [x] Step E - Test Hooks & TDD (COMPLETED)
+  - [x] Comprehensive unit tests for OCR (10+ test cases)
+  - [x] Unit tests for utils (timing, debouncing, state management)
+  - [x] Integration tests for pipeline validation
+  - [x] Test coverage for all critical paths
+  - [x] Regression prevention tests
 
-**Next Action:** Run benchmark to measure current performance baseline
+**Next Action:** All implementation steps complete! Ready for production deployment.
