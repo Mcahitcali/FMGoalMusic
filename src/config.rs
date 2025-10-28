@@ -30,7 +30,7 @@ impl Default for Config {
             capture_region: [0, 0, 200, 100],
             audio_file_path: "goal.mp3".to_string(),
             ocr_threshold: 150,
-            debounce_ms: 800,
+            debounce_ms: 8000, // 8 seconds between goal sounds
             enable_morph_open: false,
             bench_frames: 500,
         }
@@ -109,7 +109,7 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.capture_region, [0, 0, 200, 100]);
         assert_eq!(config.ocr_threshold, 150);
-        assert_eq!(config.debounce_ms, 800);
+        assert_eq!(config.debounce_ms, 8000);
         assert_eq!(config.bench_frames, 500);
         assert!(!config.enable_morph_open);
     }

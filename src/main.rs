@@ -7,7 +7,7 @@ mod utils;
 use std::thread;
 use std::time::Duration;
 use utils::{AppState, Debouncer, Timer};
-use rdev::{listen, Event, EventType, Key, Button};
+use rdev::{listen, Event, EventType, Key};
 use std::collections::HashMap;
 
 fn main() {

@@ -101,59 +101,7 @@ impl Debouncer {
         }
     }
     
-    /// Reset the debouncer (clear last trigger time)
-    pub fn reset(&mut self) {
-        self.last_trigger = None;
     }
-    
-    /// Get remaining debounce time in milliseconds
-    pub fn remaining_ms(&self) -> u64 {
-        match self.last_trigger {
-            None => 0,
-            Some(last) => {
-                let elapsed = Instant::now().duration_since(last);
-                if elapsed >= self.debounce_duration {
-                    0
-                } else {
-                    (self.debounce_duration - elapsed).as_millis() as u64
-                }
-            }
-        }
-    }
-}
-
-/// Performance metrics tracker
-#[derive(Debug, Clone)]
-pub struct PerformanceMetrics {
-    pub capture_time_ms: f64,
-    pub ocr_time_ms: f64,
-    pub total_time_ms: f64,
-    pub fps: f64,
-}
-
-impl PerformanceMetrics {
-    pub fn new() -> Self {
-        Self {
-            capture_time_ms: 0.0,
-            ocr_time_ms: 0.0,
-            total_time_ms: 0.0,
-            fps: 0.0,
-        }
-    }
-    
-    /// Calculate FPS from total time
-    pub fn calculate_fps(&mut self) {
-        if self.total_time_ms > 0.0 {
-            self.fps = 1000.0 / self.total_time_ms;
-        }
-    }
-}
-
-impl Default for PerformanceMetrics {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Simple timer for measuring elapsed time
 pub struct Timer {
@@ -171,11 +119,6 @@ impl Timer {
     /// Get elapsed time in milliseconds
     pub fn elapsed_ms(&self) -> f64 {
         self.start.elapsed().as_secs_f64() * 1000.0
-    }
-    
-    /// Get elapsed time as Duration
-    pub fn elapsed(&self) -> Duration {
-        self.start.elapsed()
     }
 }
 
@@ -225,14 +168,5 @@ mod tests {
         
         let elapsed = timer.elapsed_ms();
         assert!(elapsed >= 50.0 && elapsed < 100.0);
-    }
-    
-    #[test]
-    fn test_performance_metrics() {
-        let mut metrics = PerformanceMetrics::new();
-        metrics.total_time_ms = 10.0;
-        metrics.calculate_fps();
-        
-        assert!((metrics.fps - 100.0).abs() < 0.1);
     }
 }

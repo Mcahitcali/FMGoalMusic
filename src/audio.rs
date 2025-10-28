@@ -56,26 +56,6 @@ impl AudioManager {
         
         Ok(())
     }
-    
-    /// Check if audio is currently playing
-    pub fn is_playing(&self) -> bool {
-        !self.sink.empty()
-    }
-    
-    /// Stop any currently playing audio
-    pub fn stop(&self) {
-        self.sink.stop();
-    }
-    
-    /// Get the volume (0.0 to 1.0)
-    pub fn volume(&self) -> f32 {
-        self.sink.volume()
-    }
-    
-    /// Set the volume (0.0 to 1.0)
-    pub fn set_volume(&self, volume: f32) {
-        self.sink.set_volume(volume);
-    }
 }
 
 #[cfg(test)]

@@ -151,16 +151,6 @@ impl CaptureManager {
         
         Ok(img_buffer)
     }
-    
-    /// Update the capture region
-    pub fn set_region(&mut self, region: CaptureRegion) {
-        self.region = region;
-    }
-    
-    /// Get the current capture region
-    pub fn region(&self) -> CaptureRegion {
-        self.region
-    }
 }
 
 #[cfg(test)]

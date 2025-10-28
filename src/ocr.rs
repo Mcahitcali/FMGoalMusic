@@ -4,7 +4,6 @@ use leptess::{LepTess, Variable};
 /// OCR manager that reuses Tesseract instance for optimal performance
 pub struct OcrManager {
     tess: LepTess,
-    threshold: u8,
 }
 
 impl OcrManager {
@@ -24,9 +23,8 @@ impl OcrManager {
         
         println!("✓ Tesseract OCR initialized");
         println!("  Mode: PSM_AUTO (searches entire image)");
-        println!("  Threshold: {}", threshold);
         
-        Ok(Self { tess, threshold })
+        Ok(Self { tess })
     }
     
     /// Detect if "GOAL" text is present in the image
@@ -151,16 +149,6 @@ impl OcrManager {
         gray
     }
     
-    /// Update the binary threshold value
-    pub fn set_threshold(&mut self, threshold: u8) {
-        self.threshold = threshold;
-    }
-    
-    /// Get the current threshold value
-    pub fn threshold(&self) -> u8 {
-        self.threshold
-    }
-    
     /// Get detected text (for debugging)
     pub fn get_text(&mut self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<String, Box<dyn std::error::Error>> {
         let gray = self.rgba_to_grayscale(image);
@@ -209,12 +197,4 @@ mod tests {
         assert!(result.is_ok());
     }
     
-    #[test]
-    fn test_threshold_update() {
-        let mut ocr = OcrManager::new(150).unwrap();
-        assert_eq!(ocr.threshold(), 150);
-        
-        ocr.set_threshold(200);
-        assert_eq!(ocr.threshold(), 200);
     }
-}
