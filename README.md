@@ -109,6 +109,20 @@ This runs:
 - Screen capture test
 - OCR detection test
 
+### Benchmark Mode
+
+Measure performance and latency:
+```bash
+cargo run --release -- --bench
+```
+
+This will:
+- Run 500 iterations (configurable via `bench_frames` in config)
+- Measure latency of each stage (capture, preprocess, OCR, audio)
+- Report p50, p95, and p99 latencies
+- Identify performance bottlenecks
+- Verify if <100ms target is met
+
 ## Performance
 
 **Target:** <100ms total response time

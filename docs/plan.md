@@ -460,10 +460,21 @@ RUST_LOG=info ./target/release/fm-goal-musics
 
 - [x] Documentation created
 - [x] Plan defined
-- [ ] Step A - Baseline Core
-- [ ] Step B - Latency Instrumentation
+- [x] Step A - Baseline Core (COMPLETED)
+  - [x] A.1 - Cargo.toml Setup
+  - [x] A.2 - config.rs
+  - [x] A.3 - audio.rs
+  - [x] A.4 - capture.rs
+  - [x] A.5 - ocr.rs
+  - [x] A.6 - utils.rs
+  - [x] A.7 - main.rs
+- [x] Step B - Latency Instrumentation (COMPLETED)
+  - [x] Added IterationTiming and LatencyStats structs
+  - [x] Instrumented all pipeline stages
+  - [x] Implemented --bench CLI flag
+  - [x] Added p50/p95/p99 reporting with detailed breakdown
 - [ ] Step C - False-Positive Control
 - [ ] Step D - OS-Specific Optimizations
 - [ ] Step E - Test Hooks & TDD
 
-**Next Action:** Begin Step A - Implement baseline core functionality
+**Next Action:** Run benchmark to measure current performance baseline

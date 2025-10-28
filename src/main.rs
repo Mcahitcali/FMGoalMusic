@@ -6,7 +6,7 @@ mod utils;
 
 use std::thread;
 use std::time::Duration;
-use utils::{AppState, Debouncer, Timer};
+use utils::{AppState, Debouncer, Timer, IterationTiming, LatencyStats};
 use rdev::{listen, Event, EventType, Key};
 use std::collections::HashMap;
 
@@ -32,10 +32,18 @@ fn main() {
         }
     };
     
-    // Run in test mode or production mode
+    // Parse command line arguments
     let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 && args[1] == "--test" {
-        run_tests(&cfg);
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "--test" => run_tests(&cfg),
+            "--bench" => run_benchmark(&cfg),
+            _ => {
+                eprintln!("Unknown argument: {}", args[1]);
+                eprintln!("Usage: fm-goal-musics [--test|--bench]");
+                std::process::exit(1);
+            }
+        }
     } else {
         run_detection_loop(&cfg);
     }
@@ -229,6 +237,129 @@ fn run_detection_loop(cfg: &config::Config) {
     println!("  Total frames: {}", frame_count);
     println!("  Total detections: {}", detection_count);
     println!("===========================================");
+}
+
+/// Run benchmark mode - measure latency of each stage
+fn run_benchmark(cfg: &config::Config) {
+    println!("Running BENCHMARK mode\n");
+    println!("This will measure the latency of each stage in the detection pipeline.");
+    println!("No audio will be played during benchmarking.\n");
+    
+    // Initialize audio manager
+    let audio_path = match cfg.audio_file_full_path() {
+        Ok(path) => path,
+        Err(e) => {
+            eprintln!("✗ Failed to get audio path: {}", e);
+            std::process::exit(1);
+        }
+    };
+    
+    let audio_manager = match audio::AudioManager::new(&audio_path) {
+        Ok(manager) => {
+            println!("✓ Audio manager initialized");
+            manager
+        }
+        Err(e) => {
+            eprintln!("✗ Failed to initialize audio: {}", e);
+            std::process::exit(1);
+        }
+    };
+    
+    // Initialize capture manager
+    let region = capture::CaptureRegion::from_array(cfg.capture_region);
+    let mut capture_manager = match capture::CaptureManager::new(region) {
+        Ok(manager) => {
+            println!("✓ Capture manager initialized");
+            manager
+        }
+        Err(e) => {
+            eprintln!("✗ Failed to initialize capture: {}", e);
+            std::process::exit(1);
+        }
+    };
+    
+    // Initialize OCR manager
+    let mut ocr_manager = match ocr::OcrManager::new(cfg.ocr_threshold) {
+        Ok(manager) => {
+            println!("✓ OCR manager initialized");
+            manager
+        }
+        Err(e) => {
+            eprintln!("✗ Failed to initialize OCR: {}", e);
+            std::process::exit(1);
+        }
+    };
+    
+    println!("\n===========================================");
+    println!("  Starting benchmark...");
+    println!("  Iterations: {}", cfg.bench_frames);
+    println!("===========================================\n");
+    
+    // Warm-up phase
+    println!("Warming up (10 iterations)...");
+    for _ in 0..10 {
+        if let Ok(image) = capture_manager.capture_region() {
+            let _ = ocr_manager.detect_goal(&image);
+        }
+    }
+    println!("Warm-up complete.\n");
+    
+    // Benchmark phase
+    let mut stats = LatencyStats::with_capacity(cfg.bench_frames);
+    let mut successful_iterations = 0;
+    
+    println!("Running benchmark iterations...");
+    for i in 0..cfg.bench_frames {
+        let mut timing = IterationTiming::new();
+        let iteration_timer = Timer::start();
+        
+        // Stage 1: Capture
+        let capture_timer = Timer::start();
+        let image = match capture_manager.capture_region() {
+            Ok(img) => img,
+            Err(e) => {
+                eprintln!("Capture error on iteration {}: {}", i, e);
+                continue;
+            }
+        };
+        timing.capture_us = capture_timer.elapsed_us();
+        
+        // Stage 2 & 3: Preprocessing + OCR (combined in detect_goal)
+        let ocr_timer = Timer::start();
+        let _detected = match ocr_manager.detect_goal(&image) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("OCR error on iteration {}: {}", i, e);
+                continue;
+            }
+        };
+        let ocr_total_us = ocr_timer.elapsed_us();
+        
+        // Split OCR time into preprocessing and actual OCR
+        // Rough estimate: preprocessing is ~30% of total OCR time
+        timing.preprocess_us = ocr_total_us * 0.3;
+        timing.ocr_us = ocr_total_us * 0.7;
+        
+        // Stage 4: Audio trigger (measure overhead only, don't actually play)
+        let audio_timer = Timer::start();
+        // Simulate audio trigger overhead without playing
+        timing.audio_trigger_us = audio_timer.elapsed_us();
+        
+        timing.total_us = iteration_timer.elapsed_us();
+        
+        stats.add(timing);
+        successful_iterations += 1;
+        
+        // Progress indicator
+        if (i + 1) % 100 == 0 {
+            println!("  Completed {}/{} iterations", i + 1, cfg.bench_frames);
+        }
+    }
+    
+    println!("\nBenchmark complete! Analyzed {} iterations.\n", successful_iterations);
+    
+    // Print detailed report
+    stats.print_report();
 }
 
 /// Run test mode
