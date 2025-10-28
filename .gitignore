@@ -1,0 +1,24 @@
+# Rust
+/target/
+Cargo.lock
+
+# Test outputs
+test_screenshot.png
+test-screenshot.png
+debug_binary.png
+cropped.png
+detection.log
+debug_goal_*.png
+
+# Config directory (contains user-specific settings and audio files)
+config/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
