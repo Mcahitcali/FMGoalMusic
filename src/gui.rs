@@ -89,6 +89,9 @@ pub struct AppState {
     pub status_message: String,
     pub detection_count: usize,
     pub selected_team: Option<crate::config::SelectedTeam>,
+    pub music_volume: f32,
+    pub ambiance_volume: f32,
+    pub goal_ambiance_path: Option<String>,
 }
 
 impl Default for AppState {
@@ -104,6 +107,9 @@ impl Default for AppState {
             status_message: "Ready".to_string(),
             detection_count: 0,
             selected_team: None,
+            music_volume: 1.0,
+            ambiance_volume: 0.6,
+            goal_ambiance_path: None,
         }
     }
 }
@@ -189,6 +195,9 @@ impl FMGoalMusicsApp {
                 state.enable_morph_open = config.enable_morph_open;
                 state.selected_music_index = config.selected_music_index;
                 state.selected_team = config.selected_team.clone();
+                state.music_volume = config.music_volume;
+                state.ambiance_volume = config.ambiance_volume;
+                state.goal_ambiance_path = config.goal_ambiance_path.clone();
                 
                 // Initialize selected league and team from config
                 if let Some(ref team) = config.selected_team {
@@ -348,6 +357,9 @@ impl FMGoalMusicsApp {
             }).collect(),
             selected_music_index: state.selected_music_index,
             selected_team: state.selected_team.clone(),
+            music_volume: state.music_volume,
+            ambiance_volume: state.ambiance_volume,
+            goal_ambiance_path: state.goal_ambiance_path.clone(),
         };
         
         if let Err(e) = config.save() {
@@ -391,7 +403,7 @@ impl FMGoalMusicsApp {
             let _ = handle.join();
         }
 
-        let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team) = {
+        let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path) = {
             let mut state = self.state.lock().unwrap();
 
             if state.process_state != ProcessState::Stopped {
@@ -420,6 +432,9 @@ impl FMGoalMusicsApp {
             let debounce_ms = state.debounce_ms;
             let enable_morph_open = state.enable_morph_open;
             let selected_team = state.selected_team.clone();
+            let music_volume = state.music_volume;
+            let ambiance_volume = state.ambiance_volume;
+            let ambiance_path = state.goal_ambiance_path.clone();
 
             println!(
                 "[fm-goal-musics] Starting detection\n  music='{}'\n  region=[{}, {}, {}, {}]\n  ocr_threshold={}\n  debounce_ms={}\n  morph_open={}",
@@ -438,7 +453,7 @@ impl FMGoalMusicsApp {
             state.status_message = format!("Starting detection with '{}'", entry.name);
             state.detection_count = 0;
 
-            (entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team)
+            (entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path)
         };
 
         let audio_data = match self.get_or_load_audio_data(&music_path) {
@@ -465,11 +480,39 @@ impl FMGoalMusicsApp {
             };
 
             let audio_manager = match AudioManager::from_preloaded(Arc::clone(&audio_data)) {
-                Ok(manager) => manager,
+                Ok(manager) => {
+                    manager.set_volume(music_volume);
+                    manager
+                },
                 Err(e) => {
                     notify_error(format!("Audio init failed: {}", e));
                     return;
                 }
+            };
+            
+            // Load ambiance sound if configured
+            let ambiance_manager: Option<AudioManager> = if let Some(ref path) = ambiance_path {
+                match std::fs::read(path) {
+                    Ok(bytes) => {
+                        println!("[fm-goal-musics] Loading ambiance sound: {}", path);
+                        match AudioManager::from_preloaded(Arc::new(bytes)) {
+                            Ok(manager) => {
+                                manager.set_volume(ambiance_volume);
+                                Some(manager)
+                            },
+                            Err(e) => {
+                                println!("[fm-goal-musics] Warning: Failed to load ambiance sound: {}", e);
+                                None
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        println!("[fm-goal-musics] Warning: Failed to read ambiance file: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
             };
 
             let mut capture_manager = match CaptureManager::new(CaptureRegion::from_array(capture_region)) {
@@ -593,20 +636,34 @@ impl FMGoalMusicsApp {
                 };
 
                 if should_play_sound && debouncer.should_trigger() {
+                    // Play music
                     match audio_manager.play_sound() {
                         Ok(()) => {
                             let mut st = state_clone.lock().unwrap();
                             st.detection_count += 1;
+                            let ambiance_msg = if ambiance_manager.is_some() {
+                                " + crowd cheer"
+                            } else {
+                                ""
+                            };
                             st.status_message = format!(
-                                "Goal detected! Played '{}' (total: {})",
+                                "Goal detected! Played '{}'{} (total: {})",
                                 music_name,
+                                ambiance_msg,
                                 st.detection_count
                             );
                         }
                         Err(e) => {
-                            println!("[fm-goal-musics] Failed to play sound: {}", e);
+                            println!("[fm-goal-musics] Failed to play music: {}", e);
                             let mut st = state_clone.lock().unwrap();
-                            st.status_message = format!("Failed to play sound: {}", e);
+                            st.status_message = format!("Failed to play music: {}", e);
+                        }
+                    }
+                    
+                    // Play ambiance sound if available
+                    if let Some(ref ambiance) = ambiance_manager {
+                        if let Err(e) = ambiance.play_sound() {
+                            println!("[fm-goal-musics] Failed to play ambiance: {}", e);
                         }
                     }
                 }
@@ -732,6 +789,72 @@ impl eframe::App for FMGoalMusicsApp {
             
             if selection_changed {
                 self.save_config();
+            }
+
+            ui.separator();
+
+            // Volume Controls section
+            ui.heading("🔊 Volume Controls");
+            
+            ui.horizontal(|ui| {
+                ui.label("🎵 Music:");
+                let mut state = self.state.lock().unwrap();
+                let mut music_vol_percent = (state.music_volume * 100.0) as i32;
+                if ui.add(egui::Slider::new(&mut music_vol_percent, 0..=100).suffix("%")).changed() {
+                    state.music_volume = (music_vol_percent as f32) / 100.0;
+                    drop(state);
+                    self.save_config();
+                }
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("🔉 Ambiance:");
+                let mut state = self.state.lock().unwrap();
+                let mut ambiance_vol_percent = (state.ambiance_volume * 100.0) as i32;
+                if ui.add(egui::Slider::new(&mut ambiance_vol_percent, 0..=100).suffix("%")).changed() {
+                    state.ambiance_volume = (ambiance_vol_percent as f32) / 100.0;
+                    drop(state);
+                    self.save_config();
+                }
+            });
+
+            ui.separator();
+
+            // Ambiance Sound section
+            ui.heading("🎺 Ambiance Sounds");
+            
+            ui.horizontal(|ui| {
+                if ui.button("➕ Add Goal Cheer Sound").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Audio", &["wav"])
+                        .pick_file()
+                    {
+                        let mut state = self.state.lock().unwrap();
+                        state.goal_ambiance_path = Some(path.to_string_lossy().to_string());
+                        drop(state);
+                        self.save_config();
+                    }
+                }
+                
+                if ui.button("🗑️ Remove Cheer Sound").clicked() {
+                    let mut state = self.state.lock().unwrap();
+                    state.goal_ambiance_path = None;
+                    drop(state);
+                    self.save_config();
+                }
+            });
+            
+            {
+                let state = self.state.lock().unwrap();
+                if let Some(ref path) = state.goal_ambiance_path {
+                    let display_name = PathBuf::from(path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| path.clone());
+                    ui.label(format!("✓ Crowd cheer: {}", display_name));
+                } else {
+                    ui.label("ℹ No crowd cheer sound selected");
+                }
             }
 
             ui.separator();

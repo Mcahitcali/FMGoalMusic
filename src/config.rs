@@ -4,6 +4,14 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+fn default_music_volume() -> f32 {
+    1.0
+}
+
+fn default_ambiance_volume() -> f32 {
+    0.6
+}
+
 fn default_capture_region() -> [u32; 4] {
     let (screen_width, screen_height) = DisplayInfo::all()
         .ok()
@@ -66,6 +74,18 @@ pub struct Config {
     /// Selected team for conditional audio playback
     #[serde(default)]
     pub selected_team: Option<SelectedTeam>,
+    
+    /// Music volume (0.0 to 1.0)
+    #[serde(default = "default_music_volume")]
+    pub music_volume: f32,
+    
+    /// Ambiance volume (0.0 to 1.0)
+    #[serde(default = "default_ambiance_volume")]
+    pub ambiance_volume: f32,
+    
+    /// Path to goal ambiance sound
+    #[serde(default)]
+    pub goal_ambiance_path: Option<String>,
 }
 
 impl Default for Config {
@@ -79,6 +99,9 @@ impl Default for Config {
             music_list: Vec::new(),
             selected_music_index: None,
             selected_team: None,
+            music_volume: default_music_volume(),
+            ambiance_volume: default_ambiance_volume(),
+            goal_ambiance_path: None,
         }
     }
 }
