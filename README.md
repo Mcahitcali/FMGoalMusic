@@ -8,9 +8,8 @@ A high-performance goal detection system for Football Manager that plays celebra
 - **Instant Audio Playback**: Preloaded MP3 in memory for zero-latency playback
 - **GPU-Accelerated Capture**: Uses scap for efficient screen capture
 - **Configurable**: JSON config for capture region, audio file, thresholds
-- **Keyboard Controls**: Cmd+1 to pause/resume, Ctrl+C to quit
-- **Performance Monitoring**: Built-in benchmark mode
-- **🆕 GUI Version**: User-friendly interface with music management and visual controls
+- **User-Friendly GUI**: Graphical interface with music management and visual controls
+- **Keyboard Controls**: Cmd+Shift+R for region selection, Cmd+1 to pause/resume
 
 ## Installation
 
@@ -41,22 +40,16 @@ sudo apt-get install tesseract-ocr
 
 ### Build
 
-**CLI Version (Command Line):**
-```bash
-cargo build --release --bin fm-goal-musics
-```
-Binary: `target/release/fm-goal-musics`
-
-**GUI Version (Graphical Interface):**
-```bash
-cargo build --release --bin fm-goal-musics-gui
-```
-Binary: `target/release/fm-goal-musics-gui`
-
-**Build Both:**
 ```bash
 cargo build --release
 ```
+Binary: `target/release/fm-goal-musics-gui`
+
+**Build macOS App Bundle:**
+```bash
+./build_app.sh
+```
+App Bundle: `target/release/FM Goal Musics.app`
 
 ## Configuration
 
@@ -106,10 +99,13 @@ Place your goal celebration MP3 at:
 
 ## Usage
 
-### GUI Mode (Recommended for Most Users)
-
 ```bash
 ./target/release/fm-goal-musics-gui
+```
+
+Or run the macOS app:
+```bash
+open "target/release/FM Goal Musics.app"
 ```
 
 **Features:**
@@ -118,46 +114,12 @@ Place your goal celebration MP3 at:
 - ⚙️ Visual configuration editor
 - 📊 Real-time status and detection counter
 - 💾 Easy music file selection
-
-See [GUI Guide](docs/GUI_GUIDE.md) for detailed instructions.
-
-### CLI Mode (Command Line)
-
-**Normal Mode:**
-```bash
-./target/release/fm-goal-musics
-```
+- 🔲 Region selector (Cmd+Shift+R)
+- ⚡ Team-specific goal detection
 
 **Controls:**
 - **Cmd+1**: Toggle detection on/off
-- **Ctrl+C**: Quit application
-
-### Test Mode
-
-Test individual modules:
-```bash
-cargo run --release -- --test
-```
-
-This runs:
-- Config loading test
-- Audio playback test
-- Screen capture test
-- OCR detection test
-
-### Benchmark Mode
-
-Measure performance and latency:
-```bash
-cargo run --release -- --bench
-```
-
-This will:
-- Run 500 iterations (configurable via `bench_frames` in config)
-- Measure latency of each stage (capture, preprocess, OCR, audio)
-- Report p50, p95, and p99 latencies
-- Identify performance bottlenecks
-- Verify if <100ms target is met
+- **Cmd+Shift+R**: Open region selector
 
 ## Performance
 
@@ -302,12 +264,17 @@ Uses adaptive Otsu thresholding:
 
 ```
 src/
-├── main.rs       # Main loop, keyboard control
-├── config.rs     # Configuration management
-├── audio.rs      # Audio preloading and playback
-├── capture.rs    # Screen capture with scap
-├── ocr.rs        # OCR with adaptive thresholding
-└── utils.rs      # Shared utilities, timing, debouncing
+├── gui_main.rs        # GUI entry point
+├── gui.rs             # GUI implementation
+├── config.rs          # Configuration management
+├── audio.rs           # Audio preloading and playback
+├── audio_converter.rs # Audio format conversion
+├── capture.rs         # Screen capture with scap
+├── ocr.rs             # OCR with adaptive thresholding
+├── region_selector.rs # Screen region selector
+├── teams.rs           # Team database
+├── team_matcher.rs    # Team name matching
+└── utils.rs           # Shared utilities, timing, debouncing
 ```
 
 ## Development
@@ -321,11 +288,11 @@ cargo build
 # Release build
 cargo build --release
 
+# Run GUI in development mode
+cargo run --release
+
 # Run tests
 cargo test
-
-# Test mode
-cargo run --release -- --test
 ```
 
 ### Testing

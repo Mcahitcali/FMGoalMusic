@@ -169,18 +169,17 @@ impl TeamMatcher {
 ```
 fm-goal-musics/
 ├── src/
-│   ├── main.rs              # CLI entry point, detection loop
 │   ├── gui_main.rs          # GUI entry point
+│   ├── gui.rs               # GUI implementation
 │   ├── capture.rs           # Screen capture manager
 │   ├── ocr.rs               # OCR text detection
 │   ├── audio.rs             # Audio playback manager
 │   ├── audio_converter.rs   # Format conversion
 │   ├── config.rs            # Configuration management
-│   ├── gui.rs               # GUI implementation
 │   ├── region_selector.rs   # Visual region picker
 │   ├── slug.rs              # ASCII slug generation for filenames
-│   ├── teams.rs             # Team database loader 🔄
-│   ├── team_matcher.rs      # Team name matching logic 🔄
+│   ├── teams.rs             # Team database loader
+│   ├── team_matcher.rs      # Team name matching logic
 │   └── utils.rs             # Timing, debounce, shared utilities
 ├── tests/
 │   ├── integration_tests.rs # Integration test suite
@@ -416,25 +415,6 @@ impl eframe::App for RegionSelector {
 
 ## Data Flow
 
-### CLI Detection Flow
-```
-1. Load Config
-   ↓
-2. Initialize Managers (Capture, OCR, Audio)
-   ↓
-3. Start Detection Loop
-   ├─ Check if paused (sleep 250ms if true)
-   ├─ Capture screen region
-   ├─ Preprocess image
-   ├─ Detect "GOAL" text
-   ├─ Check debounce
-   └─ Trigger audio if goal detected
-   ↓
-4. Handle keyboard input (pause/quit)
-   ↓
-5. Repeat step 3 until quit
-```
-
 ### GUI Detection Flow
 ```
 1. Launch GUI (Main Thread)
@@ -457,30 +437,6 @@ impl eframe::App for RegionSelector {
 6. Main Thread updates UI based on shared state
    ↓
 7. User clicks "Stop" → Signal detection thread → Join thread
-```
-
-### Benchmark Flow
-```
-1. Load Config
-   ↓
-2. Initialize Managers
-   ↓
-3. Warm-up Phase (10 iterations)
-   ↓
-4. Benchmark Loop (config.bench_frames iterations)
-   ├─ Start total timer
-   ├─ Measure capture time
-   ├─ Measure preprocess time
-   ├─ Measure OCR time
-   ├─ Measure audio trigger time
-   ├─ Stop total timer
-   └─ Collect timing data
-   ↓
-5. Calculate Statistics (mean, p50, p95, p99)
-   ↓
-6. Print formatted report
-   ↓
-7. Identify bottleneck stage
 ```
 
 ## Performance Optimizations
@@ -684,13 +640,13 @@ If enhanced features require persistent storage:
 - **Distribution:** Direct download, no code signing (dev)
 
 #### Windows
-- **Executable:** `fm-goal-musics-gui.exe` / `fm-goal-musics.exe`
+- **Executable:** `fm-goal-musics-gui.exe`
 - **Requires:** Windows 10 version 1903+ (for Graphics.Capture API)
 - **Dependencies:** Tesseract OCR (bundled or separate installer)
 - **Distribution:** Zip archive or installer
 
 #### Linux
-- **Binary:** `fm-goal-musics` / `fm-goal-musics-gui`
+- **Binary:** `fm-goal-musics-gui`
 - **Requires:** X11 or Wayland compositor, Tesseract OCR
 - **Package:** DEB/RPM (future), AppImage, or direct binary
 - **Distribution:** Package manager or direct download
@@ -756,19 +712,14 @@ log::error!("OCR failed: {}", error);
 ```
 
 ### Debug Mode
-```bash
-# Test mode (shows OCR output)
-./fm-goal-musics --test
-
-# Benchmark mode (shows timing)
-./fm-goal-musics --bench
-```
+- GUI provides real-time status and detection count
+- Configuration can be edited live in GUI
+- Region selector for visual debugging
 
 ### Performance Monitoring
-- Built-in benchmark mode
-- Per-stage timing breakdown
-- Percentile analysis (p50, p95, p99)
-- Bottleneck identification
+- Real-time FPS and timing in GUI
+- Detection count tracking
+- Visual status indicators
 
 ## Error Handling
 

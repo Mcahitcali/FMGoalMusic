@@ -34,19 +34,13 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 - **Pause/Resume Controls** – Keyboard shortcuts (Cmd+1) or GUI buttons
 - **Detection Counter** – Track goals detected per session
 
-### 4. Performance Monitoring
-- **Benchmark Mode** (`--bench`) – Measures p50/p95/p99 latency across 500 iterations
-- **Stage Breakdown** – Separate timing for capture, preprocess, OCR, audio trigger
-- **Bottleneck Identification** – Highlights slowest pipeline stage
-- **Performance Target** – Validates p95 < 100ms requirement
-
-### 5. User Interfaces
-- **CLI Version** – Lightweight command-line tool with keyboard controls
-- **GUI Version** – User-friendly interface with visual region selection
-- **Test Mode** (`--test`) – Verify OCR detection on current screen region
+### 4. User Interface
+- **GUI Application** – User-friendly graphical interface with visual controls
+- **Visual Region Selector** – Click-and-drag screen region selection (Cmd+Shift+R)
 - **Status Indicators** – Real-time state (running/paused/stopped) and detection count
+- **Team Selection** – League and team dropdown for selective goal detection
 
-### 6. Configuration System
+### 5. Configuration System
 - **JSON-based Config** – Platform-specific storage (macOS/Windows/Linux)
 - **Auto-generated Defaults** – Creates config if missing with sensible values
 - **Visual Region Selector** – Click-and-drag interface for capture area
@@ -76,11 +70,11 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 - Implement `src/capture.rs` – Screen capture with scap
 - Implement `src/ocr.rs` – Tesseract OCR wrapper
 - Implement `src/audio.rs` – Audio preloading and playback
-- Implement `src/main.rs` – Main detection loop
-- Add keyboard controls (Cmd+1 pause, Ctrl+C quit)
+- Implement `src/gui_main.rs` – GUI entry point
+- Add keyboard controls (Cmd+1 pause, Cmd+Shift+R region selector)
 
 **Deliverables:**
-- Working CLI binary `fm-goal-musics`
+- Working GUI binary `fm-goal-musics-gui`
 - Functional detection and audio playback
 - Basic error handling
 
@@ -136,22 +130,19 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 
 ---
 
-### Step 4: Latency Instrumentation ✅
-**Goal:** Performance measurement and validation
+### Step 4: Utility Infrastructure ✅
+**Goal:** Shared utilities and timing for GUI
 
 **Tasks:**
 - Implement `src/utils.rs` timing infrastructure
-- Add `IterationTiming` struct for per-stage metrics
-- Add `LatencyStats` with percentile calculations
-- Implement `--bench` CLI flag
-- Generate formatted performance reports
+- Add state management for GUI threads
+- Add debouncer implementation
+- Thread-safe AppState with Arc<AtomicBool>
 
-**Metrics Tracked:**
-- Capture time
-- Preprocessing time
-- OCR time
-- Audio trigger time
-- Total end-to-end latency
+**Utilities Provided:**
+- Timer for performance monitoring
+- Debouncer for goal detection
+- AppState for thread-safe state management
 
 **Status:** Completed
 
@@ -300,12 +291,12 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 ## Current Project Status
 
 ### Completed Milestones ✅
-- [x] All implementation steps (0-9) completed
-- [x] CLI version fully functional
-- [x] GUI version fully functional
+- [x] All implementation steps (0-10) completed
+- [x] GUI application fully functional
 - [x] Performance target met (p95 < 100ms)
 - [x] Multi-platform support (macOS, Windows, Linux)
-- [x] Comprehensive test coverage (90 tests)
+- [x] Comprehensive test coverage (37 tests)
+- [x] Team selection feature implemented
 - [x] Production-ready quality
 
 ### In Progress 🔄
@@ -313,7 +304,7 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 
 ### Quality Metrics
 - **Performance:** p95 latency ~65ms ✅ (Target: <100ms)
-- **Test Coverage:** 90 passing tests ✅
+- **Test Coverage:** 37 passing tests ✅
 - **Code Quality:** Zero unsafe code, no warnings ✅
 - **Documentation:** Complete user and developer docs ✅
 
@@ -328,14 +319,14 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 | Task ID | Description | Component | Priority | Status |
 |---------|-------------|-----------|----------|--------|
 | T0.1 | Doc structure setup | Documentation | High | ✅ |
-| T1.1 | Core capture module | CLI | High | ✅ |
-| T1.2 | OCR detection module | CLI | High | ✅ |
-| T1.3 | Audio playback module | CLI | High | ✅ |
-| T1.4 | Main detection loop | CLI | High | ✅ |
+| T1.1 | Core capture module | Core | High | ✅ |
+| T1.2 | OCR detection module | Core | High | ✅ |
+| T1.3 | Audio playback module | Core | High | ✅ |
+| T1.4 | GUI main entry point | GUI | High | ✅ |
 | T2.1 | Config persistence | Core | High | ✅ |
 | T3.1 | Audio converter | Core | Medium | ✅ |
 | T3.2 | Music list management | Core | Medium | ✅ |
-| T4.1 | Benchmark instrumentation | CLI | Medium | ✅ |
+| T4.1 | Utility infrastructure | Core | Medium | ✅ |
 | T5.1 | Debounce logic | Core | High | ✅ |
 | T5.2 | Threshold configuration | Core | Medium | ✅ |
 | T5.3 | Morphological filtering | Core | Low | ✅ |
@@ -367,9 +358,9 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 ### Operational Risks
 | Risk | Impact | Probability | Mitigation | Status |
 |------|--------|-------------|------------|--------|
-| GUI/CLI divergence | Medium | Low | Shared config schema, synchronized updates | ✅ Mitigated |
 | Platform incompatibility | High | Low | Comprehensive platform testing, documented requirements | ✅ Mitigated |
 | Memory leaks | Medium | Low | Rust memory safety, allocation-free hot path | ✅ Mitigated |
+| Thread synchronization issues | Medium | Low | Arc<AtomicBool> for state, message passing for GUI | ✅ Mitigated |
 
 ## Success Criteria
 

@@ -4,10 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "fm-goal-musics"
-path = "src/main.rs"
-
-[[bin]]
 name = "fm-goal-musics-gui"
 path = "src/gui_main.rs"
 
@@ -39,9 +35,6 @@ image = "0.25"
 
 # Platform directories
 dirs = "5.0"
-
-# Ctrl+C handler
-ctrlc = "3.4"
 
 # GUI dependencies
 eframe = "0.33.0"
