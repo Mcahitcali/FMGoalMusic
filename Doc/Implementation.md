@@ -12,6 +12,59 @@ pub fn slugify(input: &str) -> String
 **Usage Points:**
 - `audio_converter.rs` when naming output WAVs
 - Display names in GUI derived from file stem (no extension)
+
+### 10. Team Database Module (`teams.rs`) 🔄
+**Responsibility:** Load and query team database
+
+```rust
+#[derive(Deserialize)]
+pub struct Team {
+    pub display_name: String,
+    pub variations: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct TeamDatabase {
+    #[serde(flatten)]
+    leagues: HashMap<String, HashMap<String, Team>>, // league -> team_key -> Team
+}
+
+impl TeamDatabase {
+    pub fn load() -> Result<Self, Box<dyn std::error::Error>>
+    pub fn get_leagues(&self) -> Vec<String>
+    pub fn get_teams(&self, league: &str) -> Option<Vec<(String, Team)>>
+    pub fn find_team(&self, league: &str, team_key: &str) -> Option<Team>
+    pub fn search_team(&self, query: &str) -> Vec<(String, String, Team)>
+}
+```
+
+**Features:**
+- Load from `config/teams.json` with embedded fallback if file missing
+- Query leagues and teams
+- Team lookup by key
+- Case-insensitive search by display name or variation
+
+### 11. Team Matcher Module (`team_matcher.rs`) 🔄
+**Responsibility:** Match detected team names against selected team
+
+```rust
+pub struct TeamMatcher {
+    normalized_variations: Vec<String>,
+}
+
+impl TeamMatcher {
+    pub fn new(team: &Team) -> Self
+    pub fn matches(&self, detected_name: &str) -> bool
+    fn normalize(text: &str) -> String // ASCII-only, lowercased, collapse spaces
+}
+```
+
+**Matching Strategy:**
+- Exact normalized equality with any variation
+- Token-subset match: all tokens in a variation must appear in detected tokens
+- ASCII-only normalization to avoid diacritic/Unicode noise
+- Case-insensitive, special characters stripped, whitespace normalized
+- Performance: ~1000 checks < 10ms on typical hardware
 # FM Goal Musics – Technical Implementation
 
 ## Technology Stack Overview
@@ -40,10 +93,10 @@ pub fn slugify(input: &str) -> String
 ### Optical Character Recognition (OCR)
 **Library:** `leptess` v0.14.0 (Tesseract wrapper)
 - Tesseract OCR engine integration
-- Configuration optimizations:
-  - Page Segmentation Mode: `PSM_SINGLE_WORD`
-  - Whitelist: "GOALFOR" characters
-  - Uppercase normalization
+- Configuration:
+  - Page Segmentation Mode: `PSM_AUTO (3)` – fully automatic segmentation (no OSD)
+  - No whitelist (allows full team text recognition)
+  - Uppercase normalization applied post-OCR for matching
 - Preprocessing pipeline:
   - RGBA → Grayscale conversion
   - Binary thresholding (auto Otsu or manual)
@@ -126,6 +179,8 @@ fm-goal-musics/
 │   ├── gui.rs               # GUI implementation
 │   ├── region_selector.rs   # Visual region picker
 │   ├── slug.rs              # ASCII slug generation for filenames
+│   ├── teams.rs             # Team database loader 🔄
+│   ├── team_matcher.rs      # Team name matching logic 🔄
 │   └── utils.rs             # Timing, debounce, shared utilities
 ├── tests/
 │   ├── integration_tests.rs # Integration test suite
@@ -180,7 +235,7 @@ impl CaptureManager {
 - Error handling for permission issues
 - Platform-specific optimizations
 
-### 2. OCR Manager (`ocr.rs`)
+### 2. OCR Manager (`ocr.rs`) 🔄
 **Responsibility:** Text detection and preprocessing
 
 ```rust
@@ -193,6 +248,7 @@ pub struct OcrManager {
 impl OcrManager {
     pub fn new_with_options(threshold: u8, morph: bool) -> Result<Self>
     pub fn detect_goal(&mut self, img: &RgbaImage) -> Result<bool>
+    pub fn detect_goal_with_team(&mut self, img: &RgbaImage) -> Result<Option<String>> // 🔄 New
     fn preprocess(&self, img: &RgbaImage) -> GrayImage
     fn morphological_opening(&self, img: &GrayImage) -> GrayImage
 }
@@ -204,6 +260,7 @@ impl OcrManager {
 3. Optional morphological opening (noise reduction)
 4. OCR text extraction
 5. "GOAL" keyword detection
+6. **Team name extraction (🔄 New)**: Parse "GOAL FOR [team_name]" pattern
 
 ### 3. Audio Manager (`audio.rs`)
 **Responsibility:** Audio preloading and playback
@@ -243,7 +300,7 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf>
 5. Preserve channel configuration (mono/stereo)
 6. Filename slugging: ASCII-only name with underscores; stored under `config/musics/`
 
-### 5. Configuration (`config.rs`)
+### 5. Configuration (`config.rs`) 🔄
 **Responsibility:** Configuration persistence and validation
 
 ```rust
@@ -256,6 +313,14 @@ pub struct Config {
     pub bench_frames: usize,
     pub music_list: Vec<MusicEntry>,
     pub selected_music_index: Option<usize>,
+    pub selected_team: Option<SelectedTeam>, // 🔄 New
+}
+
+#[derive(Serialize, Deserialize)] // 🔄 New
+pub struct SelectedTeam {
+    pub league: String,
+    pub team_key: String,
+    pub display_name: String,
 }
 
 impl Config {
@@ -276,7 +341,12 @@ impl Config {
   "music_list": [
     { "name": "Ildirim_Ildirim_Stduyo", "path": "config/musics/Ildirim_Ildirim_Stduyo.wav", "shortcut": null }
   ],
-  "selected_music_index": null
+  "selected_music_index": null,
+  "selected_team": {
+    "league": "Premier League",
+    "team_key": "manchester_united",
+    "display_name": "Manchester Utd"
+  }
 }
 ```
 

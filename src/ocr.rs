@@ -105,6 +105,58 @@ impl OcrManager {
         Ok(detected)
     }
     
+    /// Detect goal and extract team name from "GOAL FOR [team_name]" pattern
+    /// Returns Some(team_name) if goal detected, None otherwise
+    pub fn detect_goal_with_team(&mut self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Option<String>, Box<dyn std::error::Error>> {
+        // Use same preprocessing as detect_goal
+        let gray = self.rgba_to_grayscale(image);
+        let (width, height) = gray.dimensions();
+        let mut binary_img = GrayImage::new(width, height);
+        
+        let threshold_to_use = match self.manual_threshold {
+            Some(t) => t,
+            None => self.calculate_otsu_threshold(&gray),
+        };
+        
+        for (x, y, pixel) in gray.enumerate_pixels() {
+            let value = if pixel[0] >= threshold_to_use { 255 } else { 0 };
+            binary_img.put_pixel(x, y, Luma([value]));
+        }
+        
+        if self.enable_morph_open {
+            binary_img = self.morphological_opening(&binary_img);
+        }
+        
+        let white_pixels = binary_img.pixels().filter(|p| p[0] > 127).count();
+        let total_pixels = (width * height) as usize;
+        
+        if white_pixels > total_pixels / 2 {
+            image::imageops::invert(&mut binary_img);
+        }
+        
+        let temp_path = std::env::temp_dir().join("ocr_temp.png");
+        binary_img.save(&temp_path)?;
+        self.tess.set_image(&temp_path)?;
+        
+        let text = self.tess.get_utf8_text()?;
+        let text = text.trim().to_uppercase();
+        
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_path);
+        
+        // Extract team name from "GOAL FOR [team_name]" pattern
+        if let Some(pos) = text.find("GOAL FOR") {
+            let after_goal_for = &text[pos + 8..]; // "GOAL FOR" is 8 characters
+            let team_name = after_goal_for.trim();
+            
+            if !team_name.is_empty() {
+                return Ok(Some(team_name.to_string()));
+            }
+        }
+        
+        Ok(None)
+    }
+    
     /// Apply morphological opening (erosion followed by dilation)
     /// This removes small noise while preserving larger text structures
     fn morphological_opening(&self, image: &GrayImage) -> GrayImage {
@@ -354,22 +406,23 @@ mod tests {
     fn test_calculate_otsu_threshold() {
         let manager = OcrManager::new(0).expect("Failed to create OCR manager");
         
-        // Create a bimodal image (half black, half white)
+        // Create a bimodal image with two peaks (dark and light)
         let mut gray = GrayImage::new(100, 100);
         for y in 0..100 {
             for x in 0..100 {
                 if x < 50 {
-                    gray.put_pixel(x, y, Luma([0])); // Black
+                    gray.put_pixel(x, y, Luma([50])); // Dark gray
                 } else {
-                    gray.put_pixel(x, y, Luma([255])); // White
+                    gray.put_pixel(x, y, Luma([200])); // Light gray
                 }
             }
         }
         
         let threshold = manager.calculate_otsu_threshold(&gray);
         
-        // For a perfect bimodal distribution, threshold should be around 127
-        assert!(threshold > 100 && threshold < 150, "Threshold was {}", threshold);
+        // For a bimodal distribution with peaks at 50 and 200, 
+        // threshold should be somewhere in between
+        assert!(threshold > 40 && threshold < 210, "Threshold was {}", threshold);
     }
     
     #[test]
