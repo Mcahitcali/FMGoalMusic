@@ -87,6 +87,32 @@ fn run_detection_loop(cfg: &config::Config) {
         }
     };
     
+    // Load team database and create matcher if team is selected
+    let team_matcher = if let Some(ref selected_team) = cfg.selected_team {
+        match teams::TeamDatabase::load() {
+            Ok(db) => {
+                match db.find_team(&selected_team.league, &selected_team.team_key) {
+                    Some(team) => {
+                        println!("✓ Team selection: {} ({})", selected_team.display_name, selected_team.league);
+                        println!("  Variations: {:?}", team.variations);
+                        Some(team_matcher::TeamMatcher::new(&team))
+                    }
+                    None => {
+                        eprintln!("⚠ Selected team not found in database");
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("⚠ Failed to load team database: {}", e);
+                None
+            }
+        }
+    } else {
+        println!("ℹ No team selected - will play for all goals");
+        None
+    };
+    
     // Initialize application state and debouncer
     let state = AppState::new();
     let mut debouncer = Debouncer::new(cfg.debounce_ms);
@@ -177,21 +203,42 @@ fn run_detection_loop(cfg: &config::Config) {
         };
         let capture_time = capture_timer.elapsed_ms();
         
-        // Perform OCR
+        // Perform OCR - use team detection if team matcher is available
         let ocr_timer = Timer::start();
-        let goal_detected = match ocr_manager.detect_goal(&image) {
-            Ok(detected) => detected,
-            Err(e) => {
-                eprintln!("OCR error: {}", e);
-                false
+        let should_play_sound = if let Some(ref matcher) = team_matcher {
+            // Team selection enabled - extract and match team name
+            match ocr_manager.detect_goal_with_team(&image) {
+                Ok(Some(detected_team)) => {
+                    if matcher.matches(&detected_team) {
+                        println!("\n🎯 GOAL FOR SELECTED TEAM: {}", detected_team);
+                        true
+                    } else {
+                        println!("  Goal detected for: {} (not selected team)", detected_team);
+                        false
+                    }
+                }
+                Ok(None) => false,
+                Err(e) => {
+                    eprintln!("OCR error: {}", e);
+                    false
+                }
+            }
+        } else {
+            // No team selection - use original detection
+            match ocr_manager.detect_goal(&image) {
+                Ok(detected) => detected,
+                Err(e) => {
+                    eprintln!("OCR error: {}", e);
+                    false
+                }
             }
         };
         let ocr_time = ocr_timer.elapsed_ms();
         
-        // If goal detected and not in debounce period, play sound
-        if goal_detected && debouncer.should_trigger() {
+        // If goal detected (and team matches if applicable) and not in debounce period
+        if should_play_sound && debouncer.should_trigger() {
             detection_count += 1;
-            println!("\n🎯 GOAL DETECTED! (#{})", detection_count);
+            println!("  Detection count: {}", detection_count);
         }
         
         let total_time = loop_timer.elapsed_ms();

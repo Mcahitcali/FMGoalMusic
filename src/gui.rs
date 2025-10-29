@@ -367,7 +367,7 @@ impl FMGoalMusicsApp {
             let _ = handle.join();
         }
 
-        let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open) = {
+        let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team) = {
             let mut state = self.state.lock().unwrap();
 
             if state.process_state != ProcessState::Stopped {
@@ -395,6 +395,7 @@ impl FMGoalMusicsApp {
             let ocr_threshold = state.ocr_threshold;
             let debounce_ms = state.debounce_ms;
             let enable_morph_open = state.enable_morph_open;
+            let selected_team = state.selected_team.clone();
 
             println!(
                 "[fm-goal-musics] Starting detection\n  music='{}'\n  region=[{}, {}, {}, {}]\n  ocr_threshold={}\n  debounce_ms={}\n  morph_open={}",
@@ -404,12 +405,16 @@ impl FMGoalMusicsApp {
                 debounce_ms,
                 enable_morph_open
             );
+            
+            if let Some(ref team) = selected_team {
+                println!("  team_selection={} ({})", team.display_name, team.league);
+            }
 
             state.process_state = ProcessState::Running;
             state.status_message = format!("Starting detection with '{}'", entry.name);
             state.detection_count = 0;
 
-            (entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open)
+            (entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team)
         };
 
         let audio_data = match self.get_or_load_audio_data(&music_path) {
@@ -458,12 +463,40 @@ impl FMGoalMusicsApp {
                     return;
                 }
             };
+            
+            // Load team database and create matcher if team is selected
+            let team_matcher = if let Some(ref sel_team) = selected_team {
+                match crate::teams::TeamDatabase::load() {
+                    Ok(db) => {
+                        match db.find_team(&sel_team.league, &sel_team.team_key) {
+                            Some(team) => {
+                                println!("[fm-goal-musics] Team matcher initialized for: {}", sel_team.display_name);
+                                Some(crate::team_matcher::TeamMatcher::new(&team))
+                            }
+                            None => {
+                                println!("[fm-goal-musics] Warning: Selected team not found in database");
+                                None
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("[fm-goal-musics] Warning: Failed to load team database: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
 
             let mut debouncer = Debouncer::new(debounce_ms);
 
             {
                 let mut st = state_clone.lock().unwrap();
-                st.status_message = format!("Monitoring for goals... Playing '{}' when detected", music_name);
+                if team_matcher.is_some() {
+                    st.status_message = format!("Monitoring for goals by selected team... Playing '{}' when detected", music_name);
+                } else {
+                    st.status_message = format!("Monitoring for all goals... Playing '{}' when detected", music_name);
+                }
             }
 
             loop {
@@ -505,15 +538,37 @@ impl FMGoalMusicsApp {
                     capture_dirty.store(true, Ordering::SeqCst);
                 }
 
-                let goal_detected = match ocr_manager.detect_goal(&image) {
-                    Ok(detected) => detected,
-                    Err(e) => {
-                        println!("[fm-goal-musics] OCR error: {}", e);
-                        false
+                // Perform OCR - use team detection if team matcher is available
+                let should_play_sound = if let Some(ref matcher) = team_matcher {
+                    // Team selection enabled - extract and match team name
+                    match ocr_manager.detect_goal_with_team(&image) {
+                        Ok(Some(detected_team)) => {
+                            if matcher.matches(&detected_team) {
+                                println!("[fm-goal-musics] 🎯 GOAL FOR SELECTED TEAM: {}", detected_team);
+                                true
+                            } else {
+                                println!("[fm-goal-musics] Goal detected for: {} (not selected team)", detected_team);
+                                false
+                            }
+                        }
+                        Ok(None) => false,
+                        Err(e) => {
+                            println!("[fm-goal-musics] OCR error: {}", e);
+                            false
+                        }
+                    }
+                } else {
+                    // No team selection - use original detection
+                    match ocr_manager.detect_goal(&image) {
+                        Ok(detected) => detected,
+                        Err(e) => {
+                            println!("[fm-goal-musics] OCR error: {}", e);
+                            false
+                        }
                     }
                 };
 
-                if goal_detected && debouncer.should_trigger() {
+                if should_play_sound && debouncer.should_trigger() {
                     match audio_manager.play_sound() {
                         Ok(()) => {
                             let mut st = state_clone.lock().unwrap();
