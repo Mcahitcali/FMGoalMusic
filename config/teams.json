@@ -135,5 +135,155 @@
         "OM"
       ]
     }
+  },
+  "Süper Lig": {
+    "alanyaspor": {
+      "display_name": "Alanyaspor",
+      "variations": [
+        "Alanyaspor"
+      ]
+    },
+    "antalyaspor": {
+      "display_name": "Antalyaspor",
+      "variations": [
+        "Antalyaspor"
+      ]
+    },
+    "basaksehir": {
+      "display_name": "İstanbul Başakşehir",
+      "variations": [
+        "İstanbul Başakşehir",
+        "Istanbul Basaksehir",
+        "İstanbul Basaksehir",
+        "Başakşehir",
+        "Basaksehir"
+      ]
+    },
+    "besiktas": {
+      "display_name": "Beşiktaş",
+      "variations": [
+        "Beşiktaş",
+        "Besiktas",
+        "Beşiktaş JK",
+        "Besiktas JK"
+      ]
+    },
+    "eyupspor": {
+      "display_name": "Eyüpspor",
+      "variations": [
+        "Eyüpspor",
+        "Eyupspor"
+      ]
+    },
+    "fatih_karagumruk": {
+      "display_name": "Fatih Karagümrük",
+      "variations": [
+        "Fatih Karagümrük",
+        "Fatih Karagumruk",
+        "Karagümrük",
+        "Karagumruk"
+      ]
+    },
+    "fenerbahce": {
+      "display_name": "Fenerbahçe",
+      "variations": [
+        "Fenerbahçe",
+        "Fenerbahce",
+        "Fenerbahçe SK",
+        "Fenerbahce SK"
+      ]
+    },
+    "galatasaray": {
+      "display_name": "Galatasaray",
+      "variations": [
+        "Galatasaray",
+        "Galatasaray SK",
+        "Galatasaray AŞ",
+        "Galatasaray AS"
+      ]
+    },
+    "gaziantep": {
+      "display_name": "Gaziantep FK",
+      "variations": [
+        "Gaziantep",
+        "Gaziantep FK",
+        "Gaziantep Futbol Kulübü",
+        "Gaziantep Futbol Kulubu",
+        "Gazişehir Gaziantep",
+        "Gazisehir Gaziantep"
+      ]
+    },
+    "genclerbirligi": {
+      "display_name": "Gençlerbirliği",
+      "variations": [
+        "Gençlerbirliği",
+        "Genclerbirligi",
+        "Gençlerbirliği SK",
+        "Genclerbirligi SK"
+      ]
+    },
+    "goztepe": {
+      "display_name": "Göztepe",
+      "variations": [
+        "Göztepe",
+        "Goztepe",
+        "Göztepe SK",
+        "Goztepe SK"
+      ]
+    },
+    "kasimpasa": {
+      "display_name": "Kasımpaşa",
+      "variations": [
+        "Kasımpaşa",
+        "Kasimpasa",
+        "Kasımpaşa SK",
+        "Kasimpasa SK"
+      ]
+    },
+    "kayserispor": {
+      "display_name": "Kayserispor",
+      "variations": [
+        "Kayserispor",
+        "Kayserispor FK"
+      ]
+    },
+    "kocaelispor": {
+      "display_name": "Kocaelispor",
+      "variations": [
+        "Kocaelispor"
+      ]
+    },
+    "konyaspor": {
+      "display_name": "Konyaspor",
+      "variations": [
+        "Konyaspor",
+        "Tümosan Konyaspor",
+        "Tumosan Konyaspor"
+      ]
+    },
+    "rizespor": {
+      "display_name": "Çaykur Rizespor",
+      "variations": [
+        "Çaykur Rizespor",
+        "Caykur Rizespor",
+        "Rizespor"
+      ]
+    },
+    "samsunspor": {
+      "display_name": "Samsunspor",
+      "variations": [
+        "Samsunspor",
+        "Yılport Samsunspor",
+        "Yilport Samsunspor"
+      ]
+    },
+    "trabzonspor": {
+      "display_name": "Trabzonspor",
+      "variations": [
+        "Trabzonspor",
+        "Trabzonspor AŞ",
+        "Trabzonspor AS"
+      ]
+    }
   }
 }
