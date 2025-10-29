@@ -17,56 +17,54 @@ pub fn slugify(input: &str) -> String
 **Responsibility:** Load and query team database
 
 ```rust
-pub struct TeamDatabase {
-    leagues: HashMap<String, League>,
-}
-
-pub struct League {
-    name: String,
-    teams: HashMap<String, Team>,
-}
-
+#[derive(Deserialize)]
 pub struct Team {
-    key: String,
-    display_name: String,
-    variations: Vec<String>,
+    pub display_name: String,
+    pub variations: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct TeamDatabase {
+    #[serde(flatten)]
+    leagues: HashMap<String, HashMap<String, Team>>, // league -> team_key -> Team
 }
 
 impl TeamDatabase {
-    pub fn load() -> Result<Self>
-    pub fn get_leagues(&self) -> Vec<&str>
-    pub fn get_teams(&self, league: &str) -> Vec<&Team>
-    pub fn find_team(&self, league: &str, key: &str) -> Option<&Team>
+    pub fn load() -> Result<Self, Box<dyn std::error::Error>>
+    pub fn get_leagues(&self) -> Vec<String>
+    pub fn get_teams(&self, league: &str) -> Option<Vec<(String, Team)>>
+    pub fn find_team(&self, league: &str, team_key: &str) -> Option<Team>
+    pub fn search_team(&self, query: &str) -> Vec<(String, String, Team)>
 }
 ```
 
 **Features:**
-- Load from `config/teams.json`
+- Load from `config/teams.json` with embedded fallback if file missing
 - Query leagues and teams
 - Team lookup by key
-- Embedded fallback if file missing
+- Case-insensitive search by display name or variation
 
 ### 11. Team Matcher Module (`team_matcher.rs`) 🔄
 **Responsibility:** Match detected team names against selected team
 
 ```rust
 pub struct TeamMatcher {
-    selected_team_variations: Vec<String>,
+    normalized_variations: Vec<String>,
 }
 
 impl TeamMatcher {
     pub fn new(team: &Team) -> Self
     pub fn matches(&self, detected_name: &str) -> bool
-    fn normalize(text: &str) -> String
+    fn normalize(text: &str) -> String // ASCII-only, lowercased, collapse spaces
 }
 ```
 
-**Features:**
-- Case-insensitive matching
-- Strip special characters
-- Normalize whitespace
-- Check all variations
-- Fast string comparison (< 1ms)
+**Matching Strategy:**
+- Exact normalized equality with any variation
+- Token-subset match: all tokens in a variation must appear in detected tokens
+- ASCII-only normalization to avoid diacritic/Unicode noise
+- Case-insensitive, special characters stripped, whitespace normalized
+- Performance: ~1000 checks < 10ms on typical hardware
 # FM Goal Musics – Technical Implementation
 
 ## Technology Stack Overview
@@ -95,10 +93,10 @@ impl TeamMatcher {
 ### Optical Character Recognition (OCR)
 **Library:** `leptess` v0.14.0 (Tesseract wrapper)
 - Tesseract OCR engine integration
-- Configuration optimizations:
-  - Page Segmentation Mode: `PSM_SINGLE_WORD`
-  - Whitelist: "GOALFOR" characters
-  - Uppercase normalization
+- Configuration:
+  - Page Segmentation Mode: `PSM_AUTO (3)` – fully automatic segmentation (no OSD)
+  - No whitelist (allows full team text recognition)
+  - Uppercase normalization applied post-OCR for matching
 - Preprocessing pipeline:
   - RGBA → Grayscale conversion
   - Binary thresholding (auto Otsu or manual)

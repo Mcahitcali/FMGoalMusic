@@ -44,6 +44,13 @@ Currently, the application plays celebration sound for every goal scored in the 
 - **Current detection**: "GOAL FOR" text
 - **New detection**: "GOAL FOR [team_name]" where team_name is extracted and matched
 
+### Matching Strategy (Implemented)
+- Normalize to lowercase ASCII and collapse spaces
+- Match if any variation equals the detected normalized string
+- Or, token-subset match: all tokens in a variation must be present in the detected tokens
+  - Example: Detected `"FC. INTERNAZIONALE MILANO!"` → normalized `"fc internazionale milano"`
+    - Variation `"FC Internazionale"` matches via token-subset
+
 ### Configuration Changes
 Add to `config.json`:
 ```json
@@ -162,4 +169,4 @@ Add to `config.json`:
 ---
 
 *Created: 2025-10-29*
-*Status: Planning*
+*Status: Completed*
