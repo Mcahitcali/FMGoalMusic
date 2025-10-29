@@ -262,18 +262,21 @@ impl OcrManager {
 6. **Team name extraction (🔄 New)**: Parse "GOAL FOR [team_name]" pattern
 
 ### 3. Audio Manager (`audio.rs`)
-**Responsibility:** Audio preloading and playback
+**Responsibility:** Audio preloading and playback with volume control
 
 ```rust
 pub struct AudioManager {
     _stream: OutputStream,
     sink: Sink,
     audio_data: Arc<Vec<u8>>,
+    volume: Mutex<f32>,
 }
 
 impl AudioManager {
     pub fn new(audio_path: &str) -> Result<Self>
     pub fn play_sound(&self)
+    pub fn set_volume(&self, volume: f32) // 0.0 to 1.0
+    pub fn get_volume(&self) -> f32
 }
 ```
 
@@ -281,6 +284,8 @@ impl AudioManager {
 - Preload audio into memory at initialization
 - Persistent output stream (no setup latency)
 - Non-blocking playback trigger
+- Volume control (0.0 to 1.0 range)
+- Thread-safe volume adjustment
 - Warm decoder at startup
 
 ### 4. Audio Converter (`audio_converter.rs`)
@@ -312,10 +317,13 @@ pub struct Config {
     pub bench_frames: usize,
     pub music_list: Vec<MusicEntry>,
     pub selected_music_index: Option<usize>,
-    pub selected_team: Option<SelectedTeam>, // 🔄 New
+    pub selected_team: Option<SelectedTeam>, // 🔄
+    pub music_volume: f32, // 🔄 New - Music volume (0.0-1.0, default 1.0)
+    pub ambiance_volume: f32, // 🔄 New - Ambiance volume (0.0-1.0, default 0.6)
+    pub goal_ambiance_path: Option<String>, // 🔄 New - Goal crowd cheer sound path
 }
 
-#[derive(Serialize, Deserialize)] // 🔄 New
+#[derive(Serialize, Deserialize)] // 🔄
 pub struct SelectedTeam {
     pub league: String,
     pub team_key: String,
@@ -345,7 +353,10 @@ impl Config {
     "league": "Premier League",
     "team_key": "manchester_united",
     "display_name": "Manchester Utd"
-  }
+  },
+  "music_volume": 1.0,
+  "ambiance_volume": 0.6,
+  "goal_ambiance_path": "config/sounds/goal_crowd_cheer.wav"
 }
 ```
 
