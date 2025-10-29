@@ -8,6 +8,7 @@ pub struct AudioManager {
     stream_handle: OutputStreamHandle,
     sink: Mutex<Sink>,
     audio_data: Vec<u8>,
+    volume: Mutex<f32>,
 }
 
 impl AudioManager {
@@ -28,6 +29,7 @@ impl AudioManager {
             stream_handle,
             sink: Mutex::new(sink),
             audio_data,
+            volume: Mutex::new(1.0),
         })
     }
 
@@ -61,10 +63,35 @@ impl AudioManager {
             .sink
             .lock()
             .map_err(|_| "Audio sink poisoned".to_string())?;
+        
+        // Apply current volume setting
+        let volume = *self.volume.lock()
+            .map_err(|_| "Volume mutex poisoned".to_string())?;
+        sink.set_volume(volume);
+        
         sink.append(decoder);
         sink.play();
 
         Ok(())
+    }
+    
+    /// Set the volume for this audio manager (0.0 to 1.0)
+    pub fn set_volume(&self, volume: f32) {
+        let clamped = volume.clamp(0.0, 1.0);
+        if let Ok(mut vol) = self.volume.lock() {
+            *vol = clamped;
+        }
+        // Also update the sink's volume immediately
+        if let Ok(sink) = self.sink.lock() {
+            sink.set_volume(clamped);
+        }
+    }
+    
+    /// Get the current volume
+    pub fn get_volume(&self) -> f32 {
+        self.volume.lock()
+            .map(|v| *v)
+            .unwrap_or(1.0)
     }
 
     /// Stop any currently playing audio and clear queued sounds

@@ -63,9 +63,37 @@ pub struct Config {
     /// Index of the selected music file
     pub selected_music_index: Option<usize>,
     
+    /// Path to goal ambiance sound
+    #[serde(default)]
+    pub goal_ambiance_path: Option<String>,
+    
+    /// Whether ambiance sounds are enabled
+    #[serde(default = "default_ambiance_enabled")]
+    pub ambiance_enabled: bool,
+    
+    /// Music volume (0.0 to 1.0)
+    #[serde(default = "default_music_volume")]
+    pub music_volume: f32,
+    
+    /// Ambiance volume (0.0 to 1.0)
+    #[serde(default = "default_ambiance_volume")]
+    pub ambiance_volume: f32,
+    
     /// Selected team for conditional audio playback
     #[serde(default)]
     pub selected_team: Option<SelectedTeam>,
+}
+
+fn default_ambiance_enabled() -> bool {
+    true
+}
+
+fn default_music_volume() -> f32 {
+    1.0
+}
+
+fn default_ambiance_volume() -> f32 {
+    0.6
 }
 
 impl Default for Config {
@@ -78,6 +106,10 @@ impl Default for Config {
             bench_frames: 500,
             music_list: Vec::new(),
             selected_music_index: None,
+            goal_ambiance_path: None,
+            ambiance_enabled: default_ambiance_enabled(),
+            music_volume: default_music_volume(),
+            ambiance_volume: default_ambiance_volume(),
             selected_team: None,
         }
     }
