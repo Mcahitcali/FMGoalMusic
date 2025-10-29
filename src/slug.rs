@@ -19,23 +19,17 @@ pub fn slugify(input: &str) -> String {
             continue;
         }
 
-        // Map Turkish-specific characters first (before general rules)
+        // Map Turkish characters that are NOT handled by Unicode normalization
+        // (ı, İ, ğ, Ğ, ş, Ş are unique codepoints, not composed)
         let mapped = match ch {
-            // Turkish lowercase
-            'ç' => 'c',
+            // Turkish unique codepoints
             'ğ' => 'g',
             'ı' => 'i', // dotless i
-            'ö' => 'o',
             'ş' => 's',
-            'ü' => 'u',
-            // Turkish uppercase
-            'Ç' => 'C',
             'Ğ' => 'G',
             'İ' => 'I', // dotted I
-            'Ö' => 'O',
             'Ş' => 'S',
-            'Ü' => 'U',
-            // Other composed characters (ĉ from NFD)
+            // Other composed characters that might appear
             'ĉ' => 'c',
             'Ĉ' => 'C',
             _ => ch,
@@ -74,11 +68,21 @@ mod tests {
 
     #[test]
     fn test_turkish_characters() {
-        assert_eq!(slugify("çağlar"), "caglar");
+        // Test unique codepoints (need manual mapping)
+        assert_eq!(slugify("ıstanbul"), "istanbul");
         assert_eq!(slugify("İstanbul"), "Istanbul");
-        assert_eq!(slugify("Şişli"), "Sisli");
+        assert_eq!(slugify("şağ"), "sag");
+        assert_eq!(slugify("ŞAĞ"), "SAG");
+        assert_eq!(slugify("ğ"), "g");
+        assert_eq!(slugify("Ğ"), "G");
+        
+        // Test composed characters (handled by Unicode-NFD)
+        assert_eq!(slugify("çağlar"), "caglar");
+        assert_eq!(slugify("Çağlar"), "Caglar");
         assert_eq!(slugify("Göztepe"), "Goztepe");
+        assert_eq!(slugify("GÖZTEPE"), "GOZTEPE");
         assert_eq!(slugify("Üsküdar"), "Uskudar");
+        assert_eq!(slugify("ÜSKÜDAR"), "USKUDAR");
     }
 
     #[test]
