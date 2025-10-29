@@ -3,6 +3,8 @@ mod audio;
 mod capture;
 mod ocr;
 mod utils;
+mod teams;
+mod team_matcher;
 
 use std::thread;
 use std::time::Duration;

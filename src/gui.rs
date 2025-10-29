@@ -88,6 +88,7 @@ pub struct AppState {
     pub enable_morph_open: bool,
     pub status_message: String,
     pub detection_count: usize,
+    pub selected_team: Option<crate::config::SelectedTeam>,
 }
 
 impl Default for AppState {
@@ -102,6 +103,7 @@ impl Default for AppState {
             enable_morph_open: false,
             status_message: "Ready".to_string(),
             detection_count: 0,
+            selected_team: None,
         }
     }
 }
@@ -168,6 +170,7 @@ impl FMGoalMusicsApp {
                 state.debounce_ms = config.debounce_ms;
                 state.enable_morph_open = config.enable_morph_open;
                 state.selected_music_index = config.selected_music_index;
+                state.selected_team = config.selected_team;
                 
                 // Convert config music entries to GUI entries; derive display name from file stem
                 state.music_list = config.music_list.iter().map(|entry| {
@@ -320,6 +323,7 @@ impl FMGoalMusicsApp {
                 }
             }).collect(),
             selected_music_index: state.selected_music_index,
+            selected_team: state.selected_team.clone(),
         };
         
         if let Err(e) = config.save() {

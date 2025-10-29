@@ -7,6 +7,8 @@ mod ocr;
 mod region_selector;
 mod slug;
 mod utils;
+mod teams;
+mod team_matcher;
 
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {

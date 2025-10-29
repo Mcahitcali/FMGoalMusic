@@ -31,6 +31,14 @@ pub struct MusicEntry {
     pub shortcut: Option<String>,
 }
 
+/// Selected team information
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SelectedTeam {
+    pub league: String,
+    pub team_key: String,
+    pub display_name: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Screen region to capture [x, y, width, height]
@@ -54,6 +62,10 @@ pub struct Config {
     
     /// Index of the selected music file
     pub selected_music_index: Option<usize>,
+    
+    /// Selected team for conditional audio playback
+    #[serde(default)]
+    pub selected_team: Option<SelectedTeam>,
 }
 
 impl Default for Config {
@@ -66,6 +78,7 @@ impl Default for Config {
             bench_frames: 500,
             music_list: Vec::new(),
             selected_music_index: None,
+            selected_team: None,
         }
     }
 }

@@ -1,0 +1,138 @@
+{
+  "Premier League": {
+    "manchester_united": {
+      "display_name": "Manchester Utd",
+      "variations": [
+        "Man United",
+        "Manchester Utd",
+        "Manchester United",
+        "Manchester United FC",
+        "Man Utd"
+      ]
+    },
+    "liverpool": {
+      "display_name": "Liverpool",
+      "variations": [
+        "Liverpool",
+        "Liverpool FC",
+        "The Reds"
+      ]
+    },
+    "arsenal": {
+      "display_name": "Arsenal",
+      "variations": [
+        "Arsenal",
+        "Arsenal FC",
+        "The Gunners"
+      ]
+    },
+    "chelsea": {
+      "display_name": "Chelsea",
+      "variations": [
+        "Chelsea",
+        "Chelsea FC",
+        "The Blues"
+      ]
+    },
+    "manchester_city": {
+      "display_name": "Manchester City",
+      "variations": [
+        "Man City",
+        "Manchester City",
+        "Manchester City FC",
+        "MCFC"
+      ]
+    }
+  },
+  "La Liga": {
+    "real_madrid": {
+      "display_name": "Real Madrid",
+      "variations": [
+        "Real Madrid",
+        "Real Madrid CF",
+        "Madrid"
+      ]
+    },
+    "barcelona": {
+      "display_name": "Barcelona",
+      "variations": [
+        "Barcelona",
+        "FC Barcelona",
+        "Barca",
+        "Barça"
+      ]
+    },
+    "atletico_madrid": {
+      "display_name": "Atletico Madrid",
+      "variations": [
+        "Atletico Madrid",
+        "Atlético Madrid",
+        "Atletico",
+        "Atlético"
+      ]
+    }
+  },
+  "Serie A": {
+    "juventus": {
+      "display_name": "Juventus",
+      "variations": [
+        "Juventus",
+        "Juventus FC",
+        "Juve"
+      ]
+    },
+    "ac_milan": {
+      "display_name": "AC Milan",
+      "variations": [
+        "AC Milan",
+        "Milan",
+        "ACM"
+      ]
+    },
+    "inter_milan": {
+      "display_name": "Inter Milan",
+      "variations": [
+        "Inter Milan",
+        "Inter",
+        "FC Internazionale"
+      ]
+    }
+  },
+  "Bundesliga": {
+    "bayern_munich": {
+      "display_name": "Bayern Munich",
+      "variations": [
+        "Bayern Munich",
+        "Bayern München",
+        "Bayern",
+        "FC Bayern"
+      ]
+    },
+    "borussia_dortmund": {
+      "display_name": "Borussia Dortmund",
+      "variations": [
+        "Borussia Dortmund",
+        "Dortmund",
+        "BVB"
+      ]
+    }
+  },
+  "Ligue 1": {
+    "psg": {
+      "display_name": "Paris Saint-Germain",
+      "variations": [
+        "Paris Saint-Germain",
+        "Paris SG",
+        "PSG"
+      ]
+    },
+    "marseille": {
+      "display_name": "Marseille",
+      "variations": [
+        "Marseille",
+        "Olympique de Marseille",
+        "OM"
+      ]
+    }
+  }
+}
