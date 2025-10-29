@@ -1,7 +1,28 @@
+use display_info::DisplayInfo;
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::env;
+
+fn default_capture_region() -> [u32; 4] {
+    let (screen_width, screen_height) = DisplayInfo::all()
+        .ok()
+        .and_then(|infos| {
+            let display = infos
+                .iter()
+                .find(|d| d.is_primary)
+                .or_else(|| infos.first());
+            display.map(|d| (d.width as u32, d.height as u32))
+        })
+        .unwrap_or((1920, 1080));
+
+    let screen_width = screen_width.max(1);
+    let screen_height = screen_height.max(1);
+    let capture_height = (screen_height / 4).max(1);
+    let capture_y = screen_height.saturating_sub(capture_height);
+
+    [0, capture_y, screen_width, capture_height]
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -27,7 +48,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            capture_region: [0, 0, 200, 100],
+            capture_region: default_capture_region(),
             audio_file_path: "goal.mp3".to_string(),
             ocr_threshold: 0, // 0 = automatic Otsu thresholding, or set 1-255 for manual
             debounce_ms: 8000, // 8 seconds between goal sounds
@@ -45,7 +66,14 @@ impl Config {
         
         if config_path.exists() {
             let content = fs::read_to_string(&config_path)?;
-            let config: Config = serde_json::from_str(&content)?;
+            let mut config: Config = serde_json::from_str(&content)?;
+
+            if config.capture_region == [0, 0, 200, 100] {
+                config.capture_region = default_capture_region();
+                config.save()?;
+                println!("✓ Migrated capture region to screen-based default");
+            }
+
             println!("✓ Loaded config from: {}", config_path.display());
             Ok(config)
         } else {
@@ -107,8 +135,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.capture_region, [0, 0, 200, 100]);
-        assert_eq!(config.ocr_threshold, 0); // 0 = auto threshold
+        assert_eq!(config.capture_region, default_capture_region());
+        assert_eq!(config.ocr_threshold, 0);
         assert_eq!(config.debounce_ms, 8000);
         assert_eq!(config.bench_frames, 500);
         assert!(!config.enable_morph_open);

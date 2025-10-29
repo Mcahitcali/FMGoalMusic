@@ -17,6 +17,7 @@ config/
 docs/
 .vscode/
 .idea/
+*.md
 *.swp
 *.swo
 *~

@@ -4,12 +4,13 @@ A high-performance goal detection system for Football Manager that plays celebra
 
 ## Features
 
-✅ **Real-time Screen Capture** - GPU-assisted capture with scap  
-✅ **Adaptive OCR Detection** - Smart thresholding works with any color scheme  
-✅ **Instant Audio Playback** - Preloaded MP3 with minimal latency  
-✅ **Debounce Control** - Prevents multiple triggers for same goal  
-✅ **Keyboard Control** - Cmd+1 to toggle detection on/off  
-✅ **High Performance** - 60 FPS monitoring with <100ms response time  
+- **Real-time Goal Detection**: Monitors screen for "GOAL FOR" text using OCR
+- **Instant Audio Playback**: Preloaded MP3 in memory for zero-latency playback
+- **GPU-Accelerated Capture**: Uses scap for efficient screen capture
+- **Configurable**: JSON config for capture region, audio file, thresholds
+- **Keyboard Controls**: Cmd+1 to pause/resume, Ctrl+C to quit
+- **Performance Monitoring**: Built-in benchmark mode
+- **🆕 GUI Version**: User-friendly interface with music management and visual controls
 
 ## Installation
 
@@ -40,11 +41,22 @@ sudo apt-get install tesseract-ocr
 
 ### Build
 
+**CLI Version (Command Line):**
+```bash
+cargo build --release --bin fm-goal-musics
+```
+Binary: `target/release/fm-goal-musics`
+
+**GUI Version (Graphical Interface):**
+```bash
+cargo build --release --bin fm-goal-musics-gui
+```
+Binary: `target/release/fm-goal-musics-gui`
+
+**Build Both:**
 ```bash
 cargo build --release
 ```
-
-The binary will be at `target/release/fm-goal-musics`
 
 ## Configuration
 
@@ -94,13 +106,24 @@ Place your goal celebration MP3 at:
 
 ## Usage
 
-### Production Mode (Default)
+### GUI Mode (Recommended for Most Users)
 
 ```bash
-cargo run --release
+./target/release/fm-goal-musics-gui
 ```
 
-Or run the binary directly:
+**Features:**
+- 🎵 Add and manage multiple music files
+- 🎮 Start/Stop/Pause detection with buttons
+- ⚙️ Visual configuration editor
+- 📊 Real-time status and detection counter
+- 💾 Easy music file selection
+
+See [GUI Guide](docs/GUI_GUIDE.md) for detailed instructions.
+
+### CLI Mode (Command Line)
+
+**Normal Mode:**
 ```bash
 ./target/release/fm-goal-musics
 ```
