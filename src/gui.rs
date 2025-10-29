@@ -221,11 +221,16 @@ impl FMGoalMusicsApp {
                 state.enable_morph_open = config.enable_morph_open;
                 state.selected_music_index = config.selected_music_index;
                 
-                // Convert and normalize config music entries to GUI music entries
+                // Convert config music entries to GUI entries; derive display name from file stem
                 state.music_list = config.music_list.iter().map(|entry| {
+                    let path = PathBuf::from(&entry.path);
+                    let name = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| entry.name.clone());
                     MusicEntry {
-                        name: slugify(&entry.name),
-                        path: PathBuf::from(&entry.path),
+                        name,
+                        path,
                         shortcut: entry.shortcut.clone(),
                     }
                 }).collect();
@@ -387,11 +392,10 @@ impl FMGoalMusicsApp {
             }
         };
 
-        let raw_name = final_path
-            .file_name()
+        let name = final_path
+            .file_stem()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
-        let name = slugify(&raw_name);
 
         let mut state = self.state.lock().unwrap();
         state.music_list.push(MusicEntry {

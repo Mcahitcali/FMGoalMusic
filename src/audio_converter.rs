@@ -2,6 +2,8 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 use std::ffi::{OsStr, OsString};
+use unicode_normalization::char::is_combining_mark;
+use unicode_normalization::UnicodeNormalization;
 use std::fs;
 use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
@@ -13,6 +15,37 @@ use crate::config::Config;
 
 /// Convert any audio file to WAV format
 /// Returns the path to the converted WAV file
+fn slugify(input: &str) -> String {
+    let decomposed = input.nfd().collect::<String>();
+    let mut out = String::with_capacity(decomposed.len());
+    for ch in decomposed.chars() {
+        if ch.is_whitespace() { out.push('_'); continue; }
+        if is_combining_mark(ch) { continue; }
+        let mapped = match ch {
+            'ç' | 'ĉ' => 'c', 'Ç' | 'Ĉ' => 'C',
+            'ğ' => 'g', 'Ğ' => 'G',
+            'ı' => 'i', 'İ' => 'I',
+            'ö' => 'o', 'Ö' => 'O',
+            'ş' => 's', 'Ş' => 'S',
+            'ü' => 'u', 'Ü' => 'U',
+            _ => ch,
+        };
+        if mapped.is_ascii_alphanumeric() || matches!(mapped, '_' | '-' | '.') {
+            out.push(mapped);
+        } else if mapped.is_ascii() && !mapped.is_control() {
+            if mapped == ' ' { out.push('_'); } else { out.push(mapped); }
+        } else {
+            out.push('_');
+        }
+    }
+    let mut collapsed = String::with_capacity(out.len());
+    let mut last_us = false;
+    for ch in out.chars() {
+        if ch == '_' { if !last_us { collapsed.push('_'); } last_us = true; } else { last_us = false; collapsed.push(ch); }
+    }
+    collapsed.trim_matches('_').to_string()
+}
+
 pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     // Determine output directory under config/musics
     let config_path = Config::config_path()?;
@@ -22,14 +55,10 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::
     let musics_dir = config_dir.join("musics");
     fs::create_dir_all(&musics_dir)?;
 
-    // Build output filename based on input filename but with .wav extension
-    let stem_os: OsString = input_path
-        .file_stem()
-        .map(|s| s.to_os_string())
-        .unwrap_or_else(|| OsString::from("converted"));
-    let mut output_name = stem_os;
-    output_name.push(OsStr::new(".wav"));
-    let output_path = musics_dir.join(output_name);
+    // Build slugged output filename based on input filename but with .wav extension
+    let stem_raw = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("converted");
+    let slug = slugify(stem_raw);
+    let output_path = musics_dir.join(format!("{}.wav", slug));
 
     // If input already WAV, just copy into musics directory
     if let Some(ext) = input_path.extension() {
