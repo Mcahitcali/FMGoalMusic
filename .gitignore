@@ -14,10 +14,11 @@ debug_goal_*.png
 config/
 
 # IDE
-docs/
 .vscode/
 .idea/
-*.md
+.windsurf/
+# docs/
+# *.md
 *.swp
 *.swo
 *~

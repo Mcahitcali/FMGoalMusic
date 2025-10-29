@@ -25,6 +25,13 @@ fn default_capture_region() -> [u32; 4] {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MusicEntry {
+    pub name: String,
+    pub path: String,
+    pub shortcut: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Screen region to capture [x, y, width, height]
     pub capture_region: [u32; 4],
@@ -43,6 +50,13 @@ pub struct Config {
     
     /// Number of frames to run in benchmark mode
     pub bench_frames: usize,
+    
+    /// List of music files added by the user
+    #[serde(default)]
+    pub music_list: Vec<MusicEntry>,
+    
+    /// Index of the selected music file
+    pub selected_music_index: Option<usize>,
 }
 
 impl Default for Config {
@@ -54,6 +68,8 @@ impl Default for Config {
             debounce_ms: 8000, // 8 seconds between goal sounds
             enable_morph_open: false,
             bench_frames: 500,
+            music_list: Vec::new(),
+            selected_music_index: None,
         }
     }
 }
