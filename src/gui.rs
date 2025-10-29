@@ -5,12 +5,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::audio::AudioManager;
+use crate::audio_converter;
 use crate::capture::{CaptureManager, CaptureRegion};
+use crate::config::Config;
 use crate::ocr::OcrManager;
 use crate::utils::Debouncer;
 
@@ -138,7 +140,7 @@ impl FMGoalMusicsApp {
             target.map(|display| (display.width as u32, display.height as u32))
         });
 
-        let mut app = Self {
+        let app = Self {
             state: Arc::new(Mutex::new(AppState::default())),
             detection_thread: None,
             selecting_region: false,
@@ -155,12 +157,38 @@ impl FMGoalMusicsApp {
             detection_cmd_tx: None,
         };
 
-        if let Some((screen_w, screen_h)) = screen_resolution {
-            let mut state = app.state.lock().unwrap();
-            if state.capture_region == [0, 0, 200, 100] {
-                let capture_height = (screen_h / 4).max(1);
-                let capture_y = screen_h.saturating_sub(capture_height);
-                state.capture_region = [0, capture_y, screen_w, capture_height];
+        // Load config and restore music list
+        match Config::load() {
+            Ok(config) => {
+                let mut state = app.state.lock().unwrap();
+                state.capture_region = config.capture_region;
+                state.ocr_threshold = config.ocr_threshold;
+                state.debounce_ms = config.debounce_ms;
+                state.enable_morph_open = config.enable_morph_open;
+                state.selected_music_index = config.selected_music_index;
+                
+                // Convert config music entries to GUI music entries
+                state.music_list = config.music_list.iter().map(|entry| {
+                    MusicEntry {
+                        name: entry.name.clone(),
+                        path: PathBuf::from(&entry.path),
+                        shortcut: entry.shortcut.clone(),
+                    }
+                }).collect();
+                
+                println!("✓ Loaded {} music files from config", state.music_list.len());
+            }
+            Err(e) => {
+                println!("⚠ Failed to load config: {}", e);
+                // Use default screen-based capture region
+                if let Some((screen_w, screen_h)) = screen_resolution {
+                    let mut state = app.state.lock().unwrap();
+                    if state.capture_region == [0, 0, 200, 100] {
+                        let capture_height = (screen_h / 4).max(1);
+                        let capture_y = screen_h.saturating_sub(capture_height);
+                        state.capture_region = [0, capture_y, screen_w, capture_height];
+                    }
+                }
             }
         }
         
@@ -239,8 +267,45 @@ impl FMGoalMusicsApp {
         }
     }
 
+    fn save_config(&self) {
+        let state = self.state.lock().unwrap();
+        
+        let config = Config {
+            capture_region: state.capture_region,
+            audio_file_path: "goal.mp3".to_string(), // Keep for backward compatibility
+            ocr_threshold: state.ocr_threshold,
+            debounce_ms: state.debounce_ms,
+            enable_morph_open: state.enable_morph_open,
+            bench_frames: 500,
+            music_list: state.music_list.iter().map(|entry| {
+                crate::config::MusicEntry {
+                    name: entry.name.clone(),
+                    path: entry.path.to_string_lossy().to_string(),
+                    shortcut: entry.shortcut.clone(),
+                }
+            }).collect(),
+            selected_music_index: state.selected_music_index,
+        };
+        
+        if let Err(e) = config.save() {
+            println!("⚠ Failed to save config: {}", e);
+        } else {
+            println!("✓ Config saved");
+        }
+    }
+
     fn add_music_file(&mut self, path: PathBuf) {
-        let name = path
+        // Convert to WAV if not already WAV
+        let final_path = match audio_converter::convert_to_wav(&path) {
+            Ok(wav_path) => wav_path,
+            Err(e) => {
+                let mut state = self.state.lock().unwrap();
+                state.status_message = format!("Failed to convert audio: {}", e);
+                return;
+            }
+        };
+
+        let name = final_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("Unknown")
@@ -249,9 +314,13 @@ impl FMGoalMusicsApp {
         let mut state = self.state.lock().unwrap();
         state.music_list.push(MusicEntry {
             name,
-            path,
+            path: final_path,
             shortcut: None,
         });
+        
+        // Save config
+        drop(state);
+        self.save_config();
     }
 
     fn start_detection(&mut self) {
@@ -510,13 +579,14 @@ impl eframe::App for FMGoalMusicsApp {
                     }
                     drop(state);
                     self.stop_preview();
+                    self.save_config();
                 }
             });
 
             ui.separator();
 
             // Music list display
-            egui::ScrollArea::vertical()
+            let selection_changed = egui::ScrollArea::vertical()
                 .max_height(200.0)
                 .show(ui, |ui| {
                     let mut state = self.state.lock().unwrap();
@@ -536,10 +606,16 @@ impl eframe::App for FMGoalMusicsApp {
                         });
                     }
                     
-                    if new_selection != state.selected_music_index {
+                    let changed = new_selection != state.selected_music_index;
+                    if changed {
                         state.selected_music_index = new_selection;
                     }
-                });
+                    changed
+                }).inner;
+            
+            if selection_changed {
+                self.save_config();
+            }
 
             ui.separator();
 
