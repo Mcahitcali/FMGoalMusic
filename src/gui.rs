@@ -130,6 +130,8 @@ pub struct FMGoalMusicsApp {
 
 impl FMGoalMusicsApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+        // Configure fonts to better support extended Latin characters (e.g., Turkish)
+        Self::configure_fonts(_cc);
         let screen_resolution = DisplayInfo::all().ok().and_then(|infos| {
             let primary = infos.iter().find(|d| d.is_primary);
             let target = if let Some(display) = primary {
@@ -193,6 +195,35 @@ impl FMGoalMusicsApp {
         }
         
         app
+    }
+
+    fn configure_fonts(cc: &eframe::CreationContext<'_>) {
+        // Try to load a system font with wide Unicode coverage (Turkish supported)
+        // Common macOS locations; fallback to default if none found
+        let candidates = [
+            "/Library/Fonts/Arial.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/Library/Fonts/HelveticaNeue.dfont",
+            "/Library/Fonts/Helvetica.ttf",
+        ];
+
+        for path in candidates.iter() {
+            if let Ok(bytes) = std::fs::read(path) {
+                let mut fonts = egui::FontDefinitions::default();
+                fonts.font_data.insert(
+                    "ui_override".to_owned(),
+                    egui::FontData::from_owned(bytes).into(),
+                );
+                // Put our font first in the proportional family for UI text
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Proportional)
+                    .or_default()
+                    .insert(0, "ui_override".to_owned());
+                cc.egui_ctx.set_fonts(fonts);
+                break;
+            }
+        }
     }
 
     fn start_region_selection(&mut self) {
