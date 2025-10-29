@@ -24,6 +24,9 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 - **Multi-format Support** – MP3, WAV, OGG, FLAC with automatic WAV conversion
 - **Music List Management** – Add, remove, select multiple celebration tracks
 - **Persistent Configuration** – Auto-save and restore music list between sessions
+- **Managed Library** – All WAVs stored under `config/musics/` with ASCII slug filenames (spaces → underscores)
+  - Example: `İldırım Ildırım (Stüdyo).mp3` → `config/musics/Ildirim_Ildirim_Stduyo.wav`
+  - Display names are derived from the WAV file stem (no extension)
 
 ### 3. Reliability & Control
 - **Debounce Logic** – Configurable cooldown (default 8s) prevents duplicate triggers
@@ -99,13 +102,14 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 ```json
 {
   "capture_region": [x, y, width, height],
-  "audio_file_path": "goal.mp3",
   "ocr_threshold": 0,
   "debounce_ms": 8000,
   "enable_morph_open": false,
   "bench_frames": 500,
-  "music_list": [],
-  "selected_music_index": 0
+  "music_list": [
+    { "name": "Ildirim_Ildirim_Stduyo", "path": "config/musics/Ildirim_Ildirim_Stduyo.wav", "shortcut": null }
+  ],
+  "selected_music_index": null
 }
 ```
 

@@ -1,3 +1,17 @@
+### 9. Slug Module (`slug.rs`)
+**Responsibility:** Generate ASCII-only slugs for filenames
+
+```rust
+pub fn slugify(input: &str) -> String
+// Rules:
+// - Turkish unique letters mapped: ı→i, İ→I, ğ→g, Ğ→G, ş→s, Ş→S
+// - General diacritics removed via Unicode NFD
+// - Spaces and non-alphanumerics → underscores; collapsed; trimmed
+```
+
+**Usage Points:**
+- `audio_converter.rs` when naming output WAVs
+- Display names in GUI derived from file stem (no extension)
 # FM Goal Musics – Technical Implementation
 
 ## Technology Stack Overview
@@ -44,7 +58,7 @@
 **Libraries:**
 - `rodio` v0.19.0 - Audio playback engine
 - `symphonia` v0.5 - Multi-format decoder (MP3, FLAC, OGG, AAC, WAV)
-- `hound` v3.5 - WAV encoder for conversion
+- `hound` v3.x - WAV encoder for conversion
 
 **Architecture:**
 - Preload audio files into memory at startup
@@ -56,6 +70,7 @@
 - Input: MP3, AAC, FLAC, OGG Vorbis, WAV
 - Internal: 16-bit PCM WAV
 - Automatic conversion on file import
+- Managed output location: `config/musics/<ascii_slug>.wav`
 
 ### GUI Framework
 **Libraries:**
@@ -81,6 +96,7 @@
 - `serde` v1.0 - Serialization framework
 - `serde_json` v1.0 - JSON serialization
 - `dirs` v5.0 - Platform-specific directory paths
+- `unicode-normalization` v0.1 - Slug generation (diacritic removal)
 
 **Storage Locations:**
 - macOS: `~/Library/Application Support/fm-goal-musics/config.json`
@@ -109,6 +125,7 @@ fm-goal-musics/
 │   ├── config.rs            # Configuration management
 │   ├── gui.rs               # GUI implementation
 │   ├── region_selector.rs   # Visual region picker
+│   ├── slug.rs              # ASCII slug generation for filenames
 │   └── utils.rs             # Timing, debounce, shared utilities
 ├── tests/
 │   ├── integration_tests.rs # Integration test suite
@@ -214,10 +231,8 @@ impl AudioManager {
 **Responsibility:** Multi-format audio conversion to WAV
 
 ```rust
-pub fn convert_to_wav(
-    input_path: &Path,
-    output_path: &Path
-) -> Result<()>
+pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf>
+// Saves to config/musics/<ascii_slug>.wav and returns final path
 ```
 
 **Conversion Process:**
@@ -226,6 +241,7 @@ pub fn convert_to_wav(
 3. Extract PCM samples
 4. Encode to 16-bit PCM WAV using Hound
 5. Preserve channel configuration (mono/stereo)
+6. Filename slugging: ASCII-only name with underscores; stored under `config/musics/`
 
 ### 5. Configuration (`config.rs`)
 **Responsibility:** Configuration persistence and validation
@@ -234,13 +250,12 @@ pub fn convert_to_wav(
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub capture_region: (u32, u32, u32, u32),
-    pub audio_file_path: String,
     pub ocr_threshold: u8,
     pub debounce_ms: u64,
     pub enable_morph_open: bool,
     pub bench_frames: usize,
-    pub music_list: Vec<String>,
-    pub selected_music_index: usize,
+    pub music_list: Vec<MusicEntry>,
+    pub selected_music_index: Option<usize>,
 }
 
 impl Config {
@@ -254,13 +269,14 @@ impl Config {
 ```json
 {
   "capture_region": [x, y, width, height],
-  "audio_file_path": "goal.mp3",
   "ocr_threshold": 0,
   "debounce_ms": 8000,
   "enable_morph_open": false,
   "bench_frames": 500,
-  "music_list": ["path/to/music1.wav", "path/to/music2.wav"],
-  "selected_music_index": 0
+  "music_list": [
+    { "name": "Ildirim_Ildirim_Stduyo", "path": "config/musics/Ildirim_Ildirim_Stduyo.wav", "shortcut": null }
+  ],
+  "selected_music_index": null
 }
 ```
 
@@ -440,8 +456,8 @@ leptess = "0.14.0"
 
 # Audio
 rodio = { version = "0.19.0", features = ["mp3"] }
-symphonia = { version = "0.5", features = ["mp3", "aac", "flac", "vorbis", "wav"] }
-hound = "3.5"
+symphonia = { version = "0.5", features = ["mp3", "aac", "flac", "isomp4", "ogg"] }
+hound = "3"
 
 # GUI
 egui = "0.29.1"
@@ -454,6 +470,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dirs = "5.0"
 rdev = "0.5.4"
+unicode-normalization = "0.1"
 
 [profile.release]
 opt-level = 3

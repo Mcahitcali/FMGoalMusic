@@ -1,3 +1,16 @@
+### Filename and Display Name Rules
+
+- **ASCII-only filenames**: When a user adds audio, the resulting WAV is saved under `config/musics/` using an ASCII slug.
+- **Slug rules**:
+  - Turkish letters mapped: ı→i, İ→I, ğ→g, Ğ→G, ş→s, Ş→S
+  - General diacritics removed via Unicode decomposition (e.g., ö→o, ü→u, ç→c)
+  - Spaces and non-alphanumerics → underscores
+  - Collapses multiple underscores, trims edges
+- **Display name**: Derived from the final WAV filename stem (no extension). What you see matches the on-disk name.
+
+### Fonts
+
+- Primary text is ASCII after slugging. For broader UI text (status/messages), the app may load a system font (e.g., Arial/Helvetica) at startup to improve glyph coverage on macOS.
 # FM Goal Musics – Design Specification
 
 ## Design Philosophy
