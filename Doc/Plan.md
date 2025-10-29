@@ -208,13 +208,8 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 - Test fixtures with sample images
 
 **Test Coverage:**
-- 37 total tests
-- OCR: 8 tests
-- Utils: 13 tests
-- Audio: 2 tests
-- Capture: 2 tests
-- Config: 2 tests
-- Integration: 10 tests
+- 90 total tests (CLI + GUI bins)
+- Modules covered: OCR, Utils, Audio, Capture, Config, Team Matcher, Teams, Integration
 
 **Status:** Completed
 

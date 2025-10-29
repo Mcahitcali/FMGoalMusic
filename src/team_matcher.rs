@@ -23,9 +23,23 @@ impl TeamMatcher {
     pub fn matches(&self, detected_name: &str) -> bool {
         let normalized_detected = Self::normalize(detected_name);
 
-        self.normalized_variations
+        // Fast path: exact equality with any normalized variation
+        if self
+            .normalized_variations
             .iter()
             .any(|variation| variation == &normalized_detected)
+        {
+            return true;
+        }
+
+        // Token-subset match:
+        // Accept when all tokens from a variation are present in detected tokens.
+        // This covers cases like detected: "fc internazionale milano" vs variation: "fc internazionale".
+        let detected_tokens = Self::tokens(&normalized_detected);
+        self.normalized_variations.iter().any(|variation| {
+            let var_tokens = Self::tokens(variation);
+            !var_tokens.is_empty() && var_tokens.is_subset(&detected_tokens)
+        })
     }
 
     /// Normalize a team name for matching
@@ -40,6 +54,11 @@ impl TeamMatcher {
             .split_whitespace()
             .collect::<Vec<&str>>()
             .join(" ")
+    }
+
+    /// Split a normalized string into lowercase ASCII tokens
+    fn tokens(text: &str) -> std::collections::HashSet<&str> {
+        text.split_whitespace().collect()
     }
 }
 
