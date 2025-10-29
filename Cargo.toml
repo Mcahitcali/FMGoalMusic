@@ -22,8 +22,10 @@ leptess = "0.14"
 rodio = { version = "0.19", features = ["mp3"] }
 
 # Audio format conversion
-symphonia = { version = "0.5", features = ["mp3", "aac", "flac", "vorbis", "wav"] }
-hound = "3.5"  # WAV file encoding
+symphonia = { version = "0.5", features = ["mp3", "aac", "flac", "isomp4", "ogg"] }
+hound = "3" 
+unicode-normalization = "0.1"
+# WAV file encoding
 
 # Configuration serialization
 serde = { version = "1.0", features = ["derive"] }

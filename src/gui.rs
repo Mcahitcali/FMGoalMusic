@@ -130,6 +130,8 @@ pub struct FMGoalMusicsApp {
 
 impl FMGoalMusicsApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+        // Configure fonts to better support extended Latin characters (e.g., Turkish)
+        Self::configure_fonts(_cc);
         let screen_resolution = DisplayInfo::all().ok().and_then(|infos| {
             let primary = infos.iter().find(|d| d.is_primary);
             let target = if let Some(display) = primary {
@@ -167,11 +169,16 @@ impl FMGoalMusicsApp {
                 state.enable_morph_open = config.enable_morph_open;
                 state.selected_music_index = config.selected_music_index;
                 
-                // Convert config music entries to GUI music entries
+                // Convert config music entries to GUI entries; derive display name from file stem
                 state.music_list = config.music_list.iter().map(|entry| {
+                    let path = PathBuf::from(&entry.path);
+                    let name = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| entry.name.clone());
                     MusicEntry {
-                        name: entry.name.clone(),
-                        path: PathBuf::from(&entry.path),
+                        name,
+                        path,
                         shortcut: entry.shortcut.clone(),
                     }
                 }).collect();
@@ -193,6 +200,35 @@ impl FMGoalMusicsApp {
         }
         
         app
+    }
+
+    fn configure_fonts(cc: &eframe::CreationContext<'_>) {
+        // Try to load a system font with wide Unicode coverage (Turkish supported)
+        // Common macOS locations; fallback to default if none found
+        let candidates = [
+            "/Library/Fonts/HelveticaNeue.dfont",
+            "/Library/Fonts/Helvetica.ttf",
+            "/Library/Fonts/Arial.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+        ];
+
+        for path in candidates.iter() {
+            if let Ok(bytes) = std::fs::read(path) {
+                let mut fonts = egui::FontDefinitions::default();
+                fonts.font_data.insert(
+                    "ui_override".to_owned(),
+                    egui::FontData::from_owned(bytes).into(),
+                );
+                // Put our font first in the proportional family for UI text
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Proportional)
+                    .or_default()
+                    .insert(0, "ui_override".to_owned());
+                cc.egui_ctx.set_fonts(fonts);
+                break;
+            }
+        }
     }
 
     fn start_region_selection(&mut self) {
@@ -272,7 +308,6 @@ impl FMGoalMusicsApp {
         
         let config = Config {
             capture_region: state.capture_region,
-            audio_file_path: "goal.mp3".to_string(), // Keep for backward compatibility
             ocr_threshold: state.ocr_threshold,
             debounce_ms: state.debounce_ms,
             enable_morph_open: state.enable_morph_open,
@@ -306,10 +341,9 @@ impl FMGoalMusicsApp {
         };
 
         let name = final_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Unknown")
-            .to_string();
+            .file_stem()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
 
         let mut state = self.state.lock().unwrap();
         state.music_list.push(MusicEntry {

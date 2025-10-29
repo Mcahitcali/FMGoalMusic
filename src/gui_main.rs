@@ -5,6 +5,7 @@ mod config;
 mod gui;
 mod ocr;
 mod region_selector;
+mod slug;
 mod utils;
 
 fn main() -> Result<(), eframe::Error> {

@@ -53,27 +53,7 @@ fn main() {
 fn run_detection_loop(cfg: &config::Config) {
     println!("Initializing detection system...\n");
     
-    // Initialize audio manager
-    let audio_path = match cfg.audio_file_full_path() {
-        Ok(path) => path,
-        Err(e) => {
-            eprintln!("✗ Failed to get audio path: {}", e);
-            std::process::exit(1);
-        }
-    };
-    
-    let audio_manager = match audio::AudioManager::new(&audio_path) {
-        Ok(manager) => {
-            println!("✓ Audio manager initialized");
-            println!("  Audio file: {}", audio_path.display());
-            manager
-        }
-        Err(e) => {
-            eprintln!("✗ Failed to initialize audio: {}", e);
-            eprintln!("  Make sure goal.mp3 exists at: {}", audio_path.display());
-            std::process::exit(1);
-        }
-    };
+    // CLI mode does not handle audio playback; GUI manages audio
     
     // Initialize capture manager
     let region = capture::CaptureRegion::from_array(cfg.capture_region);
@@ -209,11 +189,7 @@ fn run_detection_loop(cfg: &config::Config) {
         // If goal detected and not in debounce period, play sound
         if goal_detected && debouncer.should_trigger() {
             detection_count += 1;
-            println!("\n🎯 GOAL DETECTED! (#{}) - Playing sound...", detection_count);
-            
-            if let Err(e) = audio_manager.play_sound() {
-                eprintln!("  ✗ Failed to play sound: {}", e);
-            }
+            println!("\n🎯 GOAL DETECTED! (#{})", detection_count);
         }
         
         let total_time = loop_timer.elapsed_ms();
@@ -245,25 +221,8 @@ fn run_benchmark(cfg: &config::Config) {
     println!("This will measure the latency of each stage in the detection pipeline.");
     println!("No audio will be played during benchmarking.\n");
     
-    // Initialize audio manager
-    let audio_path = match cfg.audio_file_full_path() {
-        Ok(path) => path,
-        Err(e) => {
-            eprintln!("✗ Failed to get audio path: {}", e);
-            std::process::exit(1);
-        }
-    };
-    
-    let _audio_manager = match audio::AudioManager::new(&audio_path) {
-        Ok(manager) => {
-            println!("✓ Audio manager initialized");
-            manager
-        }
-        Err(e) => {
-            eprintln!("✗ Failed to initialize audio: {}", e);
-            std::process::exit(1);
-        }
-    };
+    // Skip audio manager init; GUI manages audio playback
+    let _audio_manager = ();
     
     // Initialize capture manager
     let region = capture::CaptureRegion::from_array(cfg.capture_region);
@@ -378,7 +337,7 @@ fn run_tests(cfg: &config::Config) {
 fn test_config(cfg: &config::Config) {
     println!("=== Config Test ===");
     println!("  Capture region: {:?}", cfg.capture_region);
-    println!("  Audio file: {}", cfg.audio_file_path);
+    // Audio file path removed; GUI manages per-music selection
     println!("  OCR threshold: {}", cfg.ocr_threshold);
     println!("  Debounce: {}ms", cfg.debounce_ms);
     println!("  Config path: {}", config::Config::config_dir_display());
@@ -388,31 +347,7 @@ fn test_config(cfg: &config::Config) {
 fn test_audio(cfg: &config::Config) {
     println!("=== Audio Test ===");
     
-    let audio_path = match cfg.audio_file_full_path() {
-        Ok(path) => path,
-        Err(e) => {
-            eprintln!("✗ Failed to get audio path: {}", e);
-            return;
-        }
-    };
-    
-    match audio::AudioManager::new(&audio_path) {
-        Ok(_audio_manager) => {
-            println!("✓ Audio manager initialized");
-            println!("  Audio file: {}", audio_path.display());
-            
-            // Uncomment to test playback
-            // println!("  Playing test sound...");
-            // if let Err(e) = _audio_manager.play_sound() {
-            //     eprintln!("  ✗ Failed to play: {}", e);
-            // }
-            // std::thread::sleep(std::time::Duration::from_secs(2));
-        }
-        Err(e) => {
-            eprintln!("✗ Failed to initialize audio: {}", e);
-            eprintln!("  Make sure goal.mp3 exists at: {}", audio_path.display());
-        }
-    }
+    // Skip audio tests; managed in GUI flow
     println!();
 }
 

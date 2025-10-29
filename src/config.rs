@@ -36,9 +36,6 @@ pub struct Config {
     /// Screen region to capture [x, y, width, height]
     pub capture_region: [u32; 4],
     
-    /// Path to the goal celebration audio file
-    pub audio_file_path: String,
-    
     /// Binary threshold for OCR preprocessing (0-255)
     pub ocr_threshold: u8,
     
@@ -63,7 +60,6 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             capture_region: default_capture_region(),
-            audio_file_path: "goal.mp3".to_string(),
             ocr_threshold: 0, // 0 = automatic Otsu thresholding, or set 1-255 for manual
             debounce_ms: 8000, // 8 seconds between goal sounds
             enable_morph_open: false,
@@ -118,7 +114,7 @@ impl Config {
     }
     
     /// Get the config file path (in app's base directory)
-    fn config_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    pub fn config_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
         let exe_path = env::current_exe()?;
         let exe_dir = exe_path.parent()
             .ok_or("Could not determine executable directory")?;
@@ -134,14 +130,6 @@ impl Config {
             .unwrap_or_else(|_| "unknown".to_string())
     }
     
-    /// Get the full path to the audio file (relative to config directory)
-    pub fn audio_file_full_path(&self) -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let config_path = Self::config_path()?;
-        let config_dir = config_path.parent()
-            .ok_or("Could not determine config directory")?;
-        
-        Ok(config_dir.join(&self.audio_file_path))
-    }
 }
 
 #[cfg(test)]

@@ -1,21 +1,58 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
+use crate::config::Config;
+use crate::slug::slugify;
+
+/// Cached musics directory path to avoid repeated resolution
+static MUSICS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Get or initialize the musics directory path
+fn get_musics_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let mut cache = MUSICS_DIR.lock().unwrap();
+    
+    if let Some(ref path) = *cache {
+        return Ok(path.clone());
+    }
+    
+    let config_path = Config::config_path()?;
+    let config_dir = config_path
+        .parent()
+        .ok_or("Could not determine config directory")?;
+    let musics_dir = config_dir.join("musics");
+    fs::create_dir_all(&musics_dir)?;
+    
+    *cache = Some(musics_dir.clone());
+    Ok(musics_dir)
+}
 
 /// Convert any audio file to WAV format
 /// Returns the path to the converted WAV file
 pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    // Check if already WAV
+    // Get cached musics directory
+    let musics_dir = get_musics_dir()?;
+
+    // Build slugged output filename based on input filename but with .wav extension
+    let stem_raw = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("converted");
+    let slug = slugify(stem_raw);
+    let output_path = musics_dir.join(format!("{}.wav", slug));
+
+    // If input already WAV, just copy into musics directory
     if let Some(ext) = input_path.extension() {
         if ext.eq_ignore_ascii_case("wav") {
-            println!("✓ File is already WAV format: {}", input_path.display());
-            return Ok(input_path.to_path_buf());
+            fs::copy(input_path, &output_path)?;
+            println!(
+                "✓ Copied existing WAV to managed location: {}",
+                output_path.display()
+            );
+            return Ok(output_path);
         }
     }
 
@@ -66,9 +103,7 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::
     let channels = track.codec_params.channels.ok_or("Unknown channel count")?;
     let channel_count = channels.count() as u16;
 
-    // Create output WAV file path (same directory, .wav extension)
-    let mut output_path = input_path.to_path_buf();
-    output_path.set_extension("wav");
+    // output_path already determined above in musics_dir
 
     // Create WAV writer
     let spec = hound::WavSpec {
