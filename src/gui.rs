@@ -15,58 +15,6 @@ use crate::capture::{CaptureManager, CaptureRegion};
 use crate::config::Config;
 use crate::ocr::OcrManager;
 use crate::utils::Debouncer;
-use unicode_normalization::char::is_combining_mark;
-
-fn slugify(input: &str) -> String {
-    use unicode_normalization::UnicodeNormalization;
-    // Normalize to NFD to separate base letters and diacritics
-    let decomposed = input.nfd().collect::<String>();
-    let mut out = String::with_capacity(decomposed.len());
-    for ch in decomposed.chars() {
-        // Replace spaces with underscore
-        if ch.is_whitespace() { out.push('_'); continue; }
-        // Skip combining marks
-        if is_combining_mark(ch) { continue; }
-        // Turkish-specific mappings
-        let mapped = match ch {
-            'ç' | 'ĉ' => 'c',
-            'Ç' | 'Ĉ' => 'C',
-            'ğ' => 'g',
-            'Ğ' => 'G',
-            'ı' => 'i', // dotless i -> i
-            'İ' => 'I', // dotted I -> I
-            'ö' => 'o',
-            'Ö' => 'O',
-            'ş' => 's',
-            'Ş' => 'S',
-            'ü' => 'u',
-            'Ü' => 'U',
-            _ => ch,
-        };
-        // Keep ASCII letters, digits, underscore, dash, dot; replace others with '_'
-        if mapped.is_ascii_alphanumeric() || matches!(mapped, '_' | '-' | '.') {
-            out.push(mapped);
-        } else if mapped.is_ascii() && !mapped.is_control() {
-            // Convert remaining ASCII spaces handled earlier; other punctuation -> '_'
-            if mapped == ' ' { out.push('_'); } else { out.push(mapped); }
-        } else {
-            out.push('_');
-        }
-    }
-    // Collapse multiple underscores
-    let mut collapsed = String::with_capacity(out.len());
-    let mut last_us = false;
-    for ch in out.chars() {
-        if ch == '_' {
-            if !last_us { collapsed.push('_'); }
-            last_us = true;
-        } else {
-            last_us = false;
-            collapsed.push(ch);
-        }
-    }
-    collapsed.trim_matches('_').to_string()
-}
 
 // Region selector is implemented inline to avoid creating nested native
 // windows that can crash on some platforms when called from UI callbacks.

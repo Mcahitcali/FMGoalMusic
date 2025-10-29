@@ -1,10 +1,7 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
-use std::ffi::{OsStr, OsString};
-use unicode_normalization::char::is_combining_mark;
-use unicode_normalization::UnicodeNormalization;
-use std::fs;
+use std::sync::Mutex;
 use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::formats::FormatOptions;
@@ -12,48 +9,35 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use crate::config::Config;
+use crate::slug::slugify;
 
-/// Convert any audio file to WAV format
-/// Returns the path to the converted WAV file
-fn slugify(input: &str) -> String {
-    let decomposed = input.nfd().collect::<String>();
-    let mut out = String::with_capacity(decomposed.len());
-    for ch in decomposed.chars() {
-        if ch.is_whitespace() { out.push('_'); continue; }
-        if is_combining_mark(ch) { continue; }
-        let mapped = match ch {
-            'ç' | 'ĉ' => 'c', 'Ç' | 'Ĉ' => 'C',
-            'ğ' => 'g', 'Ğ' => 'G',
-            'ı' => 'i', 'İ' => 'I',
-            'ö' => 'o', 'Ö' => 'O',
-            'ş' => 's', 'Ş' => 'S',
-            'ü' => 'u', 'Ü' => 'U',
-            _ => ch,
-        };
-        if mapped.is_ascii_alphanumeric() || matches!(mapped, '_' | '-' | '.') {
-            out.push(mapped);
-        } else if mapped.is_ascii() && !mapped.is_control() {
-            if mapped == ' ' { out.push('_'); } else { out.push(mapped); }
-        } else {
-            out.push('_');
-        }
-    }
-    let mut collapsed = String::with_capacity(out.len());
-    let mut last_us = false;
-    for ch in out.chars() {
-        if ch == '_' { if !last_us { collapsed.push('_'); } last_us = true; } else { last_us = false; collapsed.push(ch); }
-    }
-    collapsed.trim_matches('_').to_string()
-}
+/// Cached musics directory path to avoid repeated resolution
+static MUSICS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    // Determine output directory under config/musics
+/// Get or initialize the musics directory path
+fn get_musics_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let mut cache = MUSICS_DIR.lock().unwrap();
+    
+    if let Some(ref path) = *cache {
+        return Ok(path.clone());
+    }
+    
     let config_path = Config::config_path()?;
     let config_dir = config_path
         .parent()
         .ok_or("Could not determine config directory")?;
     let musics_dir = config_dir.join("musics");
     fs::create_dir_all(&musics_dir)?;
+    
+    *cache = Some(musics_dir.clone());
+    Ok(musics_dir)
+}
+
+/// Convert any audio file to WAV format
+/// Returns the path to the converted WAV file
+pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    // Get cached musics directory
+    let musics_dir = get_musics_dir()?;
 
     // Build slugged output filename based on input filename but with .wav extension
     let stem_raw = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("converted");
