@@ -307,9 +307,8 @@ impl FMGoalMusicsApp {
 
         let name = final_path
             .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Unknown")
-            .to_string();
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
 
         let mut state = self.state.lock().unwrap();
         state.music_list.push(MusicEntry {

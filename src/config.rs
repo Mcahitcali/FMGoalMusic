@@ -118,7 +118,7 @@ impl Config {
     }
     
     /// Get the config file path (in app's base directory)
-    fn config_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    pub fn config_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
         let exe_path = env::current_exe()?;
         let exe_dir = exe_path.parent()
             .ok_or("Could not determine executable directory")?;

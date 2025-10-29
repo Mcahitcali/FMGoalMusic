@@ -1,12 +1,14 @@
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
+use std::fs;
 use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
+use crate::config::Config;
 
 /// Convert any audio file to WAV format
 /// Returns the path to the converted WAV file
@@ -66,9 +68,23 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::
     let channels = track.codec_params.channels.ok_or("Unknown channel count")?;
     let channel_count = channels.count() as u16;
 
-    // Create output WAV file path (same directory, .wav extension)
-    let mut output_path = input_path.to_path_buf();
-    output_path.set_extension("wav");
+    // Create output WAV file path under config/musics with .wav extension
+    // Determine config directory from config path
+    let config_path = Config::config_path()?;
+    let config_dir = config_path
+        .parent()
+        .ok_or("Could not determine config directory")?;
+
+    // Ensure musics directory exists
+    let musics_dir = config_dir.join("musics");
+    fs::create_dir_all(&musics_dir)?;
+
+    // Build output filename based on input filename but with .wav extension
+    let input_stem = input_path
+        .file_stem()
+        .and_then(|s| Some(s.to_string_lossy().to_string()))
+        .unwrap_or_else(|| "converted".to_string());
+    let output_path = musics_dir.join(format!("{}.wav", input_stem));
 
     // Create WAV writer
     let spec = hound::WavSpec {
