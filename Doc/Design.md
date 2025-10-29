@@ -181,6 +181,13 @@ Large:               12px - Modals, overlays
 │  └─ Selected Music Display             │
 │                                         │
 ├─────────────────────────────────────────┤
+│  🔄 NEW: Team Selection Section         │
+│  ├─ League Dropdown                    │
+│  ├─ Team Dropdown (filtered by league) │
+│  ├─ Selected Team Display              │
+│  └─ Clear Selection Button             │
+│                                         │
+├─────────────────────────────────────────┤
 │                                         │
 │  Configuration Section                  │
 │  ├─ Capture Region (X, Y, W, H)        │

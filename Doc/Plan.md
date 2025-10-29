@@ -265,6 +265,43 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 
 ---
 
+### Step 10: Team Selection Feature 🔄
+**Goal:** Play goal sound only for user-selected team
+
+**Tasks:**
+- Create team database structure (JSON with leagues, teams, variations)
+- Implement `src/teams.rs` – Team database loader and query
+- Implement `src/team_matcher.rs` – Team name matching with variations
+- Update `src/ocr.rs` – Extract full team name from "GOAL FOR [team]"
+- Update `src/config.rs` – Add selected_team field
+- Update `src/gui.rs` – Add team selection UI (league + team dropdown)
+- Update `src/main.rs` and `src/gui_main.rs` – Conditional audio playback
+- Add unit tests for team matching
+- Add integration tests with team variations
+
+**Features:**
+- JSON-based team database with leagues and variations
+- Team selection UI in GUI (league picker + team picker)
+- Extract team name from OCR text
+- Match against selected team's variations (case-insensitive)
+- Backward compatible (no team = play all goals)
+- Performance target: < 1ms matching overhead
+
+**Schema:**
+```json
+{
+  "selected_team": {
+    "league": "Premier League",
+    "team_key": "manchester_united",
+    "display_name": "Manchester Utd"
+  }
+}
+```
+
+**Status:** In Progress
+
+---
+
 ## Current Project Status
 
 ### Completed Milestones ✅
@@ -275,6 +312,14 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 - [x] Multi-platform support (macOS, Windows, Linux)
 - [x] Comprehensive test coverage (37 tests)
 - [x] Production-ready quality
+
+### In Progress 🔄
+- [ ] Step 10: Team Selection Feature
+  - [ ] Team database structure
+  - [ ] Team matching logic
+  - [ ] OCR enhancement for team name extraction
+  - [ ] GUI team selection UI
+  - [ ] Configuration updates
 
 ### Quality Metrics
 - **Performance:** p95 latency ~65ms ✅ (Target: <100ms)
@@ -310,6 +355,13 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 | T8.1 | GUI implementation | GUI | High | ✅ |
 | T8.2 | Region selector | GUI | High | ✅ |
 | T9.1 | Release documentation | Documentation | High | ✅ |
+| T10.1 | Team database structure | Core | High | 🔄 |
+| T10.2 | Team matching logic | Core | High | 🔄 |
+| T10.3 | OCR team name extraction | Core | High | 🔄 |
+| T10.4 | Config team selection | Core | High | 🔄 |
+| T10.5 | GUI team selection UI | GUI | High | 🔄 |
+| T10.6 | Detection loop integration | Core | High | 🔄 |
+| T10.7 | Team selection tests | Testing | High | 🔄 |
 
 ## Risk Management
 
@@ -357,8 +409,11 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 
 ## Future Enhancements
 
+### In Development
+1. **Team Selection** – Play sound only for selected team (In Progress - Step 10)
+
 ### Planned Features (Backlog)
-1. **Team-Specific Audio** – Different celebration sounds per team
+1. **Team-Specific Audio** – Different celebration sounds per team (depends on Team Selection)
 2. **Statistics Dashboard** – Track goals per session, per team, timing analytics
 3. **Multiple Region Profiles** – Save and switch between different screen configurations
 4. **Cloud Sync** – Sync configuration across devices
