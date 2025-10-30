@@ -1,18 +1,17 @@
-; FM Goal Musics - Smart Windows Installer
-; Detects and auto-installs Tesseract OCR if needed
+; FM Goal Musics - Windows Installer Script
+; Requires NSIS (Nullsoft Scriptable Install System) to compile
 
 !define APPNAME "FM Goal Musics"
 !define VERSION "1.0.0"
 !define PUBLISHER "FM Goal Musics"
 !define DESCRIPTION "Goal celebration music player for Football Manager"
-!define URL "https://github.com/your-repo/fm-goal-musics"
 
-; Modern UI
+; Modern UI settings
 !include "MUI2.nsh"
 
 ; General settings
 Name "${APPNAME}"
-OutFile "FM-Goal-Musics-Setup-${VERSION}.exe"
+OutFile "FM-Goal-Musics-Installer.exe"
 InstallDir "$PROGRAMFILES\${APPNAME}"
 InstallDirRegKey HKLM "Software\${APPNAME}" "InstallPath"
 RequestExecutionLevel admin
@@ -25,7 +24,6 @@ RequestExecutionLevel admin
 ; Pages
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "LICENSE.txt"
-!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -33,133 +31,125 @@ RequestExecutionLevel admin
 !insertmacro MUI_UNPAGE_WELCOME
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro MUI_UNPAGE_FINISH
 
 ; Languages
 !insertmacro MUI_LANGUAGE "English"
 
 ; Installer sections
-Section "FM Goal Musics (Required)" SecMain
-    SectionIn RO
-    
+Section "MainSection" SEC01
     SetOutPath "$INSTDIR"
     
-    ; Main application files
-    File /r "build\windows\*"
+    ; Create installation directory
+    CreateDirectory "$INSTDIR"
     
-    ; Create start menu shortcuts
+    ; Display installation progress
+    DetailPrint "Installing ${APPNAME}..."
+    
+    ; Check if Rust is installed
+    DetailPrint "Checking for Rust installation..."
+    nsExec::Exec 'cmd /c "rustc --version"'
+    Pop $0
+    StrCmp $0 0 rust_found rust_not_found
+    
+rust_not_found:
+    DetailPrint "Rust not found. Installing Rust..."
+    
+    ; Download Rust installer
+    DetailPrint "Downloading Rust installer..."
+    inetc::get "https://win.rustup.rs/x86_64" "$TEMP\rustup-init.exe" /END
+    Pop $0
+    StrCmp $0 "OK" rust_download_ok rust_download_failed
+    
+rust_download_failed:
+    MessageBox MB_OK "Failed to download Rust installer. Please check your internet connection."
+    Abort
+    
+rust_download_ok:
+    ; Install Rust silently
+    DetailPrint "Installing Rust (this may take several minutes)..."
+    nsExec::ExecToLog '"$TEMP\rustup-init.exe" -y --default-toolchain stable'
+    Pop $0
+    StrCmp $0 0 rust_install_ok rust_install_failed
+    
+rust_install_failed:
+    MessageBox MB_OK "Rust installation failed. Please try running the installer as administrator."
+    Abort
+    
+rust_install_ok:
+    ; Clean up Rust installer
+    Delete "$TEMP\rustup-init.exe"
+    
+rust_found:
+    DetailPrint "Rust is installed and ready."
+    
+    ; Copy source files
+    DetailPrint "Copying application files..."
+    File /r "src\"
+    File "Cargo.toml"
+    File "Cargo.lock"
+    File "build_windows.bat"
+    File /r "assets\"
+    
+    ; Build the application
+    DetailPrint "Building ${APPNAME} (this may take 10-15 minutes)..."
+    nsExec::ExecToLog 'cmd /c "cd $INSTDIR && build_windows.bat"'
+    Pop $0
+    StrCmp $0 0 build_ok build_failed
+    
+build_failed:
+    MessageBox MB_OK "Build failed. Please check the build log for details."
+    Abort
+    
+build_ok:
+    DetailPrint "Build completed successfully!"
+    
+    ; Create shortcuts
     CreateDirectory "$SMPROGRAMS\${APPNAME}"
-    CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
-    CreateShortCut "$SMPROGRAMS\${APPNAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
+    CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\build\windows\fm-goal-musics-gui.exe"
+    CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\build\windows\fm-goal-musics-gui.exe"
     
-    ; Create desktop shortcut
-    CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
+    ; Create uninstaller
+    WriteUninstaller "$INSTDIR\Uninstall.exe"
     
-    ; Registry entries for uninstall
+    ; Registry entries
+    WriteRegStr HKLM "Software\${APPNAME}" "InstallPath" "$INSTDIR"
+    WriteRegStr HKLM "Software\${APPNAME}" "Version" "${VERSION}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayName" "${APPNAME}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "UninstallString" "$INSTDIR\Uninstall.exe"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayVersion" "${VERSION}"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "Publisher" "${PUBLISHER}"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "URLInfoAbout" "${URL}"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "DisplayIcon" "$INSTDIR\fm-goal-musics-gui.exe"
-    WriteRegStr HKLM "Software\${APPNAME}" "InstallPath" "$INSTDIR"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}" "Description" "${DESCRIPTION}"
     
-    ; Create uninstaller
-    WriteUninstaller "$INSTDIR\Uninstall.exe"
-SectionEnd
-
-Section "Tesseract OCR (Recommended)" SecTesseract
-    ; Check if Tesseract is already installed
-    DetailPrint "Checking for Tesseract OCR installation..."
-    
-    ; Check common installation paths
-    ${If} ${FileExists} "$PROGRAMFILES\Tesseract-OCR\tesseract.exe"
-        DetailPrint "Tesseract OCR found at $PROGRAMFILES\Tesseract-OCR"
-        Goto TesseractDone
-    ${EndIf}
-    
-    ${If} ${FileExists} "$PROGRAMFILES64\Tesseract-OCR\tesseract.exe"
-        DetailPrint "Tesseract OCR found at $PROGRAMFILES64\Tesseract-OCR"
-        Goto TesseractDone
-    ${EndIf}
-    
-    ; Try to find in PATH
-    nsExec::ExecToStack 'where tesseract'
-    Pop $0
-    ${If} $0 == 0
-        DetailPrint "Tesseract OCR found in system PATH"
-        Goto TesseractDone
-    ${EndIf}
-    
-    ; Tesseract not found - download and install
-    DetailPrint "Tesseract OCR not found. Downloading and installing..."
-    
-    ; Create temp directory
-    CreateDirectory "$TEMP\fm-goal-musics-installer"
-    SetOutPath "$TEMP\fm-goal-musics-installer"
-    
-    ; Download Tesseract installer (you should host this or use official URL)
-    DetailPrint "Downloading Tesseract OCR installer..."
-    ; inetc::get "https://github.com/UB-Mannheim/tesseract/wiki/tesseract-ocr-w64-setup-5.3.3.20231005.exe" "tesseract-installer.exe"
-    
-    ; For now, show message to user to download manually
-    MessageBox MB_OK|MB_ICONINFORMATION "Tesseract OCR is required for text recognition features.$\n$\nPlease download and install Tesseract OCR from:$\n$\nhttps://github.com/UB-Mannheim/tesseract/wiki$\n$\nAfter installation, FM Goal Musics will work correctly."
-    
-    Goto TesseractDone
-    
-TesseractDone:
-    DetailPrint "Tesseract OCR setup completed."
-    SetOutPath "$INSTDIR"
-SectionEnd
-
-Section "Start Menu Shortcuts" SecShortcuts
-    CreateDirectory "$SMPROGRAMS\${APPNAME}"
-    CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
-    CreateShortCut "$SMPROGRAMS\${APPNAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
-SectionEnd
-
-Section "Desktop Shortcut" SecDesktop
-    CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
+    DetailPrint "Installation completed successfully!"
 SectionEnd
 
 ; Uninstaller section
 Section "Uninstall"
-    ; Remove files and folders
+    ; Remove shortcuts
+    Delete "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk"
+    Delete "$DESKTOP\${APPNAME}.lnk"
+    RMDir "$SMPROGRAMS\${APPNAME}"
+    
+    ; Remove files and directories
     RMDir /r "$INSTDIR"
     
-    ; Remove shortcuts
-    Delete "$SMPROGRAMS\${APPNAME}\*.*"
-    RMDir "$SMPROGRAMS\${APPNAME}"
-    Delete "$DESKTOP\${APPNAME}.lnk"
-    
-    ; Remove registry keys
+    ; Remove registry entries
     DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
     DeleteRegKey HKLM "Software\${APPNAME}"
+    
+    MessageBox MB_OK "${APPNAME} has been uninstalled successfully."
 SectionEnd
-
-; Component descriptions
-LangString DESC_SecMain ${LANG_ENGLISH} "The main FM Goal Musics application and all required files."
-LangString DESC_SecTesseract ${LANG_ENGLISH} "Tesseract OCR for text recognition. Required for goal detection features."
-LangString DESC_SecShortcuts ${LANG_ENGLISH} "Create shortcuts in the Start Menu."
-LangString DESC_SecDesktop ${LANG_ENGLISH} "Create shortcut on the Desktop."
-
-!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} $(DESC_SecMain)
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecTesseract} $(DESC_SecTesseract)
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecShortcuts} $(DESC_SecShortcuts)
-    !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} $(DESC_SecDesktop)
-!insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ; Functions
 Function .onInit
-    ; Check for Windows version
-    ${IfNot} ${AtLeastWin7}
-        MessageBox MB_OK|MB_ICONSTOP "This application requires Windows 7 or later."
-        Abort
-    ${EndIf}
+    ; Check if running on Windows
+    IfWinExists $0
+    FunctionEnd
+    
+    ; Display welcome message
+    MessageBox MB_OK "Welcome to ${APPNAME} Installer$\r$\n$\r$\nThis installer will:$\r$\n• Install Rust (if needed)$\r$\n• Build the application$\r$\n• Create desktop shortcuts$\r$\n$\r$\nThe installation may take 15-20 minutes."
 FunctionEnd
 
-Function un.onInit
-    MessageBox MB_YESNO|MB_ICONQUESTION "Are you sure you want to completely remove ${APPNAME} and all of its components?" IDYES +2
-    Abort
+Function .onInstSuccess
+    MessageBox MB_OK "${APPNAME} has been installed successfully!$\r$\n$\r$\nYou can now run the application from:$\r$\n• Desktop shortcut$\r$\n• Start Menu$\r$\n• Or directly from: $INSTDIR\build\windows\fm-goal-musics-gui.exe"
 FunctionEnd
