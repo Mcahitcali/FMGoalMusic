@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 pub struct AudioManager {
     _stream: OutputStream,
     stream_handle: OutputStreamHandle,
-    sink: Mutex<Sink>,
+    sink: Arc<Mutex<Sink>>,
     audio_data: Vec<u8>,
     volume: Mutex<f32>,
 }
@@ -27,7 +27,7 @@ impl AudioManager {
         Ok(Self {
             _stream: stream,
             stream_handle,
-            sink: Mutex::new(sink),
+            sink: Arc::new(Mutex::new(sink)),
             audio_data,
             volume: Mutex::new(1.0),
         })
@@ -71,6 +71,46 @@ impl AudioManager {
         
         sink.append(decoder);
         sink.play();
+
+        Ok(())
+    }
+    
+    /// Play the preloaded sound with a fade-in effect
+    /// Volume transitions from 0 to target volume over specified duration
+    pub fn play_sound_with_fade(&self, fade_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let cursor = std::io::Cursor::new(self.audio_data.clone());
+        let decoder = Decoder::new(cursor)?;
+
+        // Get target volume
+        let target_volume = *self.volume.lock()
+            .map_err(|_| "Volume mutex poisoned".to_string())?;
+        
+        {
+            let sink = self
+                .sink
+                .lock()
+                .map_err(|_| "Audio sink poisoned".to_string())?;
+            
+            // Start at 0 volume
+            sink.set_volume(0.0);
+            sink.append(decoder);
+            sink.play();
+        } // Release lock
+        
+        // Spawn thread to gradually increase volume
+        let sink_clone = Arc::clone(&self.sink);
+        std::thread::spawn(move || {
+            let steps = 50; // 50 steps for smooth transition
+            let step_duration = fade_duration_ms / steps;
+            let volume_increment = target_volume / steps as f32;
+            
+            for i in 1..=steps {
+                std::thread::sleep(std::time::Duration::from_millis(step_duration));
+                if let Ok(sink) = sink_clone.lock() {
+                    sink.set_volume(volume_increment * i as f32);
+                }
+            }
+        });
 
         Ok(())
     }

@@ -653,15 +653,15 @@ impl FMGoalMusicsApp {
                 };
 
                 if should_play_sound && debouncer.should_trigger() {
-                    // Play ambiance first (crowd reaction), then music immediately
+                    // Play ambiance first (crowd reaction) with 1-second fade-in
                     if let Some(ref ambiance) = ambiance_manager {
-                        if let Err(e) = ambiance.play_sound() {
+                        if let Err(e) = ambiance.play_sound_with_fade(1000) {
                             println!("[fm-goal-musics] Failed to play ambiance: {}", e);
                         }
                     }
                     
-                    // Play music immediately after
-                    match audio_manager.play_sound() {
+                    // Play music immediately after with 1-second fade-in
+                    match audio_manager.play_sound_with_fade(1000) {
                         Ok(()) => {
                             let mut st = state_clone.lock().unwrap();
                             st.detection_count += 1;
