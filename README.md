@@ -38,18 +38,19 @@ sudo apt-get install tesseract-ocr
 - Tesseract OCR (download from [GitHub](https://github.com/UB-Mannheim/tesseract/wiki))
 - No special permissions required
 
-### Build
+## 🚀 Quick Start
 
+### For macOS Development:
 ```bash
-cargo build --release
+./build_macos.sh
 ```
-Binary: `target/release/fm-goal-musics-gui`
+Creates: `build/macos/FM Goal Musics.app` and `.dmg` installer
 
-**Build macOS App Bundle:**
-```bash
-./build_app.sh
-```
-App Bundle: `target/release/FM Goal Musics.app`
+### For Windows Distribution:
+Send users: `FM-Goal-Musics-Windows-Source-*.zip`
+Users: Right-click `INSTALL-WINDOWS.ps1` → "Run with PowerShell"
+
+That's it! 🎉
 
 ## Configuration
 
