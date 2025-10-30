@@ -24,13 +24,13 @@ It's super fast and responds almost instantly when a goal appears on screen. It 
 
 I have so many ideas to make this even better! Here's what I'm thinking about:
 
-- **Different songs for different teams** - Imagine having a unique celebration track for each team you manage!
-- **Goal statistics** - See how many goals you've scored, track your best matches
-- **Multiple profiles** - Switch between different setups if you play on different screens
-- **Celebration playlist** - Rotate through multiple songs so it never gets boring
-- **Desktop notifications** - Get a nice notification when a goal is detected
-- **And more surprises!**
+- **PreMatch Music** - Some teams have unique pre-match music, why not add it to the app?
+- **Cheering Fans Sound** - Imagine the sound of the fans cheering when your team wins a match.
+- **Bad Atmosphere Sound** - Imagine you losing a match and the sound of the fans booing.
+- **Chill Playlist** - Rotate through multiple songs so it never gets boring when you're not in a match.
+- **And More Atmosphere Sounds** - Football chants, cheers, and other sounds that make the game feel more immersive.
 
+And of course, I want to hear your thoughts, feedback, and ideas!
 ---
 
 ## Türkçe Versiyonu
