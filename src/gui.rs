@@ -471,6 +471,26 @@ impl FMGoalMusicsApp {
             }
         };
 
+        // Preload ambiance audio if enabled (to avoid delay during playback)
+        let ambiance_data: Option<Arc<Vec<u8>>> = if ambiance_enabled {
+            if let Some(ref path) = ambiance_path {
+                match std::fs::read(path) {
+                    Ok(bytes) => {
+                        println!("[fm-goal-musics] Preloaded ambiance sound: {} ({} bytes)", path, bytes.len());
+                        Some(Arc::new(bytes))
+                    },
+                    Err(e) => {
+                        println!("[fm-goal-musics] Warning: Failed to read ambiance file: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let state_clone = Arc::clone(&self.state);
         let latest_capture = Arc::clone(&self.latest_capture);
         let capture_dirty = Arc::clone(&self.capture_dirty);
@@ -495,30 +515,18 @@ impl FMGoalMusicsApp {
                 }
             };
             
-            // Load ambiance sound if configured and enabled
-            let ambiance_manager: Option<AudioManager> = if ambiance_enabled {
-                if let Some(ref path) = ambiance_path {
-                    match std::fs::read(path) {
-                        Ok(bytes) => {
-                            println!("[fm-goal-musics] Loading ambiance sound: {}", path);
-                            match AudioManager::from_preloaded(Arc::new(bytes)) {
-                                Ok(manager) => {
-                                    manager.set_volume(ambiance_volume);
-                                    Some(manager)
-                                },
-                                Err(e) => {
-                                    println!("[fm-goal-musics] Warning: Failed to load ambiance sound: {}", e);
-                                    None
-                                }
-                            }
-                        },
-                        Err(e) => {
-                            println!("[fm-goal-musics] Warning: Failed to read ambiance file: {}", e);
-                            None
-                        }
+            // Initialize ambiance manager from preloaded data
+            let ambiance_manager: Option<AudioManager> = if let Some(ref data) = ambiance_data {
+                match AudioManager::from_preloaded(Arc::clone(data)) {
+                    Ok(manager) => {
+                        manager.set_volume(ambiance_volume);
+                        println!("[fm-goal-musics] Ambiance audio manager initialized");
+                        Some(manager)
+                    },
+                    Err(e) => {
+                        println!("[fm-goal-musics] Warning: Failed to initialize ambiance manager: {}", e);
+                        None
                     }
-                } else {
-                    None
                 }
             } else {
                 None
@@ -645,7 +653,14 @@ impl FMGoalMusicsApp {
                 };
 
                 if should_play_sound && debouncer.should_trigger() {
-                    // Play music
+                    // Play ambiance first (crowd reaction), then music immediately
+                    if let Some(ref ambiance) = ambiance_manager {
+                        if let Err(e) = ambiance.play_sound() {
+                            println!("[fm-goal-musics] Failed to play ambiance: {}", e);
+                        }
+                    }
+                    
+                    // Play music immediately after
                     match audio_manager.play_sound() {
                         Ok(()) => {
                             let mut st = state_clone.lock().unwrap();
@@ -666,13 +681,6 @@ impl FMGoalMusicsApp {
                             println!("[fm-goal-musics] Failed to play music: {}", e);
                             let mut st = state_clone.lock().unwrap();
                             st.status_message = format!("Failed to play music: {}", e);
-                        }
-                    }
-                    
-                    // Play ambiance sound if available
-                    if let Some(ref ambiance) = ambiance_manager {
-                        if let Err(e) = ambiance.play_sound() {
-                            println!("[fm-goal-musics] Failed to play ambiance: {}", e);
                         }
                     }
                 }
