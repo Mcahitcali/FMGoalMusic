@@ -801,72 +801,86 @@ impl eframe::App for FMGoalMusicsApp {
                     ui.label(format!("| Window: {}x{}", window_width, window_height));
                 });
             }
+            
 
             ui.separator();
-
-            // Music list section
-            ui.heading("🎵 Music Files");
-            
-            ui.horizontal(|ui| {
-                if ui.button("➕ Add Music File").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Audio", &["mp3", "wav", "ogg"])
-                        .pick_file()
-                    {
-                        self.add_music_file(path);
+            ui.horizontal_wrapped(|ui| {
+                for tab in AppTab::ALL {
+                    let selected = self.active_tab == tab;
+                    if ui.selectable_label(selected, tab.label()).clicked() {
+                        self.active_tab = tab;
                     }
-                }
-                
-                if ui.button("🗑️ Remove Selected").clicked() {
-                    let mut state = self.state.lock().unwrap();
-                    if let Some(idx) = state.selected_music_index {
-                        state.music_list.remove(idx);
-                        state.selected_music_index = None;
-                    }
-                    drop(state);
-                    self.stop_preview();
-                    self.save_config();
                 }
             });
-
             ui.separator();
 
-            // Music list display
-            let selection_changed = egui::ScrollArea::vertical()
-                .max_height(200.0)
-                .show(ui, |ui| {
-                    let mut state = self.state.lock().unwrap();
-                    let mut new_selection = state.selected_music_index;
+            // Library tab
+            if self.active_tab == AppTab::Library {
+                ui.heading("🎵 Music Files");
+                
+                ui.horizontal(|ui| {
+                    if ui.button("➕ Add Music File").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Audio", &["mp3", "wav", "ogg"])
+                            .pick_file()
+                        {
+                            self.add_music_file(path);
+                        }
+                    }
                     
-                    for (idx, entry) in state.music_list.iter().enumerate() {
-                        let is_selected = state.selected_music_index == Some(idx);
+                    if ui.button("🗑️ Remove Selected").clicked() {
+                        let mut state = self.state.lock().unwrap();
+                        if let Some(idx) = state.selected_music_index {
+                            state.music_list.remove(idx);
+                            state.selected_music_index = None;
+                        }
+                        drop(state);
+                        self.stop_preview();
+                        self.save_config();
+                    }
+                });
+
+                ui.separator();
+
+                // Music list display
+                let selection_changed = egui::ScrollArea::vertical()
+                    .max_height(200.0)
+                    .show(ui, |ui| {
+                        let mut state = self.state.lock().unwrap();
+                        let mut new_selection = state.selected_music_index;
                         
-                        ui.horizontal(|ui| {
-                            if ui.selectable_label(is_selected, &entry.name).clicked() {
-                                new_selection = Some(idx);
-                            }
+                        for (idx, entry) in state.music_list.iter().enumerate() {
+                            let is_selected = state.selected_music_index == Some(idx);
                             
-                            if let Some(shortcut) = &entry.shortcut {
-                                ui.label(format!("({})", shortcut));
-                            }
-                        });
-                    }
-                    
-                    let changed = new_selection != state.selected_music_index;
-                    if changed {
-                        state.selected_music_index = new_selection;
-                    }
-                    changed
-                }).inner;
-            
-            if selection_changed {
-                self.save_config();
+                            ui.horizontal(|ui| {
+                                if ui.selectable_label(is_selected, &entry.name).clicked() {
+                                    new_selection = Some(idx);
+                                }
+                                
+                                if let Some(shortcut) = &entry.shortcut {
+                                    ui.label(format!("({})", shortcut));
+                                }
+                            });
+                        }
+                        
+                        let changed = new_selection != state.selected_music_index;
+                        if changed {
+                            state.selected_music_index = new_selection;
+                        }
+                        changed
+                    }).inner;
+                
+                if selection_changed {
+                    self.save_config();
+                }
             }
 
-            ui.separator();
+            // Audio tab
+            if self.active_tab == AppTab::Audio {
+                ui.separator();
 
-            // Volume Controls section
-            ui.heading("🔊 Volume Controls");
+                // Volume Controls section
+                ui.heading("🔊 Volume Controls");
             
             ui.horizontal(|ui| {
                 ui.label("🎵 Music:");
@@ -963,11 +977,14 @@ impl eframe::App for FMGoalMusicsApp {
                     ui.label("ℹ No crowd cheer sound selected");
                 }
             }
+            } // end Audio tab
 
-            ui.separator();
+            // Detection tab
+            if self.active_tab == AppTab::Detection {
+                ui.separator();
 
-            // Team Selection section
-            ui.heading("⚽ Team Selection");
+                // Team Selection section
+                ui.heading("⚽ Team Selection");
             
             if let Some(ref db) = self.team_database {
                 ui.label("Select your team to play sound only for their goals:");
@@ -1203,11 +1220,14 @@ impl eframe::App for FMGoalMusicsApp {
                     });
                 });
             }
+            } // end Detection tab
 
-            ui.separator();
+            // Settings tab
+            if self.active_tab == AppTab::Settings {
+                ui.separator();
 
-            // Configuration section
-            ui.heading("⚙️ Configuration");
+                // Configuration section
+                ui.heading("⚙️ Configuration");
             
             // Capture region controls
             {
@@ -1253,11 +1273,13 @@ impl eframe::App for FMGoalMusicsApp {
 
                 ui.checkbox(&mut state.enable_morph_open, "Enable Morphological Opening (noise reduction)");
             }
+            } // end Settings tab
 
-            ui.separator();
+            if self.active_tab == AppTab::Help {
+                ui.separator();
 
-            // Help text
-            ui.collapsing("ℹ️ Help", |ui| {
+                // Help text
+                ui.collapsing("ℹ️ Help", |ui| {
                 ui.label("1. Add music files using the '➕ Add Music File' button");
                 ui.label("2. Select a music file from the list");
                 ui.label("3. Configure capture region and settings");
@@ -1267,6 +1289,8 @@ impl eframe::App for FMGoalMusicsApp {
                 ui.label("💡 Tip: Use test mode to find the correct capture region:");
                 ui.label("   cargo run --release -- --test");
             });
+            }
+
         });
 
         // Region selector overlay window (implemented inline)
