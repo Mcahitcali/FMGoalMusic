@@ -152,7 +152,7 @@ impl AudioManager {
     }
 
     /// Play the preloaded sound with fade-in and automatic stop after specified duration
-    /// Combines fade-in effect with timed stopping
+    /// Combines fade-in effect with timed stopping and fade-out
     pub fn play_sound_with_fade_and_limit(&self, fade_duration_ms: u64, max_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
         let cursor = std::io::Cursor::new(self.audio_data.clone());
         let decoder = Decoder::new(cursor)?;
@@ -181,7 +181,7 @@ impl AudioManager {
         sink.append(decoder);
         sink.play();
         
-        // Spawn thread for fade-in effect and stopping
+        // Spawn thread for fade-in effect, playback, and fade-out stopping
         let sink_clone = Arc::clone(&self.sink);
         std::thread::spawn(move || {
             // Fade-in phase
@@ -196,13 +196,33 @@ impl AudioManager {
                 }
             }
 
-            // Wait for remaining duration (if any) then stop
-            let remaining_duration = max_duration_ms.saturating_sub(fade_duration_ms);
-            if remaining_duration > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(remaining_duration));
+            // Calculate fade-out timing
+            let fade_out_duration = 2000; // 2 seconds fade-out
+            let playback_duration = if max_duration_ms > fade_out_duration {
+                max_duration_ms - fade_out_duration
+            } else {
+                0 // No playback time, just fade in and immediately fade out
+            };
+
+            // Wait for normal playback duration
+            if playback_duration > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(playback_duration));
             }
 
-            // Stop the audio
+            // Fade-out phase
+            let fade_out_steps = 50;
+            let fade_out_step_duration = fade_out_duration / fade_out_steps;
+            let volume_decrement = target_volume / fade_out_steps as f32;
+            
+            for i in 1..=fade_out_steps {
+                std::thread::sleep(std::time::Duration::from_millis(fade_out_step_duration));
+                if let Ok(sink) = sink_clone.lock() {
+                    let current_volume = target_volume - (volume_decrement * i as f32);
+                    sink.set_volume(current_volume.max(0.0));
+                }
+            }
+
+            // Stop the audio after fade-out completes
             if let Ok(sink) = sink_clone.lock() {
                 sink.stop();
             }
@@ -239,10 +259,36 @@ impl AudioManager {
         sink.append(decoder);
         sink.play();
 
-        // Spawn thread to stop audio after duration
+        // Spawn thread to stop audio after duration with fade-out
         let sink_clone = Arc::clone(&self.sink);
         std::thread::spawn(move || {
-            thread::sleep(Duration::from_millis(max_duration_ms));
+            // Calculate fade-out timing
+            let fade_out_duration = 2000; // 2 seconds fade-out
+            let playback_duration = if max_duration_ms > fade_out_duration {
+                max_duration_ms - fade_out_duration
+            } else {
+                0 // No playback time, just fade out immediately
+            };
+
+            // Wait for normal playback duration
+            if playback_duration > 0 {
+                thread::sleep(Duration::from_millis(playback_duration));
+            }
+
+            // Fade-out phase
+            let fade_out_steps = 50;
+            let fade_out_step_duration = fade_out_duration / fade_out_steps;
+            let volume_decrement = volume / fade_out_steps as f32;
+            
+            for i in 1..=fade_out_steps {
+                thread::sleep(Duration::from_millis(fade_out_step_duration));
+                if let Ok(sink) = sink_clone.lock() {
+                    let current_volume = volume - (volume_decrement * i as f32);
+                    sink.set_volume(current_volume.max(0.0));
+                }
+            }
+
+            // Stop the audio after fade-out completes
             if let Ok(sink) = sink_clone.lock() {
                 sink.stop();
             }
