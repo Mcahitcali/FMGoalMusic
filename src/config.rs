@@ -79,6 +79,14 @@ pub struct Config {
     #[serde(default = "default_ambiance_volume")]
     pub ambiance_volume: f32,
     
+    /// Music length in milliseconds (0 = no limit)
+    #[serde(default = "default_music_length")]
+    pub music_length_ms: u64,
+    
+    /// Ambiance length in milliseconds (0 = no limit)  
+    #[serde(default = "default_ambiance_length")]
+    pub ambiance_length_ms: u64,
+    
     /// Selected team for conditional audio playback
     #[serde(default)]
     pub selected_team: Option<SelectedTeam>,
@@ -96,6 +104,14 @@ fn default_ambiance_volume() -> f32 {
     0.6
 }
 
+fn default_music_length() -> u64 {
+    20000 // 20 seconds
+}
+
+fn default_ambiance_length() -> u64 {
+    20000 // 20 seconds
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -106,10 +122,12 @@ impl Default for Config {
             bench_frames: 500,
             music_list: Vec::new(),
             selected_music_index: None,
-            goal_ambiance_path: None,
+            goal_ambiance_path: Some("goal_crowd_cheer.wav".to_string()),
             ambiance_enabled: default_ambiance_enabled(),
             music_volume: default_music_volume(),
             ambiance_volume: default_ambiance_volume(),
+            music_length_ms: default_music_length(),
+            ambiance_length_ms: default_ambiance_length(),
             selected_team: None,
         }
     }

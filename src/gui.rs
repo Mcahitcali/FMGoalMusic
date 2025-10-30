@@ -93,6 +93,8 @@ pub struct AppState {
     pub ambiance_volume: f32,
     pub goal_ambiance_path: Option<String>,
     pub ambiance_enabled: bool,
+    pub music_length_ms: u64,
+    pub ambiance_length_ms: u64,
 }
 
 impl Default for AppState {
@@ -112,6 +114,8 @@ impl Default for AppState {
             ambiance_volume: 0.6,
             goal_ambiance_path: None,
             ambiance_enabled: true,
+            music_length_ms: 20000, // 20 seconds
+            ambiance_length_ms: 20000, // 20 seconds
         }
     }
 }
@@ -201,6 +205,8 @@ impl FMGoalMusicsApp {
                 state.ambiance_volume = config.ambiance_volume;
                 state.goal_ambiance_path = config.goal_ambiance_path.clone();
                 state.ambiance_enabled = config.ambiance_enabled;
+                state.music_length_ms = config.music_length_ms;
+                state.ambiance_length_ms = config.ambiance_length_ms;
                 
                 // Initialize selected league and team from config
                 if let Some(ref team) = config.selected_team {
@@ -364,6 +370,8 @@ impl FMGoalMusicsApp {
             ambiance_volume: state.ambiance_volume,
             goal_ambiance_path: state.goal_ambiance_path.clone(),
             ambiance_enabled: state.ambiance_enabled,
+            music_length_ms: state.music_length_ms,
+            ambiance_length_ms: state.ambiance_length_ms,
         };
         
         if let Err(e) = config.save() {
@@ -407,7 +415,7 @@ impl FMGoalMusicsApp {
             let _ = handle.join();
         }
 
-        let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled) = {
+        let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms) = {
             let mut state = self.state.lock().unwrap();
 
             if state.process_state != ProcessState::Stopped {
@@ -440,6 +448,8 @@ impl FMGoalMusicsApp {
             let ambiance_volume = state.ambiance_volume;
             let ambiance_path = state.goal_ambiance_path.clone();
             let ambiance_enabled = state.ambiance_enabled;
+            let music_length_ms = state.music_length_ms;
+            let ambiance_length_ms = state.ambiance_length_ms;
 
             println!(
                 "[fm-goal-musics] Starting detection\n  music='{}'\n  region=[{}, {}, {}, {}]\n  ocr_threshold={}\n  debounce_ms={}\n  morph_open={}",
@@ -458,7 +468,7 @@ impl FMGoalMusicsApp {
             state.status_message = format!("Starting detection with '{}'", entry.name);
             state.detection_count = 0;
 
-            (entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled)
+            (entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms)
         };
 
         let audio_data = match self.get_or_load_audio_data(&music_path) {
@@ -653,15 +663,29 @@ impl FMGoalMusicsApp {
                 };
 
                 if should_play_sound && debouncer.should_trigger() {
-                    // Play ambiance first (crowd reaction) with 1-second fade-in
+                    // Play ambiance first (crowd reaction) with fade-in and length limit
                     if let Some(ref ambiance) = ambiance_manager {
-                        if let Err(e) = ambiance.play_sound_with_fade(200) {
-                            println!("[fm-goal-musics] Failed to play ambiance: {}", e);
+                        if ambiance_length_ms > 0 {
+                            if let Err(e) = ambiance.play_sound_with_fade_and_limit(200, ambiance_length_ms) {
+                                println!("[fm-goal-musics] Failed to play ambiance: {}", e);
+                            }
+                        } else {
+                            // No length limit, use regular fade-in
+                            if let Err(e) = ambiance.play_sound_with_fade(200) {
+                                println!("[fm-goal-musics] Failed to play ambiance: {}", e);
+                            }
                         }
                     }
                     
-                    // Play music immediately after with 1-second fade-in
-                    match audio_manager.play_sound_with_fade(200) {
+                    // Play music immediately after with fade-in and length limit
+                    let music_result = if music_length_ms > 0 {
+                        audio_manager.play_sound_with_fade_and_limit(200, music_length_ms)
+                    } else {
+                        // No length limit, use regular fade-in
+                        audio_manager.play_sound_with_fade(200)
+                    };
+                    
+                    match music_result {
                         Ok(()) => {
                             let mut st = state_clone.lock().unwrap();
                             st.detection_count += 1;
@@ -830,6 +854,33 @@ impl eframe::App for FMGoalMusicsApp {
                 let mut ambiance_vol_percent = (state.ambiance_volume * 100.0) as i32;
                 if ui.add(egui::Slider::new(&mut ambiance_vol_percent, 0..=100).suffix("%")).changed() {
                     state.ambiance_volume = (ambiance_vol_percent as f32) / 100.0;
+                    drop(state);
+                    self.save_config();
+                }
+            });
+
+            ui.separator();
+
+            // Sound Length Controls section
+            ui.heading("⏱️ Sound Length Controls");
+            
+            ui.horizontal(|ui| {
+                ui.label("🎵 Music Length:");
+                let mut state = self.state.lock().unwrap();
+                let mut music_length_seconds = (state.music_length_ms as f32) / 1000.0;
+                if ui.add(egui::Slider::new(&mut music_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
+                    state.music_length_ms = (music_length_seconds * 1000.0) as u64;
+                    drop(state);
+                    self.save_config();
+                }
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("🔉 Ambiance Length:");
+                let mut state = self.state.lock().unwrap();
+                let mut ambiance_length_seconds = (state.ambiance_length_ms as f32) / 1000.0;
+                if ui.add(egui::Slider::new(&mut ambiance_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
+                    state.ambiance_length_ms = (ambiance_length_seconds * 1000.0) as u64;
                     drop(state);
                     self.save_config();
                 }
