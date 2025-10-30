@@ -1,6 +1,11 @@
-# Rust
+# Build outputs
 /target/
+/build/
 Cargo.lock
+
+# Generated distribution files
+*-Source-*.zip
+*-Installer.exe
 
 # Test outputs
 test_screenshot.png
