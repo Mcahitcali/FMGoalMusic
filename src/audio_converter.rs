@@ -16,7 +16,7 @@ static MUSICS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Get or initialize the musics directory path
 fn get_musics_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let mut cache = MUSICS_DIR.lock().unwrap();
+    let mut cache = MUSICS_DIR.lock().expect("Failed to acquire MUSICS_DIR lock");
     
     if let Some(ref path) = *cache {
         return Ok(path.clone());

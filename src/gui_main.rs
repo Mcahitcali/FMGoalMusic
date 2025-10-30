@@ -11,6 +11,11 @@ mod teams;
 mod team_matcher;
 
 fn main() -> Result<(), eframe::Error> {
+    // Initialize logging for production debugging
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    
+    log::info!("Starting FM Goal Musics application");
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])

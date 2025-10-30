@@ -222,7 +222,7 @@ impl FMGoalMusicsApp {
         // Load config and restore music list
         match Config::load() {
             Ok(config) => {
-                let mut state = app.state.lock().unwrap();
+                let mut state = app.state.lock().expect("Failed to acquire state lock");
                 state.capture_region = config.capture_region;
                 state.ocr_threshold = config.ocr_threshold;
                 state.debounce_ms = config.debounce_ms;
@@ -262,7 +262,7 @@ impl FMGoalMusicsApp {
                 println!("⚠ Failed to load config: {}", e);
                 // Use default screen-based capture region
                 if let Some((screen_w, screen_h)) = screen_resolution {
-                    let mut state = app.state.lock().unwrap();
+                    let mut state = app.state.lock().expect("Failed to acquire state lock during music refresh");
                     if state.capture_region == [0, 0, 200, 100] {
                         let capture_height = (screen_h / 4).max(1);
                         let capture_y = screen_h.saturating_sub(capture_height);
@@ -339,7 +339,7 @@ impl FMGoalMusicsApp {
         }
 
         let maybe_capture = {
-            let mut slot = self.latest_capture.lock().unwrap();
+            let mut slot = self.latest_capture.lock().expect("Failed to acquire latest capture lock");
             slot.take()
         };
 
@@ -361,23 +361,24 @@ impl FMGoalMusicsApp {
             self.capture_preview.height = height;
             self.capture_preview.timestamp = Some(timestamp);
 
+            // Store a copy for last_image if needed for saving
+            self.capture_preview.last_image = Some(color_image.clone());
+
             if let Some(texture) = self.capture_preview.texture.as_mut() {
-                texture.set(color_image.clone(), egui::TextureOptions::LINEAR);
+                texture.set(color_image, egui::TextureOptions::LINEAR);
             } else {
                 let tex = ctx.load_texture(
                     "capture_preview",
-                    color_image.clone(),
+                    color_image,
                     egui::TextureOptions::LINEAR,
                 );
                 self.capture_preview.texture = Some(tex);
             }
-
-            self.capture_preview.last_image = Some(color_image);
         }
     }
 
     fn save_config(&self) {
-        let state = self.state.lock().unwrap();
+        let state = self.state.lock().expect("Failed to acquire state lock");
         
         let config = Config {
             capture_region: state.capture_region,
@@ -414,7 +415,7 @@ impl FMGoalMusicsApp {
         let final_path = match audio_converter::convert_to_wav(&path) {
             Ok(wav_path) => wav_path,
             Err(e) => {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
                 state.status_message = format!("Failed to convert audio: {}", e);
                 return;
             }
@@ -425,7 +426,7 @@ impl FMGoalMusicsApp {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().expect("Failed to acquire state lock");
         state.music_list.push(MusicEntry {
             name,
             path: final_path,
@@ -444,7 +445,7 @@ impl FMGoalMusicsApp {
         }
 
 let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms) = {
-            let mut state = self.state.lock().unwrap();
+            let mut state = self.state.lock().expect("Failed to acquire state lock");
 
             if state.process_state != ProcessState::Stopped {
                 state.status_message = "Already running!".to_string();
@@ -502,7 +503,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
         let audio_data = match self.get_or_load_audio_data(&music_path) {
             Ok(data) => data,
             Err(err) => {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
                 state.status_message = err;
                 state.process_state = ProcessState::Stopped;
                 return;
@@ -537,7 +538,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
 
         let handle = thread::spawn(move || {
             let notify_error = |message: String| {
-                let mut st = state_clone.lock().unwrap();
+                let mut st = state_clone.lock().expect("Failed to acquire state lock");
                 st.status_message = message;
                 st.process_state = ProcessState::Stopped;
             };
@@ -613,7 +614,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             let mut debouncer = Debouncer::new(debounce_ms);
 
             {
-                let mut st = state_clone.lock().unwrap();
+                let mut st = state_clone.lock().expect("Failed to acquire state lock");
                 if team_matcher.is_some() {
                     st.status_message = format!("Monitoring for goals by selected team... Playing '{}' when detected", music_name);
                 } else {
@@ -626,14 +627,14 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     match cmd {
                         DetectionCommand::StopAudio => {
                             audio_manager.stop();
-                            let mut st = state_clone.lock().unwrap();
+                            let mut st = state_clone.lock().expect("Failed to acquire state lock");
                             st.status_message = "Goal audio stopped".to_string();
                         }
                     }
                 }
 
                 let process_state = {
-                    let state = state_clone.lock().unwrap();
+                    let state = state_clone.lock().expect("Failed to acquire state lock");
                     state.process_state
                 };
 
@@ -655,7 +656,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 };
 
                 {
-                    let mut slot = latest_capture.lock().unwrap();
+                    let mut slot = latest_capture.lock().expect("Failed to acquire state lock");
                     *slot = Some((image.clone(), std::time::Instant::now()));
                     capture_dirty.store(true, Ordering::SeqCst);
                 }
@@ -715,7 +716,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     
                     match music_result {
                         Ok(()) => {
-                            let mut st = state_clone.lock().unwrap();
+                            let mut st = state_clone.lock().expect("Failed to acquire state lock");
                             st.detection_count += 1;
                             let ambiance_msg = if ambiance_manager.is_some() {
                                 " + crowd cheer"
@@ -731,7 +732,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                         }
                         Err(e) => {
                             println!("[fm-goal-musics] Failed to play music: {}", e);
-                            let mut st = state_clone.lock().unwrap();
+                            let mut st = state_clone.lock().expect("Failed to acquire state lock");
                             st.status_message = format!("Failed to play music: {}", e);
                         }
                     }
@@ -747,14 +748,14 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
     fn stop_detection(&mut self) {
         self.detection_cmd_tx = None;
         self.stop_preview();
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().expect("Failed to acquire state lock");
         state.process_state = ProcessState::Stopped;
         state.status_message = "Stopped".to_string();
         drop(state);
     }
 
     fn pause_detection(&mut self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.lock().expect("Failed to acquire state lock");
         if state.process_state == ProcessState::Running {
             state.process_state = ProcessState::Paused;
             state.status_message = "Paused".to_string();
@@ -777,7 +778,7 @@ impl eframe::App for FMGoalMusicsApp {
             // Header with title and Start/Stop button
             ui.horizontal(|ui| {
                 // Start/Stop Detection button on the left
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock().expect("Failed to acquire state lock");
                 let is_stopped = state.process_state == ProcessState::Stopped;
                 let is_running = state.process_state == ProcessState::Running;
                 drop(state);
@@ -800,7 +801,7 @@ impl eframe::App for FMGoalMusicsApp {
 
             // Status bar
             {
-                let state = self.state.lock().unwrap();
+                let state = self.state.lock().expect("Failed to acquire state lock");
                 let window_rect = ctx.input(|i| i.viewport_rect());
                 let window_width = window_rect.width().round() as i32;
                 let window_height = window_rect.height().round() as i32;
@@ -846,7 +847,7 @@ impl eframe::App for FMGoalMusicsApp {
                     }
                     
                     if ui.button("🗑️ Remove Selected").clicked() {
-                        let mut state = self.state.lock().unwrap();
+                        let mut state = self.state.lock().expect("Failed to acquire state lock");
                         if let Some(idx) = state.selected_music_index {
                             state.music_list.remove(idx);
                             state.selected_music_index = None;
@@ -869,7 +870,7 @@ impl eframe::App for FMGoalMusicsApp {
                             self.stop_preview();
                         } else {
                             let selected_path = {
-                                let state = self.state.lock().unwrap();
+                                let state = self.state.lock().expect("Failed to acquire state lock");
                                 state
                                     .selected_music_index
                                     .and_then(|idx| state.music_list.get(idx))
@@ -886,7 +887,7 @@ impl eframe::App for FMGoalMusicsApp {
                                     let audio_data = match self.get_or_load_audio_data(&path) {
                                         Ok(data) => data,
                                         Err(err) => {
-                                            let mut st = self.state.lock().unwrap();
+                                            let mut st = self.state.lock().expect("Failed to acquire state lock");
                                             st.status_message = err;
                                             return;
                                         }
@@ -902,7 +903,7 @@ impl eframe::App for FMGoalMusicsApp {
                                                 });
                                             }
                                             Err(e) => {
-                                                let mut st = self.state.lock().unwrap();
+                                                let mut st = self.state.lock().expect("Failed to acquire state lock");
                                                 st.status_message = format!("Preview init failed: {}", e);
                                                 return;
                                             }
@@ -914,18 +915,18 @@ impl eframe::App for FMGoalMusicsApp {
                                         match preview.manager.play_sound() {
                                             Ok(()) => {
                                                 self.preview_playing = true;
-                                                let mut st = self.state.lock().unwrap();
+                                                let mut st = self.state.lock().expect("Failed to acquire state lock");
                                                 st.status_message = "Preview playing...".to_string();
                                             }
                                             Err(e) => {
-                                                let mut st = self.state.lock().unwrap();
+                                                let mut st = self.state.lock().expect("Failed to acquire state lock");
                                                 st.status_message = format!("Preview failed: {}", e);
                                             }
                                         }
                                     }
                                 }
                                 None => {
-                                    let mut st = self.state.lock().unwrap();
+                                    let mut st = self.state.lock().expect("Failed to acquire state lock");
                                     st.status_message = "Select a music file to preview.".to_string();
                                 }
                             }
@@ -939,7 +940,7 @@ impl eframe::App for FMGoalMusicsApp {
                 let selection_changed = egui::ScrollArea::vertical()
                     .max_height(200.0)
                     .show(ui, |ui| {
-                        let mut state = self.state.lock().unwrap();
+                        let mut state = self.state.lock().expect("Failed to acquire state lock");
                         let mut new_selection = state.selected_music_index;
                         
                         for (idx, entry) in state.music_list.iter().enumerate() {
@@ -973,7 +974,7 @@ impl eframe::App for FMGoalMusicsApp {
                 ui.heading("🎺 Ambiance Sounds");
                 
                 ui.horizontal(|ui| {
-                    let mut state = self.state.lock().unwrap();
+                    let mut state = self.state.lock().expect("Failed to acquire state lock");
                     if ui.checkbox(&mut state.ambiance_enabled, "Enable Ambiance").changed() {
                         drop(state);
                         self.save_config();
@@ -986,7 +987,7 @@ impl eframe::App for FMGoalMusicsApp {
                             .add_filter("Audio", &["wav"])
                             .pick_file()
                         {
-                            let mut state = self.state.lock().unwrap();
+                            let mut state = self.state.lock().expect("Failed to acquire state lock");
                             state.goal_ambiance_path = Some(path.to_string_lossy().to_string());
                             drop(state);
                             self.save_config();
@@ -994,7 +995,7 @@ impl eframe::App for FMGoalMusicsApp {
                     }
                     
                     if ui.button("🗑️ Remove Cheer Sound").clicked() {
-                        let mut state = self.state.lock().unwrap();
+                        let mut state = self.state.lock().expect("Failed to acquire state lock");
                         state.goal_ambiance_path = None;
                         drop(state);
                         self.save_config();
@@ -1002,7 +1003,7 @@ impl eframe::App for FMGoalMusicsApp {
                 });
                 
                 {
-                    let state = self.state.lock().unwrap();
+                    let state = self.state.lock().expect("Failed to acquire state lock");
                     if let Some(ref path) = state.goal_ambiance_path {
                         let display_name = PathBuf::from(path)
                             .file_name()
@@ -1079,7 +1080,7 @@ impl eframe::App for FMGoalMusicsApp {
                 
                 // Update state and save if team selection changed
                 if league_changed {
-                    let mut state = self.state.lock().unwrap();
+                    let mut state = self.state.lock().expect("Failed to acquire state lock");
                     
                     if let (Some(ref league), Some(ref team_key)) = (&self.selected_league, &self.selected_team_key) {
                         if let Some(team) = db.find_team(league, team_key) {
@@ -1099,7 +1100,7 @@ impl eframe::App for FMGoalMusicsApp {
                 
                 // Display current selection
                 {
-                    let state = self.state.lock().unwrap();
+                    let state = self.state.lock().expect("Failed to acquire state lock");
                     if let Some(ref team) = state.selected_team {
                         ui.label(format!("✓ Selected: {} ({})", team.display_name, team.league));
                     } else {
@@ -1110,7 +1111,7 @@ impl eframe::App for FMGoalMusicsApp {
                 if ui.button("🗑️ Clear Selection").clicked() {
                     self.selected_league = None;
                     self.selected_team_key = None;
-                    let mut state = self.state.lock().unwrap();
+                    let mut state = self.state.lock().expect("Failed to acquire state lock");
                     state.selected_team = None;
                     drop(state);
                     self.save_config();
@@ -1145,10 +1146,10 @@ impl eframe::App for FMGoalMusicsApp {
                         if ui.button("Save frame...").clicked() {
                             if let Some(img) = &self.capture_preview.last_image {
                                 if let Err(e) = save_capture_image(img) {
-                                    let mut st = self.state.lock().unwrap();
+                                    let mut st = self.state.lock().expect("Failed to acquire state lock");
                                     st.status_message = format!("Failed to save capture: {}", e);
                                 } else {
-                                    let mut st = self.state.lock().unwrap();
+                                    let mut st = self.state.lock().expect("Failed to acquire state lock");
                                     st.status_message = "Saved capture preview to disk".to_string();
                                 }
                             }
@@ -1167,7 +1168,7 @@ impl eframe::App for FMGoalMusicsApp {
             
             // Capture region controls
             {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
                 ui.horizontal(|ui| {
                     ui.label("Capture Region:");
                     ui.add(egui::DragValue::new(&mut state.capture_region[0]).prefix("X: "));
@@ -1184,7 +1185,7 @@ impl eframe::App for FMGoalMusicsApp {
                 }
                 if ui.button("🔄 Reset Region").clicked() {
                     if let Some((screen_w, screen_h)) = self.screen_resolution {
-                        let mut state = self.state.lock().unwrap();
+                        let mut state = self.state.lock().expect("Failed to acquire state lock");
                         let capture_height = (screen_h / 4).max(1);
                         let capture_y = screen_h.saturating_sub(capture_height);
                         state.capture_region = [0, capture_y, screen_w, capture_height];
@@ -1195,7 +1196,7 @@ impl eframe::App for FMGoalMusicsApp {
 
             // Other configuration options
             {
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
                 
                 ui.horizontal(|ui| {
                     ui.label("OCR Threshold:");
@@ -1217,7 +1218,7 @@ impl eframe::App for FMGoalMusicsApp {
             
             ui.horizontal(|ui| {
                 ui.label("🎵 Music:");
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
                 let mut music_vol_percent = (state.music_volume * 100.0) as i32;
                 if ui.add(egui::Slider::new(&mut music_vol_percent, 0..=100).suffix("%")).changed() {
                     state.music_volume = (music_vol_percent as f32) / 100.0;
@@ -1228,7 +1229,7 @@ impl eframe::App for FMGoalMusicsApp {
             
             ui.horizontal(|ui| {
                 ui.label("🔉 Ambiance:");
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
                 let mut ambiance_vol_percent = (state.ambiance_volume * 100.0) as i32;
                 if ui.add(egui::Slider::new(&mut ambiance_vol_percent, 0..=100).suffix("%")).changed() {
                     state.ambiance_volume = (ambiance_vol_percent as f32) / 100.0;
@@ -1244,7 +1245,7 @@ impl eframe::App for FMGoalMusicsApp {
             
             ui.horizontal(|ui| {
                 ui.label("🎵 Music Length:");
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
                 let mut music_length_seconds = (state.music_length_ms as f32) / 1000.0;
                 if ui.add(egui::Slider::new(&mut music_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
                     state.music_length_ms = (music_length_seconds * 1000.0) as u64;
@@ -1255,7 +1256,7 @@ impl eframe::App for FMGoalMusicsApp {
             
             ui.horizontal(|ui| {
                 ui.label("🔉 Ambiance Length:");
-                let mut state = self.state.lock().unwrap();
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
                 let mut ambiance_length_seconds = (state.ambiance_length_ms as f32) / 1000.0;
                 if ui.add(egui::Slider::new(&mut ambiance_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
                     state.ambiance_length_ms = (ambiance_length_seconds * 1000.0) as u64;
@@ -1396,7 +1397,7 @@ impl eframe::App for FMGoalMusicsApp {
 
                     match capture_result {
                         Err(e) => {
-                            let mut st = self.state.lock().unwrap();
+                            let mut st = self.state.lock().expect("Failed to acquire state lock");
                             st.status_message = format!("Region selection failed: {}", e);
                             self.selecting_region = false;
                             self.region_selector = None;
@@ -1503,7 +1504,7 @@ impl eframe::App for FMGoalMusicsApp {
 
                 // Apply results outside of the closure to avoid borrowing self and sel simultaneously
                 if let Some([x, y, w, h]) = selection_done {
-                    let mut st = self.state.lock().unwrap();
+                    let mut st = self.state.lock().expect("Failed to acquire state lock");
                     st.capture_region = [x, y, w, h];
                     st.status_message = format!("Region selected: [{}, {}, {}, {}]", x, y, w, h);
                     // Restore window state
