@@ -37,6 +37,17 @@ REM Copy necessary DLLs and resources
 echo 📚 Copying resources...
 if exist "assets" xcopy /E /I "assets" "%BUILD_DIR%\assets\"
 
+REM Copy Tesseract OCR files for self-contained distribution
+if exist "assets\tesseract" (
+    echo 🔤 Copying Tesseract OCR files...
+    if exist "assets\tesseract\tesseract.dll" copy "assets\tesseract\tesseract.dll" "%BUILD_DIR%\"
+    if exist "assets\tesseract\liblept176.dll" copy "assets\tesseract\liblept176.dll" "%BUILD_DIR%\"
+    if exist "assets\tesseract\tessdata" xcopy /E /I "assets\tesseract\tessdata" "%BUILD_DIR%\tessdata\"
+) else (
+    echo ⚠️  Tesseract files not found in assets\tesseract
+    echo Users will need to install Tesseract OCR manually
+)
+
 REM Copy icon if exists
 if exist "assets\icon.ico" (
     echo 🎨 Copying application icon...
@@ -50,6 +61,7 @@ echo. >> "%BUILD_DIR%\README.txt"
 echo Installation Instructions: >> "%BUILD_DIR%\README.txt"
 echo 1. Double-click FM-Goal-Musics-gui.exe to run the application >> "%BUILD_DIR%\README.txt"
 echo 2. No installation required - portable application >> "%BUILD_DIR%\README.txt"
+echo 3. OCR functionality is included - no external setup needed >> "%BUILD_DIR%\README.txt"
 echo. >> "%BUILD_DIR%\README.txt"
 echo For more information, visit the project repository. >> "%BUILD_DIR%\README.txt%"
 

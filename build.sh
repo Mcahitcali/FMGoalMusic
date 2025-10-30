@@ -111,6 +111,28 @@ build_linux() {
         cp -r assets "$BUILD_DIR/"
     fi
     
+    # Copy default ambiance sound
+    if [ -f "goal_crowd_cheer.wav" ]; then
+        echo "🎵 Copying default ambiance sound..."
+        cp "goal_crowd_cheer.wav" "$BUILD_DIR/"
+    fi
+    
+    # Copy Tesseract OCR files for self-contained distribution
+    if [ -d "assets/tesseract" ]; then
+        echo "🔤 Copying Tesseract OCR files..."
+        if [ -f "assets/tesseract/tesseract.dll" ]; then
+            cp "assets/tesseract/tesseract.dll" "$BUILD_DIR/"
+        fi
+        if [ -f "assets/tesseract/liblept176.dll" ]; then
+            cp "assets/tesseract/liblept176.dll" "$BUILD_DIR/"
+        fi
+        if [ -d "assets/tesseract/tessdata" ]; then
+            cp -r "assets/tesseract/tessdata" "$BUILD_DIR/"
+        fi
+    else
+        echo "⚠️  Tesseract files not found - users will need to install Tesseract OCR manually"
+    fi
+    
     # Create AppImage directory structure
     APPDIR="$BUILD_DIR/$APP_NAME.AppDir"
     mkdir -p "$APPDIR/usr/bin"

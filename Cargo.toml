@@ -12,7 +12,7 @@ path = "src/gui_main.rs"
 scap = "0.1.0-beta.1"
 
 # OCR - Tesseract wrapper
-leptess = "0.14"
+leptess = "0.14.0"
 
 # Audio playback with MP3 support
 rodio = { version = "0.19", features = ["mp3"] }

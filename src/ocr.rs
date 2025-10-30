@@ -9,6 +9,21 @@ pub struct OcrManager {
 }
 
 impl OcrManager {
+    /// Set up Tesseract data path for Windows bundled distribution
+    fn setup_tesseract_data_path() -> Result<(), Box<dyn std::error::Error>> {
+        #[cfg(target_os = "windows")]
+        {
+            // Set TESSDATA_PREFIX to the current directory's tessdata folder
+            if std::path::Path::new("./tessdata").exists() {
+                std::env::set_var("TESSDATA_PREFIX", "./");
+                println!("✓ Using bundled Tesseract data from ./tessdata");
+            } else {
+                println!("⚠️  Bundled tessdata not found, falling back to system Tesseract");
+            }
+        }
+        Ok(())
+    }
+    
     /// Create a new OcrManager with optional manual threshold and morphological opening
     /// If threshold is 0, uses automatic Otsu thresholding
     pub fn new(_threshold: u8) -> Result<Self, Box<dyn std::error::Error>> {
@@ -18,6 +33,9 @@ impl OcrManager {
     /// Create OcrManager with full configuration options
     pub fn new_with_options(threshold: u8, enable_morph_open: bool) -> Result<Self, Box<dyn std::error::Error>> {
         println!("Initializing Tesseract OCR...");
+        
+        // Set up Tesseract data path for bundled distribution
+        Self::setup_tesseract_data_path()?;
         
         // Initialize Tesseract
         let mut tess = LepTess::new(None, "eng")?;
