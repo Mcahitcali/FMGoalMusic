@@ -22,8 +22,8 @@ config/
 .vscode/
 .idea/
 .windsurf/
-# docs/
-# *.md
+Doc/
+*.md
 *.swp
 *.swo
 *~
