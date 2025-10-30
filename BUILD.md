@@ -15,12 +15,24 @@ This guide explains how to build distributable packages for FM Goal Musics on di
 
 ### Windows
 ```batch
-# Build Windows executable and ZIP
+# Standard build (portable app)
 build_windows.bat
+
+# Smart Installer (recommended for distribution)
+build_windows_installer.bat
 
 # Or use the cross-platform script (if available)
 build.sh
 ```
+
+### Windows Installer Features
+The smart installer (`build_windows_installer.bat`) includes:
+- **Professional installation wizard** with license agreement
+- **Automatic Tesseract OCR detection** and installation guidance
+- **Start menu and desktop shortcuts**
+- **Proper uninstaller** with registry cleanup
+- **Component selection** (app, Tesseract, shortcuts)
+- **Windows version compatibility check**
 
 ### Linux
 ```bash
@@ -57,8 +69,10 @@ build.sh
 - `build/macos/FM Goal Musics-YYYYMMDD.dmg` - Distributable DMG
 
 ### Windows
-- `build/windows/fm-goal-musics-gui.exe` - Main executable
-- `build/windows/FM Goal Musics-Windows-YYYYMMDD.zip` - Distributable ZIP
+- `build/windows/FM-Goal-Musics-Setup-1.0.0.exe` - Professional installer (recommended)
+- `build/windows/fm-goal-musics-gui.exe` - Main executable (portable)
+- `build/windows/FM Goal Musics-Windows-Portable-YYYYMMDD.zip` - Portable ZIP
+- `build/windows/README.txt` - Installation and troubleshooting guide
 
 ### Linux
 - `build/linux/fm-goal-musics-gui` - Main executable
@@ -86,15 +100,16 @@ Edit the following files to customize application metadata:
 2. Users can drag the app to their Applications folder
 3. First-time users may need to right-click and "Open" to bypass Gatekeeper
 
-### Windows
+### Windows (Recommended)
+1. **Distribute the installer**: `FM-Goal-Musics-Setup-1.0.0.exe`
+2. Users run the installer - it handles everything automatically
+3. **Tesseract OCR**: Auto-detected and installation guidance provided
+4. Creates shortcuts and proper uninstaller
+
+### Windows (Portable Alternative)
 1. Distribute the ZIP file
 2. Users extract and run the executable
-3. No installation required (portable app)
-
-### Linux
-1. Distribute the TAR file
-2. Users extract and run the binary
-3. Or create an AppImage for better distribution
+3. Manual Tesseract OCR installation required for text recognition
 
 ## Troubleshooting
 

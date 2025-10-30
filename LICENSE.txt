@@ -1,0 +1,26 @@
+FM Goal Musics - License Agreement
+
+Copyright (c) 2024 FM Goal Musics
+
+This software is provided "as-is" for the purpose of enhancing the Football Manager gaming experience.
+
+PERMISSION IS GRANTED to:
+- Use this software for personal, non-commercial purposes
+- Install and run on multiple computers you own
+- Share with other Football Manager players
+
+RESTRICTIONS:
+- Do not redistribute for commercial purposes
+- Do not modify or reverse engineer the application
+- Do not remove copyright notices
+
+THIRD-PARTY COMPONENTS:
+This application includes open-source components with their respective licenses:
+- Tesseract OCR (Apache License 2.0)
+- Various Rust libraries (MIT/Apache licenses)
+
+DISCLAIMER:
+This software is not affiliated with or endorsed by Sports Interactive or Sega.
+Use responsibly and in accordance with Football Manager's terms of service.
+
+By installing this software, you agree to these terms.
