@@ -24,6 +24,11 @@ echo "🔨 Copying build scripts..."
 cp build_windows.bat "$TEMP_DIR/"
 cp BUILD.md "$TEMP_DIR/"
 
+# Copy one-click installers
+echo "🚀 Copying one-click installers..."
+cp INSTALL-WINDOWS.bat "$TEMP_DIR/"
+cp INSTALL-WINDOWS.ps1 "$TEMP_DIR/"
+
 # Copy assets
 echo "🎨 Copying assets..."
 cp -r assets/ "$TEMP_DIR/"
@@ -33,7 +38,32 @@ echo "📄 Creating Windows README..."
 cat > "$TEMP_DIR/README-Windows.md" << 'EOF'
 # FM Goal Musics - Windows Installation
 
-## Quick Start (No Rust knowledge needed!)
+## 🚀 SUPER EASY - One-Click Installation!
+
+### Option 1: PowerShell Installer (Recommended)
+1. Right-click `INSTALL-WINDOWS.ps1`
+2. Select "Run with PowerShell"
+3. Follow the prompts - everything is automatic!
+
+### Option 2: Batch Installer
+1. Double-click `INSTALL-WINDOWS.bat`
+2. Follow the prompts in the command window
+
+### What the installer does automatically:
+- ✅ Downloads and installs Rust (if needed)
+- ✅ Builds the application (10-15 minutes)
+- ✅ Creates ready-to-use executable
+- ✅ Includes all OCR functionality
+- ✅ No technical knowledge required!
+
+## 📦 What You Get After Installation:
+- `build\windows\fm-goal-musics-gui.exe` - Main application
+- Self-contained OCR (no external installation needed)
+- Portable ZIP file to share with friends
+
+## ⚙️ Manual Installation (Advanced)
+
+If you prefer manual setup:
 
 ### Prerequisites:
 - Windows 10 or 11
@@ -53,12 +83,6 @@ cat > "$TEMP_DIR/README-Windows.md" << 'EOF'
 3. **Run the app**:
    - Extract the generated ZIP file
    - Double-click `fm-goal-musics-gui.exe`
-
-### What You Get:
-- Self-contained Windows application
-- No external dependencies needed
-- Includes OCR functionality
-- Portable - no installation required
 
 ### Need Help?
 - Check BUILD.md for detailed instructions
