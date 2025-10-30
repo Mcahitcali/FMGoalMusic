@@ -1268,7 +1268,8 @@ impl eframe::App for FMGoalMusicsApp {
             if self.active_tab == AppTab::Help {
                 ui.separator();
 
-                ui.heading("📖 How to Use FM Goal Musics");
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.heading("📖 How to Use FM Goal Musics");
                 
                 ui.collapsing("🎵 Library Tab", |ui| {
                     ui.label("• Click '➕ Add Music File' to add celebration music (MP3, WAV, OGG)");
@@ -1355,6 +1356,7 @@ impl eframe::App for FMGoalMusicsApp {
                     ui.label("• Verify team exists in teams.json with correct variations");
                     ui.label("• Check Team Selection tab shows '✓ Selected: [team]'");
                     ui.label("• Ensure OCR is reading team name correctly");
+                });
                 });
             }
 
