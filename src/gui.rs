@@ -120,6 +120,35 @@ impl Default for AppState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AppTab {
+    Library,
+    Audio,
+    Detection,
+    Settings,
+    Help,
+}
+
+impl AppTab {
+    const ALL: [AppTab; 5] = [
+        AppTab::Library,
+        AppTab::Audio,
+        AppTab::Detection,
+        AppTab::Settings,
+        AppTab::Help,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            AppTab::Library => "Library",
+            AppTab::Audio => "Audio",
+            AppTab::Detection => "Detection",
+            AppTab::Settings => "Settings",
+            AppTab::Help => "Help",
+        }
+    }
+}
+
 /// Main GUI application
 enum DetectionCommand {
     StopAudio,
@@ -143,6 +172,7 @@ pub struct FMGoalMusicsApp {
     team_database: Option<crate::teams::TeamDatabase>,
     selected_league: Option<String>,
     selected_team_key: Option<String>,
+    active_tab: AppTab,
 }
 
 impl FMGoalMusicsApp {
@@ -189,6 +219,7 @@ impl FMGoalMusicsApp {
             team_database,
             selected_league: None,
             selected_team_key: None,
+            active_tab: AppTab::Library,
         };
 
         // Load config and restore music list
