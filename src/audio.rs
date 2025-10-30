@@ -61,6 +61,19 @@ impl AudioManager {
         let cursor = std::io::Cursor::new(self.audio_data.clone());
         let decoder = Decoder::new(cursor)?;
 
+        // Stop any currently playing audio and reinitialize sink
+        {
+            let mut sink = self
+                .sink
+                .lock()
+                .map_err(|_| "Audio sink poisoned".to_string())?;
+            sink.stop();
+            // Clear any queued audio
+            if let Ok(new_sink) = Sink::try_new(&self.stream_handle) {
+                *sink = new_sink;
+            }
+        }
+        
         let sink = self
             .sink
             .lock()
@@ -87,17 +100,28 @@ impl AudioManager {
         let target_volume = *self.volume.lock()
             .map_err(|_| "Volume mutex poisoned".to_string())?;
         
+        // Stop any currently playing audio and reinitialize sink
         {
-            let sink = self
+            let mut sink = self
                 .sink
                 .lock()
                 .map_err(|_| "Audio sink poisoned".to_string())?;
-            
-            // Start at 0 volume
-            sink.set_volume(0.0);
-            sink.append(decoder);
-            sink.play();
-        } // Release lock
+            sink.stop();
+            // Clear any queued audio
+            if let Ok(new_sink) = Sink::try_new(&self.stream_handle) {
+                *sink = new_sink;
+            }
+        }
+        
+        let sink = self
+            .sink
+            .lock()
+            .map_err(|_| "Audio sink poisoned".to_string())?;
+        
+        // Start at 0 volume
+        sink.set_volume(0.0);
+        sink.append(decoder);
+        sink.play();
         
         // Spawn thread to gradually increase volume
         let sink_clone = Arc::clone(&self.sink);
@@ -137,8 +161,20 @@ impl AudioManager {
         let target_volume = *self.volume.lock()
             .map_err(|_| "Volume mutex poisoned".to_string())?;
         
-        // Create a fresh sink for this playback
-        let sink = self.get_fresh_sink()?;
+        // Stop any currently playing audio and use the existing sink
+        {
+            let mut sink = self.sink.lock()
+                .map_err(|_| "Audio sink poisoned".to_string())?;
+            sink.stop();
+            // Clear any queued audio
+            if let Ok(new_sink) = Sink::try_new(&self.stream_handle) {
+                *sink = new_sink;
+            }
+        }
+        
+        // Get the sink for playback
+        let sink = self.sink.lock()
+            .map_err(|_| "Audio sink poisoned".to_string())?;
         
         // Start at 0 volume
         sink.set_volume(0.0);
@@ -146,6 +182,7 @@ impl AudioManager {
         sink.play();
         
         // Spawn thread for fade-in effect and stopping
+        let sink_clone = Arc::clone(&self.sink);
         std::thread::spawn(move || {
             // Fade-in phase
             let steps = 50; // 50 steps for smooth transition
@@ -154,7 +191,9 @@ impl AudioManager {
             
             for i in 1..=steps {
                 std::thread::sleep(std::time::Duration::from_millis(step_duration));
-                sink.set_volume(volume_increment * i as f32);
+                if let Ok(sink) = sink_clone.lock() {
+                    sink.set_volume(volume_increment * i as f32);
+                }
             }
 
             // Wait for remaining duration (if any) then stop
@@ -164,7 +203,9 @@ impl AudioManager {
             }
 
             // Stop the audio
-            sink.stop();
+            if let Ok(sink) = sink_clone.lock() {
+                sink.stop();
+            }
         });
 
         Ok(())
@@ -175,16 +216,36 @@ impl AudioManager {
         let cursor = std::io::Cursor::new(self.audio_data.clone());
         let decoder = Decoder::new(cursor)?;
 
-        // Create a fresh sink for this playback
-        let sink = self.get_fresh_sink()?;
+        // Stop any currently playing audio and use the existing sink
+        {
+            let mut sink = self.sink.lock()
+                .map_err(|_| "Audio sink poisoned".to_string())?;
+            sink.stop();
+            // Clear any queued audio
+            if let Ok(new_sink) = Sink::try_new(&self.stream_handle) {
+                *sink = new_sink;
+            }
+        }
+        
+        // Get the sink for playback
+        let sink = self.sink.lock()
+            .map_err(|_| "Audio sink poisoned".to_string())?;
+        
+        // Apply current volume setting
+        let volume = *self.volume.lock()
+            .map_err(|_| "Volume mutex poisoned".to_string())?;
+        sink.set_volume(volume);
         
         sink.append(decoder);
         sink.play();
 
         // Spawn thread to stop audio after duration
+        let sink_clone = Arc::clone(&self.sink);
         std::thread::spawn(move || {
             thread::sleep(Duration::from_millis(max_duration_ms));
-            sink.stop();
+            if let Ok(sink) = sink_clone.lock() {
+                sink.stop();
+            }
         });
 
         Ok(())
