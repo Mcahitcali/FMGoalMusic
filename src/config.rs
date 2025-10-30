@@ -98,30 +98,10 @@ pub struct Config {
     /// Selected team for conditional audio playback
     #[serde(default)]
     pub selected_team: Option<SelectedTeam>,
-    
-    /// Music volume (0.0 to 1.0)
-    #[serde(default = "default_music_volume")]
-    pub music_volume: f32,
-    
-    /// Ambiance volume (0.0 to 1.0)
-    #[serde(default = "default_ambiance_volume")]
-    pub ambiance_volume: f32,
-    
-    /// Path to goal ambiance sound
-    #[serde(default)]
-    pub goal_ambiance_path: Option<String>,
 }
 
 fn default_ambiance_enabled() -> bool {
     true
-}
-
-fn default_music_volume() -> f32 {
-    1.0
-}
-
-fn default_ambiance_volume() -> f32 {
-    0.6
 }
 
 fn default_music_length() -> u64 {
@@ -149,9 +129,6 @@ impl Default for Config {
             music_length_ms: default_music_length(),
             ambiance_length_ms: default_ambiance_length(),
             selected_team: None,
-            music_volume: default_music_volume(),
-            ambiance_volume: default_ambiance_volume(),
-            goal_ambiance_path: None,
         }
     }
 }
