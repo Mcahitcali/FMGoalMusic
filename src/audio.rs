@@ -14,12 +14,13 @@ pub struct AudioManager {
 }
 
 impl AudioManager {
-    fn from_vec(audio_data: &Vec<u8>) -> Result<Self, Box<dyn std::error::Error>> {
+    fn from_vec(audio_data: Vec<u8>) -> Result<Self, Box<dyn std::error::Error>> {
         let (stream, stream_handle) = OutputStream::try_default()?;
         let sink = Sink::try_new(&stream_handle)?;
 
         // Warm up the decoder by decoding the audio once (but don't play it)
-        let cursor = std::io::Cursor::new(audio_data.as_slice());
+        // We need to clone the data because Decoder requires 'static
+        let cursor = std::io::Cursor::new(audio_data.clone());
         let decoder = Decoder::new(cursor)?;
 
         // Verify the audio can be decoded
@@ -30,7 +31,7 @@ impl AudioManager {
             _stream: stream,
             stream_handle,
             sink: Arc::new(Mutex::new(sink)),
-            audio_data: Arc::new(audio_data.to_vec()),
+            audio_data: Arc::new(audio_data),
             volume: Mutex::new(1.0),
         })
     }
@@ -56,7 +57,8 @@ impl AudioManager {
         let sink = Sink::try_new(&stream_handle)?;
 
         // Warm up the decoder by decoding the audio once (but don't play it)
-        let cursor = std::io::Cursor::new(data.as_slice());
+        // We need to clone the data because Decoder requires 'static
+        let cursor = std::io::Cursor::new((*data).clone());
         let decoder = Decoder::new(cursor)?;
 
         // Verify the audio can be decoded
@@ -75,7 +77,7 @@ impl AudioManager {
     /// Play the preloaded sound (non-blocking)
     /// This creates a new decoder from the in-memory data and plays it
     pub fn play_sound(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let cursor = std::io::Cursor::new(self.audio_data.as_slice());
+        let cursor = std::io::Cursor::new((*self.audio_data).clone());
         let decoder = Decoder::new(cursor)?;
 
         // Stop any currently playing audio and reinitialize sink
@@ -110,7 +112,7 @@ impl AudioManager {
     /// Play the preloaded sound with a fade-in effect
     /// Volume transitions from 0 to target volume over specified duration
     pub fn play_sound_with_fade(&self, fade_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let cursor = std::io::Cursor::new(self.audio_data.as_slice());
+        let cursor = std::io::Cursor::new((*self.audio_data).clone());
         let decoder = Decoder::new(cursor)?;
 
         // Get target volume
@@ -171,7 +173,7 @@ impl AudioManager {
     /// Play the preloaded sound with fade-in and automatic stop after specified duration
     /// Combines fade-in effect with timed stopping and fade-out
     pub fn play_sound_with_fade_and_limit(&self, fade_duration_ms: u64, max_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let cursor = std::io::Cursor::new(self.audio_data.as_slice());
+        let cursor = std::io::Cursor::new((*self.audio_data).clone());
         let decoder = Decoder::new(cursor)?;
 
         // Get target volume
@@ -250,7 +252,7 @@ impl AudioManager {
 
     /// Play the preloaded sound with automatic stop after specified duration (no fade)
     pub fn play_sound_with_limit(&self, max_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let cursor = std::io::Cursor::new(self.audio_data.as_slice());
+        let cursor = std::io::Cursor::new((*self.audio_data).clone());
         let decoder = Decoder::new(cursor)?;
 
         // Stop any currently playing audio and use the existing sink
