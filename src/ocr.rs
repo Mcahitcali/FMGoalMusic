@@ -110,7 +110,124 @@ impl OcrManager {
         // Clean up temp file
         let _ = std::fs::remove_file(&temp_path);
         
+        // If not detected with standard method, try alternative preprocessing for colored text
+        if !detected {
+            println!("[fm-goal-musics] Trying alternative preprocessing for colored text...");
+            if let Ok(alt_detected) = self.try_alternative_preprocessing(image) {
+                return Ok(alt_detected);
+            }
+        }
+        
         Ok(detected)
+    }
+    
+    /// Alternative preprocessing method for colored text on colored backgrounds
+    fn try_alternative_preprocessing(&mut self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<bool, Box<dyn std::error::Error>> {
+        let (width, height) = image.dimensions();
+        let mut binary_img = GrayImage::new(width, height);
+        
+        // Method 1: Use color channel separation - try each RGB channel separately
+        for channel in 0..3 {
+            binary_img = GrayImage::new(width, height);
+            
+            for (x, y, pixel) in image.enumerate_pixels() {
+                // Use only one color channel
+                let channel_value = pixel[channel];
+                // Apply aggressive threshold for this channel
+                let value = if channel_value > 128 { 255 } else { 0 };
+                binary_img.put_pixel(x, y, Luma([value]));
+            }
+            
+            // Apply morphological opening if enabled
+            if self.enable_morph_open {
+                binary_img = self.morphological_opening(&binary_img);
+            }
+            
+            // Try OCR with this channel
+            let temp_path = std::env::temp_dir().join(format!("ocr_temp_ch{}.png", channel));
+            binary_img.save(&temp_path)?;
+            self.tess.set_image(&temp_path)?;
+            
+            let text = self.tess.get_utf8_text()?;
+            let text = text.trim().to_uppercase();
+            
+            println!("[fm-goal-musics] Alt OCR (channel {}): '{}'", channel, text);
+            
+            // Clean up
+            let _ = std::fs::remove_file(&temp_path);
+            
+            if text.contains("GOAL FOR") {
+                println!("[fm-goal-musics] 🎯 GOAL DETECTED with alternative channel {} preprocessing!", channel);
+                return Ok(true);
+            }
+        }
+        
+        // Method 2: Use edge detection approach
+        binary_img = self.edge_based_preprocessing(image);
+        
+        let temp_path = std::env::temp_dir().join("ocr_temp_edge.png");
+        binary_img.save(&temp_path)?;
+        self.tess.set_image(&temp_path)?;
+        
+        let text = self.tess.get_utf8_text()?;
+        let text = text.trim().to_uppercase();
+        
+        println!("[fm-goal-musics] Alt OCR (edge): '{}'", text);
+        
+        // Clean up
+        let _ = std::fs::remove_file(&temp_path);
+        
+        if text.contains("GOAL FOR") {
+            println!("[fm-goal-musics] 🎯 GOAL DETECTED with edge-based preprocessing!");
+            return Ok(true);
+        }
+        
+        Ok(false)
+    }
+    
+    /// Edge-based preprocessing for text on colored backgrounds
+    fn edge_based_preprocessing(&self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> GrayImage {
+        let (width, height) = image.dimensions();
+        let mut gray = GrayImage::new(width, height);
+        let mut edges = GrayImage::new(width, height);
+        
+        // Convert to grayscale first
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = image.get_pixel(x, y);
+                let gray_val = (0.299 * pixel[0] as f32 + 0.587 * pixel[1] as f32 + 0.114 * pixel[2] as f32) as u8;
+                gray.put_pixel(x, y, Luma([gray_val]));
+            }
+        }
+        
+        // Apply Sobel edge detection
+        for y in 1..height-1 {
+            for x in 1..width-1 {
+                let tl = gray.get_pixel(x-1, y-1)[0] as i32;
+                let tm = gray.get_pixel(x, y-1)[0] as i32;
+                let tr = gray.get_pixel(x+1, y-1)[0] as i32;
+                let ml = gray.get_pixel(x-1, y)[0] as i32;
+                let mr = gray.get_pixel(x+1, y)[0] as i32;
+                let bl = gray.get_pixel(x-1, y+1)[0] as i32;
+                let bm = gray.get_pixel(x, y+1)[0] as i32;
+                let br = gray.get_pixel(x+1, y+1)[0] as i32;
+                
+                let gx = -tl - 2*ml - bl + tr + 2*mr + br;
+                let gy = -tl - 2*tm - tr + bl + 2*bm + br;
+                let magnitude = ((gx*gx + gy*gy) as f32).sqrt() as u8;
+                
+                edges.put_pixel(x, y, Luma([magnitude]));
+            }
+        }
+        
+        // Threshold edges
+        let mut thresholded = GrayImage::new(width, height);
+        for (x, y, pixel) in edges.enumerate_pixels() {
+            let value = if pixel[0] > 50 { 255 } else { 0 };
+            thresholded.put_pixel(x, y, Luma([value]));
+        }
+        
+        thresholded
     }
     
     /// Detect goal and extract team name from "GOAL FOR [team_name]" pattern
@@ -168,7 +285,64 @@ impl OcrManager {
             }
         }
         
+        // If not detected with standard method, try alternative preprocessing for colored text
+        if text.is_empty() || !text.contains("GOAL FOR") {
+            println!("[fm-goal-musics] Trying alternative preprocessing for colored text (team)...");
+            if let Ok(alt_detected) = self.try_alternative_preprocessing(image) {
+                if alt_detected {
+                    // Try to extract team name with alternative preprocessing
+                    if let Ok(team_name) = self.extract_team_with_alternative(image) {
+                        return Ok(Some(team_name));
+                    }
+                }
+            }
+        }
+        
         Ok(None)
+    }
+    
+    /// Extract team name using alternative preprocessing methods
+    fn extract_team_with_alternative(&mut self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<String, Box<dyn std::error::Error>> {
+        let (width, height) = image.dimensions();
+        let mut binary_img = GrayImage::new(width, height);
+        
+        // Try each RGB channel separately for team extraction
+        for channel in 0..3 {
+            binary_img = GrayImage::new(width, height);
+            
+            for (x, y, pixel) in image.enumerate_pixels() {
+                let channel_value = pixel[channel];
+                let value = if channel_value > 128 { 255 } else { 0 };
+                binary_img.put_pixel(x, y, Luma([value]));
+            }
+            
+            if self.enable_morph_open {
+                binary_img = self.morphological_opening(&binary_img);
+            }
+            
+            let temp_path = std::env::temp_dir().join(format!("ocr_team_ch{}.png", channel));
+            binary_img.save(&temp_path)?;
+            self.tess.set_image(&temp_path)?;
+            
+            let text = self.tess.get_utf8_text()?;
+            let text = text.trim().to_uppercase();
+            
+            println!("[fm-goal-musics] Alt Team OCR (channel {}): '{}'", channel, text);
+            
+            let _ = std::fs::remove_file(&temp_path);
+            
+            if let Some(pos) = text.find("GOAL FOR") {
+                let after_goal_for = &text[pos + 8..];
+                let team_name = after_goal_for.trim();
+                
+                if !team_name.is_empty() {
+                    println!("[fm-goal-musics] 🎯 TEAM DETECTED with alternative channel {}: '{}'", channel, team_name);
+                    return Ok(team_name.to_string());
+                }
+            }
+        }
+        
+        Err("No team detected with alternative methods".into())
     }
     
     /// Apply morphological opening (erosion followed by dilation)
@@ -272,7 +446,7 @@ impl OcrManager {
         threshold
     }
     
-    /// Convert RGBA image to grayscale
+    /// Convert RGBA image to grayscale with enhanced contrast for colored text
     fn rgba_to_grayscale(&self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> GrayImage {
         let (width, height) = image.dimensions();
         let mut gray = GrayImage::new(width, height);
@@ -280,11 +454,30 @@ impl OcrManager {
         for y in 0..height {
             for x in 0..width {
                 let pixel = image.get_pixel(x, y);
-                // Standard grayscale conversion: 0.299*R + 0.587*G + 0.114*B
-                let gray_value = (0.299 * pixel[0] as f32 
-                                + 0.587 * pixel[1] as f32 
-                                + 0.114 * pixel[2] as f32) as u8;
-                gray.put_pixel(x, y, Luma([gray_value]));
+                let r = pixel[0] as f32;
+                let g = pixel[1] as f32;
+                let b = pixel[2] as f32;
+                let a = pixel[3] as f32;
+                
+                // Enhanced grayscale conversion that better handles colored text
+                // Use maximum channel value for better contrast with colored text
+                let max_channel = r.max(g).max(b);
+                let min_channel = r.min(g).min(b);
+                let saturation = if max_channel > 0.0 { (max_channel - min_channel) / max_channel } else { 0.0 };
+                
+                // Combine standard grayscale with saturation enhancement
+                let standard_gray = 0.299 * r + 0.587 * g + 0.114 * b;
+                let enhanced_gray = if saturation > 0.3 {
+                    // High saturation - use max channel for better text contrast
+                    max_channel
+                } else {
+                    // Low saturation - use standard grayscale
+                    standard_gray
+                };
+                
+                // Apply contrast enhancement
+                let contrast_enhanced = ((enhanced_gray - 128.0) * 1.5 + 128.0).max(0.0).min(255.0);
+                gray.put_pixel(x, y, Luma([contrast_enhanced as u8]));
             }
         }
         
