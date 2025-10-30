@@ -99,6 +99,14 @@ impl OcrManager {
         // Look for the exact phrase "GOAL FOR" which appears in Football Manager
         let detected = text.contains("GOAL FOR");
         
+        // Debug: Print OCR results for troubleshooting
+        if !text.is_empty() {
+            println!("[fm-goal-musics] OCR Result: '{}'", text);
+            if detected {
+                println!("[fm-goal-musics] 🎯 GOAL DETECTED!");
+            }
+        }
+        
         // Clean up temp file
         let _ = std::fs::remove_file(&temp_path);
         
@@ -141,6 +149,11 @@ impl OcrManager {
         let text = self.tess.get_utf8_text()?;
         let text = text.trim().to_uppercase();
         
+        // Debug: Print OCR results for troubleshooting
+        if !text.is_empty() {
+            println!("[fm-goal-musics] OCR Result (team): '{}'", text);
+        }
+        
         // Clean up temp file
         let _ = std::fs::remove_file(&temp_path);
         
@@ -150,6 +163,7 @@ impl OcrManager {
             let team_name = after_goal_for.trim();
             
             if !team_name.is_empty() {
+                println!("[fm-goal-musics] 🎯 GOAL DETECTED FOR TEAM: '{}'", team_name);
                 return Ok(Some(team_name.to_string()));
             }
         }
