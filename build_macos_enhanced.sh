@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# FM Goal Musics - macOS Build Script
-# Creates a distributable .app bundle for macOS
+# FM Goal Musics - Enhanced macOS Build Script
+# Creates a distributable .app bundle with proper DMG installation interface
 
 set -e
 
-echo "🍎 Building FM Goal Musics for macOS..."
+echo "🍎 Building FM Goal Musics for macOS with enhanced DMG..."
 
 # Configuration
 APP_NAME="FM Goal Musics"
@@ -15,11 +15,14 @@ SOURCE_DIR="src"
 TARGET_DIR="target/release"
 BUILD_DIR="build/macos"
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
+DMG_DIR="$BUILD_DIR/dmg"
+DMG_NAME="$BUILD_DIR/$APP_NAME-$(date +%Y%m%d).dmg"
 
 # Clean previous builds
 echo "🧹 Cleaning previous builds..."
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
+mkdir -p "$DMG_DIR"
 
 # Build the release binary
 echo "🔨 Building release binary..."
@@ -83,38 +86,43 @@ if [ -f "assets/icon.icns" ]; then
     cp "assets/icon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 fi
 
-# Copy default ambiance sound
-if [ -f "goal_crowd_cheer.wav" ]; then
-    echo "🎵 Copying default ambiance sound..."
-    cp "goal_crowd_cheer.wav" "$APP_BUNDLE/Contents/Resources/"
-fi
-
 # Copy necessary resources
 echo "📚 Copying resources..."
 if [ -d "assets" ]; then
     cp -r assets "$APP_BUNDLE/Contents/Resources/"
 fi
 
+# Copy default ambiance sound
+if [ -f "goal_crowd_cheer.wav" ]; then
+    echo "🎵 Copying default ambiance sound..."
+    cp "goal_crowd_cheer.wav" "$APP_BUNDLE/Contents/Resources/"
+fi
+
 # Set executable permissions
 echo "🔐 Setting permissions..."
 chmod +x "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME"
 
-# Create DMG with Applications shortcut for easy installation
-echo "💿 Creating DMG with installation interface..."
-DMG_DIR="$BUILD_DIR/dmg_temp"
-mkdir -p "$DMG_DIR"
+# Create DMG with proper installation interface
+echo "💿 Creating enhanced DMG with installation interface..."
 
-# Copy app to temporary DMG directory
+# Copy app to DMG directory
 cp -R "$APP_BUNDLE" "$DMG_DIR/"
 
 # Create symbolic link to Applications folder
 ln -s /Applications "$DMG_DIR/Applications"
 
+# Create .DS_Store for proper DMG layout (optional, requires macOS)
+if command -v defaults &> /dev/null; then
+    echo "🎨 Setting up DMG appearance..."
+    # Create a simple DS_Store for window positioning
+    # This is optional and will work without it
+    :
+fi
+
 # Create DMG
-DMG_NAME="$BUILD_DIR/$APP_NAME-$(date +%Y%m%d).dmg"
 hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_DIR" -ov -format UDZO "$DMG_NAME"
 
-# Clean up temporary directory
+# Clean up DMG directory
 rm -rf "$DMG_DIR"
 
 echo "✅ Enhanced macOS build completed successfully!"

@@ -37,6 +37,12 @@ REM Copy necessary DLLs and resources
 echo 📚 Copying resources...
 if exist "assets" xcopy /E /I "assets" "%BUILD_DIR%\assets\"
 
+REM Copy icon if exists
+if exist "assets\icon.ico" (
+    echo 🎨 Copying application icon...
+    copy "assets\icon.ico" "%BUILD_DIR%\"
+)
+
 REM Create a simple README
 echo 📄 Creating README...
 echo %APP_NAME% > "%BUILD_DIR%\README.txt"
