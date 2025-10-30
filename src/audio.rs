@@ -1,12 +1,14 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 /// Audio manager that preloads audio into memory and provides non-blocking playback
 pub struct AudioManager {
     _stream: OutputStream,
     stream_handle: OutputStreamHandle,
-    sink: Mutex<Sink>,
+    sink: Arc<Mutex<Sink>>,
     audio_data: Vec<u8>,
     volume: Mutex<f32>,
 }
@@ -27,7 +29,7 @@ impl AudioManager {
         Ok(Self {
             _stream: stream,
             stream_handle,
-            sink: Mutex::new(sink),
+            sink: Arc::new(Mutex::new(sink)),
             audio_data,
             volume: Mutex::new(1.0),
         })
@@ -59,6 +61,19 @@ impl AudioManager {
         let cursor = std::io::Cursor::new(self.audio_data.clone());
         let decoder = Decoder::new(cursor)?;
 
+        // Stop any currently playing audio and reinitialize sink
+        {
+            let mut sink = self
+                .sink
+                .lock()
+                .map_err(|_| "Audio sink poisoned".to_string())?;
+            sink.stop();
+            // Clear any queued audio
+            if let Ok(new_sink) = Sink::try_new(&self.stream_handle) {
+                *sink = new_sink;
+            }
+        }
+        
         let sink = self
             .sink
             .lock()
@@ -71,6 +86,213 @@ impl AudioManager {
         
         sink.append(decoder);
         sink.play();
+
+        Ok(())
+    }
+    
+    /// Play the preloaded sound with a fade-in effect
+    /// Volume transitions from 0 to target volume over specified duration
+    pub fn play_sound_with_fade(&self, fade_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let cursor = std::io::Cursor::new(self.audio_data.clone());
+        let decoder = Decoder::new(cursor)?;
+
+        // Get target volume
+        let target_volume = *self.volume.lock()
+            .map_err(|_| "Volume mutex poisoned".to_string())?;
+        
+        // Stop any currently playing audio and reinitialize sink
+        {
+            let mut sink = self
+                .sink
+                .lock()
+                .map_err(|_| "Audio sink poisoned".to_string())?;
+            sink.stop();
+            // Clear any queued audio
+            if let Ok(new_sink) = Sink::try_new(&self.stream_handle) {
+                *sink = new_sink;
+            }
+        }
+        
+        let sink = self
+            .sink
+            .lock()
+            .map_err(|_| "Audio sink poisoned".to_string())?;
+        
+        // Start at 0 volume
+        sink.set_volume(0.0);
+        sink.append(decoder);
+        sink.play();
+        
+        // Spawn thread to gradually increase volume
+        let sink_clone = Arc::clone(&self.sink);
+        std::thread::spawn(move || {
+            let steps = 50; // 50 steps for smooth transition
+            let step_duration = fade_duration_ms / steps;
+            let volume_increment = target_volume / steps as f32;
+            
+            for i in 1..=steps {
+                std::thread::sleep(std::time::Duration::from_millis(step_duration));
+                if let Ok(sink) = sink_clone.lock() {
+                    sink.set_volume(volume_increment * i as f32);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Get or create a fresh sink for playback
+    fn get_fresh_sink(&self) -> Result<Sink, Box<dyn std::error::Error>> {
+        let sink = Sink::try_new(&self.stream_handle)?;
+        // Apply current volume setting
+        let volume = *self.volume.lock()
+            .map_err(|_| "Volume mutex poisoned".to_string())?;
+        sink.set_volume(volume);
+        Ok(sink)
+    }
+
+    /// Play the preloaded sound with fade-in and automatic stop after specified duration
+    /// Combines fade-in effect with timed stopping and fade-out
+    pub fn play_sound_with_fade_and_limit(&self, fade_duration_ms: u64, max_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let cursor = std::io::Cursor::new(self.audio_data.clone());
+        let decoder = Decoder::new(cursor)?;
+
+        // Get target volume
+        let target_volume = *self.volume.lock()
+            .map_err(|_| "Volume mutex poisoned".to_string())?;
+        
+        // Stop any currently playing audio and use the existing sink
+        {
+            let mut sink = self.sink.lock()
+                .map_err(|_| "Audio sink poisoned".to_string())?;
+            sink.stop();
+            // Clear any queued audio
+            if let Ok(new_sink) = Sink::try_new(&self.stream_handle) {
+                *sink = new_sink;
+            }
+        }
+        
+        // Get the sink for playback
+        let sink = self.sink.lock()
+            .map_err(|_| "Audio sink poisoned".to_string())?;
+        
+        // Start at 0 volume
+        sink.set_volume(0.0);
+        sink.append(decoder);
+        sink.play();
+        
+        // Spawn thread for fade-in effect, playback, and fade-out stopping
+        let sink_clone = Arc::clone(&self.sink);
+        std::thread::spawn(move || {
+            // Fade-in phase
+            let steps = 50; // 50 steps for smooth transition
+            let step_duration = fade_duration_ms / steps;
+            let volume_increment = target_volume / steps as f32;
+            
+            for i in 1..=steps {
+                std::thread::sleep(std::time::Duration::from_millis(step_duration));
+                if let Ok(sink) = sink_clone.lock() {
+                    sink.set_volume(volume_increment * i as f32);
+                }
+            }
+
+            // Calculate fade-out timing
+            let fade_out_duration = 2000; // 2 seconds fade-out
+            let playback_duration = if max_duration_ms > fade_out_duration {
+                max_duration_ms - fade_out_duration
+            } else {
+                0 // No playback time, just fade in and immediately fade out
+            };
+
+            // Wait for normal playback duration
+            if playback_duration > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(playback_duration));
+            }
+
+            // Fade-out phase
+            let fade_out_steps = 50;
+            let fade_out_step_duration = fade_out_duration / fade_out_steps;
+            let volume_decrement = target_volume / fade_out_steps as f32;
+            
+            for i in 1..=fade_out_steps {
+                std::thread::sleep(std::time::Duration::from_millis(fade_out_step_duration));
+                if let Ok(sink) = sink_clone.lock() {
+                    let current_volume = target_volume - (volume_decrement * i as f32);
+                    sink.set_volume(current_volume.max(0.0));
+                }
+            }
+
+            // Stop the audio after fade-out completes
+            if let Ok(sink) = sink_clone.lock() {
+                sink.stop();
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Play the preloaded sound with automatic stop after specified duration (no fade)
+    pub fn play_sound_with_limit(&self, max_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
+        let cursor = std::io::Cursor::new(self.audio_data.clone());
+        let decoder = Decoder::new(cursor)?;
+
+        // Stop any currently playing audio and use the existing sink
+        {
+            let mut sink = self.sink.lock()
+                .map_err(|_| "Audio sink poisoned".to_string())?;
+            sink.stop();
+            // Clear any queued audio
+            if let Ok(new_sink) = Sink::try_new(&self.stream_handle) {
+                *sink = new_sink;
+            }
+        }
+        
+        // Get the sink for playback
+        let sink = self.sink.lock()
+            .map_err(|_| "Audio sink poisoned".to_string())?;
+        
+        // Apply current volume setting
+        let volume = *self.volume.lock()
+            .map_err(|_| "Volume mutex poisoned".to_string())?;
+        sink.set_volume(volume);
+        
+        sink.append(decoder);
+        sink.play();
+
+        // Spawn thread to stop audio after duration with fade-out
+        let sink_clone = Arc::clone(&self.sink);
+        std::thread::spawn(move || {
+            // Calculate fade-out timing
+            let fade_out_duration = 2000; // 2 seconds fade-out
+            let playback_duration = if max_duration_ms > fade_out_duration {
+                max_duration_ms - fade_out_duration
+            } else {
+                0 // No playback time, just fade out immediately
+            };
+
+            // Wait for normal playback duration
+            if playback_duration > 0 {
+                thread::sleep(Duration::from_millis(playback_duration));
+            }
+
+            // Fade-out phase
+            let fade_out_steps = 50;
+            let fade_out_step_duration = fade_out_duration / fade_out_steps;
+            let volume_decrement = volume / fade_out_steps as f32;
+            
+            for i in 1..=fade_out_steps {
+                thread::sleep(Duration::from_millis(fade_out_step_duration));
+                if let Ok(sink) = sink_clone.lock() {
+                    let current_volume = volume - (volume_decrement * i as f32);
+                    sink.set_volume(current_volume.max(0.0));
+                }
+            }
+
+            // Stop the audio after fade-out completes
+            if let Ok(sink) = sink_clone.lock() {
+                sink.stop();
+            }
+        });
 
         Ok(())
     }

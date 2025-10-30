@@ -71,6 +71,30 @@ pub struct Config {
     /// Index of the selected music file
     pub selected_music_index: Option<usize>,
     
+    /// Path to goal ambiance sound
+    #[serde(default)]
+    pub goal_ambiance_path: Option<String>,
+    
+    /// Whether ambiance sounds are enabled
+    #[serde(default = "default_ambiance_enabled")]
+    pub ambiance_enabled: bool,
+    
+    /// Music volume (0.0 to 1.0)
+    #[serde(default = "default_music_volume")]
+    pub music_volume: f32,
+    
+    /// Ambiance volume (0.0 to 1.0)
+    #[serde(default = "default_ambiance_volume")]
+    pub ambiance_volume: f32,
+    
+    /// Music length in milliseconds (0 = no limit)
+    #[serde(default = "default_music_length")]
+    pub music_length_ms: u64,
+    
+    /// Ambiance length in milliseconds (0 = no limit)  
+    #[serde(default = "default_ambiance_length")]
+    pub ambiance_length_ms: u64,
+    
     /// Selected team for conditional audio playback
     #[serde(default)]
     pub selected_team: Option<SelectedTeam>,
@@ -88,6 +112,26 @@ pub struct Config {
     pub goal_ambiance_path: Option<String>,
 }
 
+fn default_ambiance_enabled() -> bool {
+    true
+}
+
+fn default_music_volume() -> f32 {
+    1.0
+}
+
+fn default_ambiance_volume() -> f32 {
+    0.6
+}
+
+fn default_music_length() -> u64 {
+    20000 // 20 seconds
+}
+
+fn default_ambiance_length() -> u64 {
+    20000 // 20 seconds
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -98,6 +142,12 @@ impl Default for Config {
             bench_frames: 500,
             music_list: Vec::new(),
             selected_music_index: None,
+            goal_ambiance_path: Some("goal_crowd_cheer.wav".to_string()),
+            ambiance_enabled: default_ambiance_enabled(),
+            music_volume: default_music_volume(),
+            ambiance_volume: default_ambiance_volume(),
+            music_length_ms: default_music_length(),
+            ambiance_length_ms: default_ambiance_length(),
             selected_team: None,
             music_volume: default_music_volume(),
             ambiance_volume: default_ambiance_volume(),
