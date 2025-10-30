@@ -123,28 +123,25 @@ impl Default for AppState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AppTab {
     Library,
-    Audio,
-    Detection,
+    TeamSelection,
     Settings,
     Help,
 }
 
 impl AppTab {
-    const ALL: [AppTab; 5] = [
+    const ALL: [AppTab; 4] = [
         AppTab::Library,
-        AppTab::Audio,
-        AppTab::Detection,
+        AppTab::TeamSelection,
         AppTab::Settings,
         AppTab::Help,
     ];
 
     fn label(self) -> &'static str {
         match self {
-            AppTab::Library => "Library",
-            AppTab::Audio => "Audio",
-            AppTab::Detection => "Detection",
-            AppTab::Settings => "Settings",
-            AppTab::Help => "Help",
+            AppTab::Library => "🎵 Library",
+            AppTab::TeamSelection => "⚽ Team Selection",
+            AppTab::Settings => "⚙️ Settings",
+            AppTab::Help => "ℹ️ Help",
         }
     }
 }
@@ -777,7 +774,28 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
 impl eframe::App for FMGoalMusicsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("⚽ FM Goal Musics");
+            // Header with title and Start/Stop button
+            ui.horizontal(|ui| {
+                // Start/Stop Detection button on the left
+                let state = self.state.lock().unwrap();
+                let is_stopped = state.process_state == ProcessState::Stopped;
+                let is_running = state.process_state == ProcessState::Running;
+                drop(state);
+
+                let button_text = if is_running { "⏹️ Stop Detection" } else { "▶️ Start Detection" };
+                let button_color = if is_running { egui::Color32::from_rgb(244, 67, 54) } else { egui::Color32::from_rgb(76, 175, 80) };
+                
+                if ui.add(egui::Button::new(button_text).fill(button_color)).clicked() {
+                    if is_running {
+                        self.stop_detection();
+                    } else if is_stopped {
+                        self.start_detection();
+                    }
+                }
+
+                ui.separator();
+                ui.heading("⚽ FM Goal Musics");
+            });
             ui.separator();
 
             // Status bar
@@ -801,7 +819,6 @@ impl eframe::App for FMGoalMusicsApp {
                     ui.label(format!("| Window: {}x{}", window_width, window_height));
                 });
             }
-            
 
             ui.separator();
             ui.horizontal_wrapped(|ui| {
@@ -838,6 +855,82 @@ impl eframe::App for FMGoalMusicsApp {
                         self.stop_preview();
                         self.save_config();
                     }
+
+                    // Preview button
+                    let preview_active = self.preview_playing;
+                    let preview_label = if preview_active {
+                        "🔇 Stop Preview"
+                    } else {
+                        "▶️ Preview"
+                    };
+
+                    if ui.button(preview_label).clicked() {
+                        if preview_active {
+                            self.stop_preview();
+                        } else {
+                            let selected_path = {
+                                let state = self.state.lock().unwrap();
+                                state
+                                    .selected_music_index
+                                    .and_then(|idx| state.music_list.get(idx))
+                                    .map(|entry| entry.path.clone())
+                            };
+
+                            match selected_path {
+                                Some(path) => {
+                                    let needs_reload = self
+                                        .preview_audio
+                                        .as_ref()
+                                        .map_or(true, |p| p.path.as_path() != path.as_path());
+
+                                    let audio_data = match self.get_or_load_audio_data(&path) {
+                                        Ok(data) => data,
+                                        Err(err) => {
+                                            let mut st = self.state.lock().unwrap();
+                                            st.status_message = err;
+                                            return;
+                                        }
+                                    };
+
+                                    if needs_reload {
+                                        self.stop_preview();
+                                        match AudioManager::from_preloaded(Arc::clone(&audio_data)) {
+                                            Ok(manager) => {
+                                                self.preview_audio = Some(PreviewAudio {
+                                                    manager,
+                                                    path: path.clone(),
+                                                });
+                                            }
+                                            Err(e) => {
+                                                let mut st = self.state.lock().unwrap();
+                                                st.status_message = format!("Preview init failed: {}", e);
+                                                return;
+                                            }
+                                        }
+                                    }
+
+                                    if let Some(preview) = self.preview_audio.as_ref() {
+                                        preview.manager.stop();
+                                        match preview.manager.play_sound() {
+                                            Ok(()) => {
+                                                self.preview_playing = true;
+                                                let mut st = self.state.lock().unwrap();
+                                                st.status_message = "Preview playing...".to_string();
+                                            }
+                                            Err(e) => {
+                                                let mut st = self.state.lock().unwrap();
+                                                st.status_message = format!("Preview failed: {}", e);
+                                            }
+                                        }
+                                    }
+                                }
+                                None => {
+                                    let mut st = self.state.lock().unwrap();
+                                    st.status_message = "Select a music file to preview.".to_string();
+                                }
+                            }
+                        }
+                    }
                 });
 
                 ui.separator();
@@ -873,114 +966,57 @@ impl eframe::App for FMGoalMusicsApp {
                 if selection_changed {
                     self.save_config();
                 }
-            }
 
-            // Audio tab
-            if self.active_tab == AppTab::Audio {
                 ui.separator();
 
-                // Volume Controls section
-                ui.heading("🔊 Volume Controls");
-            
-            ui.horizontal(|ui| {
-                ui.label("🎵 Music:");
-                let mut state = self.state.lock().unwrap();
-                let mut music_vol_percent = (state.music_volume * 100.0) as i32;
-                if ui.add(egui::Slider::new(&mut music_vol_percent, 0..=100).suffix("%")).changed() {
-                    state.music_volume = (music_vol_percent as f32) / 100.0;
-                    drop(state);
-                    self.save_config();
-                }
-            });
-            
-            ui.horizontal(|ui| {
-                ui.label("🔉 Ambiance:");
-                let mut state = self.state.lock().unwrap();
-                let mut ambiance_vol_percent = (state.ambiance_volume * 100.0) as i32;
-                if ui.add(egui::Slider::new(&mut ambiance_vol_percent, 0..=100).suffix("%")).changed() {
-                    state.ambiance_volume = (ambiance_vol_percent as f32) / 100.0;
-                    drop(state);
-                    self.save_config();
-                }
-            });
-
-            ui.separator();
-
-            // Sound Length Controls section
-            ui.heading("⏱️ Sound Length Controls");
-            
-            ui.horizontal(|ui| {
-                ui.label("🎵 Music Length:");
-                let mut state = self.state.lock().unwrap();
-                let mut music_length_seconds = (state.music_length_ms as f32) / 1000.0;
-                if ui.add(egui::Slider::new(&mut music_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
-                    state.music_length_ms = (music_length_seconds * 1000.0) as u64;
-                    drop(state);
-                    self.save_config();
-                }
-            });
-            
-            ui.horizontal(|ui| {
-                ui.label("🔉 Ambiance Length:");
-                let mut state = self.state.lock().unwrap();
-                let mut ambiance_length_seconds = (state.ambiance_length_ms as f32) / 1000.0;
-                if ui.add(egui::Slider::new(&mut ambiance_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
-                    state.ambiance_length_ms = (ambiance_length_seconds * 1000.0) as u64;
-                    drop(state);
-                    self.save_config();
-                }
-            });
-
-            ui.separator();
-
-            // Ambiance Sound section
-            ui.heading("🎺 Ambiance Sounds");
-            
-            ui.horizontal(|ui| {
-                let mut state = self.state.lock().unwrap();
-                if ui.checkbox(&mut state.ambiance_enabled, "Enable Ambiance").changed() {
-                    drop(state);
-                    self.save_config();
-                }
-            });
-            
-            ui.horizontal(|ui| {
-                if ui.button("➕ Add Goal Cheer Sound").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Audio", &["wav"])
-                        .pick_file()
-                    {
-                        let mut state = self.state.lock().unwrap();
-                        state.goal_ambiance_path = Some(path.to_string_lossy().to_string());
+                // Ambiance Sounds section
+                ui.heading("🎺 Ambiance Sounds");
+                
+                ui.horizontal(|ui| {
+                    let mut state = self.state.lock().unwrap();
+                    if ui.checkbox(&mut state.ambiance_enabled, "Enable Ambiance").changed() {
                         drop(state);
                         self.save_config();
                     }
-                }
+                });
                 
-                if ui.button("🗑️ Remove Cheer Sound").clicked() {
-                    let mut state = self.state.lock().unwrap();
-                    state.goal_ambiance_path = None;
-                    drop(state);
-                    self.save_config();
-                }
-            });
-            
-            {
-                let state = self.state.lock().unwrap();
-                if let Some(ref path) = state.goal_ambiance_path {
-                    let display_name = PathBuf::from(path)
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_else(|| path.clone());
-                    ui.label(format!("✓ Crowd cheer: {}", display_name));
-                } else {
-                    ui.label("ℹ No crowd cheer sound selected");
+                ui.horizontal(|ui| {
+                    if ui.button("➕ Add Goal Cheer Sound").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Audio", &["wav"])
+                            .pick_file()
+                        {
+                            let mut state = self.state.lock().unwrap();
+                            state.goal_ambiance_path = Some(path.to_string_lossy().to_string());
+                            drop(state);
+                            self.save_config();
+                        }
+                    }
+                    
+                    if ui.button("🗑️ Remove Cheer Sound").clicked() {
+                        let mut state = self.state.lock().unwrap();
+                        state.goal_ambiance_path = None;
+                        drop(state);
+                        self.save_config();
+                    }
+                });
+                
+                {
+                    let state = self.state.lock().unwrap();
+                    if let Some(ref path) = state.goal_ambiance_path {
+                        let display_name = PathBuf::from(path)
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| path.clone());
+                        ui.label(format!("✓ Crowd cheer: {}", display_name));
+                    } else {
+                        ui.label("ℹ No crowd cheer sound selected");
+                    }
                 }
             }
-            } // end Audio tab
 
-            // Detection tab
-            if self.active_tab == AppTab::Detection {
+            // Team Selection tab
+            if self.active_tab == AppTab::TeamSelection {
                 ui.separator();
 
                 // Team Selection section
@@ -1085,106 +1121,6 @@ impl eframe::App for FMGoalMusicsApp {
 
             ui.separator();
 
-            // Control buttons
-            ui.heading("🎮 Controls");
-            
-            ui.horizontal(|ui| {
-                let state = self.state.lock().unwrap();
-                let is_stopped = state.process_state == ProcessState::Stopped;
-                let is_running = state.process_state == ProcessState::Running;
-                let is_paused = state.process_state == ProcessState::Paused;
-                drop(state);
-
-                if ui.add_enabled(is_stopped, egui::Button::new("▶️ Start Detection")).clicked() {
-                    self.start_detection();
-                }
-
-                if ui.add_enabled(is_running || is_paused, egui::Button::new("⏸️ Pause/Resume")).clicked() {
-                    self.pause_detection();
-                }
-
-                if ui.add_enabled(!is_stopped, egui::Button::new("⏹️ Stop")).clicked() {
-                    self.stop_detection();
-                }
-
-                let preview_active = self.preview_playing;
-                let preview_label = if preview_active {
-                    "🔇 Stop Preview"
-                } else {
-                    "▶️ Preview"
-                };
-
-                if ui.button(preview_label).clicked() {
-                    if preview_active {
-                        self.stop_preview();
-                    } else {
-                        let selected_path = {
-                            let state = self.state.lock().unwrap();
-                            state
-                                .selected_music_index
-                                .and_then(|idx| state.music_list.get(idx))
-                                .map(|entry| entry.path.clone())
-                        };
-
-                        match selected_path {
-                            Some(path) => {
-                                let needs_reload = self
-                                    .preview_audio
-                                    .as_ref()
-                                    .map_or(true, |p| p.path.as_path() != path.as_path());
-
-                                let audio_data = match self.get_or_load_audio_data(&path) {
-                                    Ok(data) => data,
-                                    Err(err) => {
-                                        let mut st = self.state.lock().unwrap();
-                                        st.status_message = err;
-                                        return;
-                                    }
-                                };
-
-                                if needs_reload {
-                                    self.stop_preview();
-                                    match AudioManager::from_preloaded(Arc::clone(&audio_data)) {
-                                        Ok(manager) => {
-                                            self.preview_audio = Some(PreviewAudio {
-                                                manager,
-                                                path: path.clone(),
-                                            });
-                                        }
-                                        Err(e) => {
-                                            let mut st = self.state.lock().unwrap();
-                                            st.status_message = format!("Preview init failed: {}", e);
-                                            return;
-                                        }
-                                    }
-                                }
-
-                                if let Some(preview) = self.preview_audio.as_ref() {
-                                    preview.manager.stop();
-                                    match preview.manager.play_sound() {
-                                        Ok(()) => {
-                                            self.preview_playing = true;
-                                            let mut st = self.state.lock().unwrap();
-                                            st.status_message = "Preview playing...".to_string();
-                                        }
-                                        Err(e) => {
-                                            let mut st = self.state.lock().unwrap();
-                                            st.status_message = format!("Preview failed: {}", e);
-                                        }
-                                    }
-                                }
-                            }
-                            None => {
-                                let mut st = self.state.lock().unwrap();
-                                st.status_message = "Select a music file to preview.".to_string();
-                            }
-                        }
-                    }
-                }
-            });
-
-            ui.separator();
-
             // Capture preview
             self.refresh_capture_preview(ctx);
             if let Some(texture) = &self.capture_preview.texture {
@@ -1273,22 +1209,153 @@ impl eframe::App for FMGoalMusicsApp {
 
                 ui.checkbox(&mut state.enable_morph_open, "Enable Morphological Opening (noise reduction)");
             }
+                
+            ui.separator();
+            
+            // Volume Controls
+            ui.heading("🔊 Volume Controls");
+            
+            ui.horizontal(|ui| {
+                ui.label("🎵 Music:");
+                let mut state = self.state.lock().unwrap();
+                let mut music_vol_percent = (state.music_volume * 100.0) as i32;
+                if ui.add(egui::Slider::new(&mut music_vol_percent, 0..=100).suffix("%")).changed() {
+                    state.music_volume = (music_vol_percent as f32) / 100.0;
+                    drop(state);
+                    self.save_config();
+                }
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("🔉 Ambiance:");
+                let mut state = self.state.lock().unwrap();
+                let mut ambiance_vol_percent = (state.ambiance_volume * 100.0) as i32;
+                if ui.add(egui::Slider::new(&mut ambiance_vol_percent, 0..=100).suffix("%")).changed() {
+                    state.ambiance_volume = (ambiance_vol_percent as f32) / 100.0;
+                    drop(state);
+                    self.save_config();
+                }
+            });
+
+            ui.separator();
+
+            // Sound Length Controls
+            ui.heading("⏱️ Sound Length Controls");
+            
+            ui.horizontal(|ui| {
+                ui.label("🎵 Music Length:");
+                let mut state = self.state.lock().unwrap();
+                let mut music_length_seconds = (state.music_length_ms as f32) / 1000.0;
+                if ui.add(egui::Slider::new(&mut music_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
+                    state.music_length_ms = (music_length_seconds * 1000.0) as u64;
+                    drop(state);
+                    self.save_config();
+                }
+            });
+            
+            ui.horizontal(|ui| {
+                ui.label("🔉 Ambiance Length:");
+                let mut state = self.state.lock().unwrap();
+                let mut ambiance_length_seconds = (state.ambiance_length_ms as f32) / 1000.0;
+                if ui.add(egui::Slider::new(&mut ambiance_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
+                    state.ambiance_length_ms = (ambiance_length_seconds * 1000.0) as u64;
+                    drop(state);
+                    self.save_config();
+                }
+            });
             } // end Settings tab
 
             if self.active_tab == AppTab::Help {
                 ui.separator();
 
-                // Help text
-                ui.collapsing("ℹ️ Help", |ui| {
-                ui.label("1. Add music files using the '➕ Add Music File' button");
-                ui.label("2. Select a music file from the list");
-                ui.label("3. Configure capture region and settings");
-                ui.label("4. Click '▶️ Start Detection' to begin monitoring");
-                ui.label("5. The selected music will play when 'GOAL FOR' is detected");
-                ui.label("");
-                ui.label("💡 Tip: Use test mode to find the correct capture region:");
-                ui.label("   cargo run --release -- --test");
-            });
+                ui.heading("📖 How to Use FM Goal Musics");
+                
+                ui.collapsing("🎵 Library Tab", |ui| {
+                    ui.label("• Click '➕ Add Music File' to add celebration music (MP3, WAV, OGG)");
+                    ui.label("• Select a music file from the list");
+                    ui.label("• Click '▶️ Preview' to test the selected music");
+                    ui.label("• Click '🗑️ Remove Selected' to remove unwanted music");
+                    ui.label("");
+                    ui.label("Ambiance Sounds:");
+                    ui.label("• Enable 'Ambiance' checkbox for crowd cheer effects");
+                    ui.label("• Click '➕ Add Goal Cheer Sound' to add a WAV crowd sound");
+                    ui.label("• This plays alongside your music for extra atmosphere");
+                });
+                
+                ui.collapsing("⚽ Team Selection Tab", |ui| {
+                    ui.label("• Select a League from the dropdown");
+                    ui.label("• Select your Team from the filtered list");
+                    ui.label("• Goal music will only play for your selected team's goals");
+                    ui.label("• Leave unselected to play for all goals");
+                    ui.label("");
+                    ui.label("Capture Preview:");
+                    ui.label("• Shows real-time capture of the configured screen region");
+                    ui.label("• Use 'Save frame...' to export the current captured frame");
+                });
+                
+                ui.collapsing("⚙️ Settings Tab", |ui| {
+                    ui.label("Configuration:");
+                    ui.label("• Capture Region: X, Y, Width, Height of screen area to monitor");
+                    ui.label("• Click '🎯 Select Region Visually' to drag-select on screen");
+                    ui.label("• OCR Threshold: 0 = auto (recommended), 1-255 = manual");
+                    ui.label("• Debounce: Cooldown between detections (default 8000ms)");
+                    ui.label("• Morphological Opening: Reduces noise (adds 5-10ms latency)");
+                    ui.label("");
+                    ui.label("Volume & Length:");
+                    ui.label("• Music Volume: 0-100% playback volume for celebration music");
+                    ui.label("• Ambiance Volume: 0-100% playback volume for crowd cheer");
+                    ui.label("• Music Length: How long to play music (0 = full track)");
+                    ui.label("• Ambiance Length: How long to play crowd sound (0 = full)");
+                });
+                
+                ui.collapsing("🏁 Quick Start", |ui| {
+                    ui.label("1. Add at least one music file in Library tab");
+                    ui.label("2. (Optional) Select your team in Team Selection tab");
+                    ui.label("3. Configure capture region in Settings tab");
+                    ui.label("4. Click '▶️ Start Detection' button (top-left)");
+                    ui.label("5. Play Football Manager and watch for goals!");
+                    ui.label("");
+                    ui.label("✅ Status bar shows detection state (Green = Running)");
+                    ui.label("✅ Detection count increments with each goal detected");
+                });
+                
+                ui.collapsing("🔧 Configuring teams.json", |ui| {
+                    ui.label("The teams database is located at:");
+                    ui.label("  macOS: ~/Library/Application Support/fm-goal-musics/teams.json");
+                    ui.label("  Windows: %APPDATA%/fm-goal-musics/teams.json");
+                    ui.label("  Linux: ~/.config/fm-goal-musics/teams.json");
+                    ui.label("");
+                    ui.label("Structure:");
+                    ui.label("  {");
+                    ui.label("    \"Premier League\": {");
+                    ui.label("      \"manchester_united\": {");
+                    ui.label("        \"display_name\": \"Manchester Utd\",");
+                    ui.label("        \"variations\": [\"Man Utd\", \"Man United\", \"MUFC\"]");
+                    ui.label("      }");
+                    ui.label("    }");
+                    ui.label("  }");
+                    ui.label("");
+                    ui.label("• Add your leagues and teams with variations");
+                    ui.label("• Variations help match different OCR results");
+                    ui.label("• Restart the app after editing teams.json");
+                });
+                
+                ui.collapsing("❓ Troubleshooting", |ui| {
+                    ui.label("Music not playing:");
+                    ui.label("• Check music file is selected in Library");
+                    ui.label("• Verify 'Start Detection' is active (button shows 'Stop')");
+                    ui.label("• Confirm capture region covers goal text area");
+                    ui.label("");
+                    ui.label("No goals detected:");
+                    ui.label("• Use 'Capture Preview' to verify region captures goal text");
+                    ui.label("• Try OCR Threshold = 0 (auto) first");
+                    ui.label("• Increase debounce if detecting multiple times");
+                    ui.label("");
+                    ui.label("Team selection not working:");
+                    ui.label("• Verify team exists in teams.json with correct variations");
+                    ui.label("• Check Team Selection tab shows '✓ Selected: [team]'");
+                    ui.label("• Ensure OCR is reading team name correctly");
+                });
             }
 
         });
