@@ -99,20 +99,12 @@ impl OcrManager {
         // Look for the exact phrase "GOAL FOR" which appears in Football Manager
         let detected = text.contains("GOAL FOR");
         
-        // Debug: Print OCR results for troubleshooting
-        if !text.is_empty() {
-            println!("[fm-goal-musics] OCR Result: '{}'", text);
-            if detected {
-                println!("[fm-goal-musics] 🎯 GOAL DETECTED!");
-            }
-        }
-        
+                
         // Clean up temp file
         let _ = std::fs::remove_file(&temp_path);
         
         // If not detected with standard method, try alternative preprocessing for colored text
         if !detected {
-            println!("[fm-goal-musics] Trying alternative preprocessing for colored text...");
             if let Ok(alt_detected) = self.try_alternative_preprocessing(image) {
                 return Ok(alt_detected);
             }
@@ -151,13 +143,10 @@ impl OcrManager {
             let text = self.tess.get_utf8_text()?;
             let text = text.trim().to_uppercase();
             
-            println!("[fm-goal-musics] Alt OCR (channel {}): '{}'", channel, text);
-            
             // Clean up
             let _ = std::fs::remove_file(&temp_path);
             
             if text.contains("GOAL FOR") {
-                println!("[fm-goal-musics] 🎯 GOAL DETECTED with alternative channel {} preprocessing!", channel);
                 return Ok(true);
             }
         }
@@ -172,13 +161,10 @@ impl OcrManager {
         let text = self.tess.get_utf8_text()?;
         let text = text.trim().to_uppercase();
         
-        println!("[fm-goal-musics] Alt OCR (edge): '{}'", text);
-        
         // Clean up
         let _ = std::fs::remove_file(&temp_path);
         
         if text.contains("GOAL FOR") {
-            println!("[fm-goal-musics] 🎯 GOAL DETECTED with edge-based preprocessing!");
             return Ok(true);
         }
         
@@ -266,11 +252,7 @@ impl OcrManager {
         let text = self.tess.get_utf8_text()?;
         let text = text.trim().to_uppercase();
         
-        // Debug: Print OCR results for troubleshooting
-        if !text.is_empty() {
-            println!("[fm-goal-musics] OCR Result (team): '{}'", text);
-        }
-        
+                
         // Clean up temp file
         let _ = std::fs::remove_file(&temp_path);
         
@@ -280,14 +262,12 @@ impl OcrManager {
             let team_name = after_goal_for.trim();
             
             if !team_name.is_empty() {
-                println!("[fm-goal-musics] 🎯 GOAL DETECTED FOR TEAM: '{}'", team_name);
                 return Ok(Some(team_name.to_string()));
             }
         }
         
         // If not detected with standard method, try alternative preprocessing for colored text
         if text.is_empty() || !text.contains("GOAL FOR") {
-            println!("[fm-goal-musics] Trying alternative preprocessing for colored text (team)...");
             if let Ok(alt_detected) = self.try_alternative_preprocessing(image) {
                 if alt_detected {
                     // Try to extract team name with alternative preprocessing
@@ -327,8 +307,6 @@ impl OcrManager {
             let text = self.tess.get_utf8_text()?;
             let text = text.trim().to_uppercase();
             
-            println!("[fm-goal-musics] Alt Team OCR (channel {}): '{}'", channel, text);
-            
             let _ = std::fs::remove_file(&temp_path);
             
             if let Some(pos) = text.find("GOAL FOR") {
@@ -336,7 +314,6 @@ impl OcrManager {
                 let team_name = after_goal_for.trim();
                 
                 if !team_name.is_empty() {
-                    println!("[fm-goal-musics] 🎯 TEAM DETECTED with alternative channel {}: '{}'", channel, team_name);
                     return Ok(team_name.to_string());
                 }
             }
