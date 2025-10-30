@@ -403,6 +403,17 @@ impl eframe::App for FmGoalMusicsApp {
 - **Detection Thread:** Background capture/OCR/audio pipeline
 - **Communication:** `Arc<Mutex<AppState>>` for shared state
 
+#### Tabbed UI (Updated)
+- `enum AppTab { Library, Audio, Detection, Settings, Help }`
+- `active_tab: AppTab` manages which section is visible
+- Status bar is always visible at the top (state, detections, display/window size)
+- Tab contents:
+  - **Library:** music list, add/remove
+  - **Audio:** volumes, sound length sliders, ambiance enable/file
+  - **Detection:** team selection (league/team), controls (start/pause/stop, preview), capture preview
+  - **Settings:** capture region, OCR threshold, debounce, morphology
+  - **Help:** quick usage tips
+
 ### 8. Region Selector (`region_selector.rs`)
 **Responsibility:** Visual screen region selection
 
@@ -759,5 +770,5 @@ All errors presented with:
 
 ---
 
-*Last Updated: 2025-10-29*
+*Last Updated: 2025-10-30*
 *Version: 1.0*
