@@ -206,30 +206,39 @@ Large:               12px - Modals, overlays
 └─────────────────────────────────────────┘
 ```
 
-### Updated: Tabbed Layout
+### Updated: Tabbed Layout (Final)
 
 ```
 ┌─────────────────────────────────────────┐
-│ Title Bar                               │
+│ [▶️ Start/Stop] | ⚽ FM Goal Musics     │
 ├─────────────────────────────────────────┤
-│ Status Bar: status message · detections │
-│            · display res · window size  │
+│ Status: [state] | Detections: N |      │
+│ Display: WxH | Window: WxH             │
 ├─────────────────────────────────────────┤
-│ Tab Bar: [Library | Audio | Detection | │
-│          Settings | Help]               │
+│ Tab Bar: [🎵 Library | ⚽ Team Selection│
+│          | ⚙️ Settings | ℹ️ Help]      │
 ├─────────────────────────────────────────┤
 │ Active Tab Content                      │
-│  • Library: music list, add/remove      │
-│  • Audio: volumes, lengths, ambiance    │
-│  • Detection: team selection, controls, │
-│             capture preview             │
+│  • Library: music list (add/remove/     │
+│            preview), ambiance sounds    │
+│  • Team Selection: league/team dropdowns│
+│            capture preview              │
 │  • Settings: capture region, OCR,       │
-│             debounce, morphology        │
-│  • Help: quick tips                     │
+│            debounce, morphology,        │
+│            volumes, sound lengths       │
+│  • Help: comprehensive guide with       │
+│         teams.json configuration        │
 └─────────────────────────────────────────┘
 ```
 
-Tabs group related controls for clarity and responsiveness. Status bar and window metrics remain always visible at the top.
+**Key Changes:**
+- Start/Stop Detection button in header (top-left, color-coded)
+- 4 tabs instead of 5 (removed Audio, renamed Detection → Team Selection)
+- Preview button moved to Library tab
+- Ambiance controls in Library tab
+- Volume/Length controls in Settings tab
+- Help tab includes teams.json config guide and troubleshooting
+- Status bar always visible with real-time state updates
 
 ### Button Styles
 

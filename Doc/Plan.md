@@ -64,6 +64,28 @@ FM Goal Musics is a real-time companion application for Football Manager that au
 
 ---
 
+### Step 11: UI Redesign – Tabbed Layout ✅
+**Goal:** Simplify and organize the GUI with a tabbed interface for better clarity and responsiveness
+
+**Tasks:**
+- Add `AppTab` enum and `active_tab` state to manage active view
+- Introduce Tab Bar with 4 tabs: Library, Team Selection, Settings, Help
+- Move Start/Stop Detection button to header (top-left, color-coded)
+- Consolidate controls: Preview in Library, Ambiance in Library, Volumes/Lengths in Settings
+- Move existing sections into their tabs
+- Keep Status Bar visible at the top at all times
+- Ensure build remains green and preserve all functionality
+- Update Help tab with comprehensive guide including teams.json configuration
+
+**Deliverables:**
+- Updated `src/gui.rs` with refined 4-tab layout
+- Updated `Doc/Design.md` documenting the final layout
+- Comprehensive Help tab with usage guide and troubleshooting
+
+**Status:** Completed
+
+---
+
 ### Step 1: Core Detection Pipeline ✅
 **Goal:** Implement baseline capture → OCR → audio trigger loop
 
