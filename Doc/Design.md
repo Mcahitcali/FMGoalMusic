@@ -206,6 +206,31 @@ Large:               12px - Modals, overlays
 └─────────────────────────────────────────┘
 ```
 
+### Updated: Tabbed Layout
+
+```
+┌─────────────────────────────────────────┐
+│ Title Bar                               │
+├─────────────────────────────────────────┤
+│ Status Bar: status message · detections │
+│            · display res · window size  │
+├─────────────────────────────────────────┤
+│ Tab Bar: [Library | Audio | Detection | │
+│          Settings | Help]               │
+├─────────────────────────────────────────┤
+│ Active Tab Content                      │
+│  • Library: music list, add/remove      │
+│  • Audio: volumes, lengths, ambiance    │
+│  • Detection: team selection, controls, │
+│             capture preview             │
+│  • Settings: capture region, OCR,       │
+│             debounce, morphology        │
+│  • Help: quick tips                     │
+└─────────────────────────────────────────┘
+```
+
+Tabs group related controls for clarity and responsiveness. Status bar and window metrics remain always visible at the top.
+
 ### Button Styles
 
 #### Primary Button
