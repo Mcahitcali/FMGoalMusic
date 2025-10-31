@@ -163,6 +163,163 @@ try {
 
 Write-Host ""
 
+# Step 2.5: Install Tesseract OCR (system-wide, optional when using vcpkg)
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "STEP 2.5: Tesseract OCR" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Check if Tesseract is installed
+$tesseractInstalled = Test-Path "C:\Program Files\Tesseract-OCR\tesseract.exe"
+if (-not $tesseractInstalled) {
+    $tesseractInstalled = Test-Path "C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
+}
+
+if ($tesseractInstalled) {
+    Write-Host "Tesseract OCR already installed" -ForegroundColor Green
+} else {
+    Write-Host "Downloading Tesseract OCR..." -ForegroundColor Blue
+    Write-Host "   (Download size: ~50 MB)" -ForegroundColor Yellow
+    
+    $tesseractInstallerPath = Join-Path $env:TEMP "tesseract-installer.exe"
+    try {
+        Invoke-WebRequest -Uri "https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-5.3.3.20231005.exe" -OutFile $tesseractInstallerPath
+        Write-Host "Download completed" -ForegroundColor Green
+    } catch {
+        Write-Host "Failed to download Tesseract OCR" -ForegroundColor Red
+        Write-Host $_.Exception.Message
+        Write-Host "Press any key to exit..."
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        exit 1
+    }
+    
+    Write-Host "Installing Tesseract OCR..." -ForegroundColor Blue
+    Write-Host "   This will take 1-2 minutes..." -ForegroundColor Yellow
+    
+    try {
+        Start-Process -FilePath $tesseractInstallerPath -ArgumentList "/S" -Wait -NoNewWindow
+        Write-Host "Tesseract OCR installed successfully!" -ForegroundColor Green
+    } catch {
+        Write-Host "Tesseract OCR installation failed" -ForegroundColor Red
+        Write-Host $_.Exception.Message
+        Write-Host "Press any key to exit..."
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        exit 1
+    }
+    
+    # Clean up installer
+    Remove-Item $tesseractInstallerPath -Force -ErrorAction SilentlyContinue
+    
+    # Add Tesseract to PATH
+    $tesseractPath = "C:\Program Files\Tesseract-OCR"
+    if (Test-Path $tesseractPath) {
+        $env:PATH += ";$tesseractPath"
+        Write-Host "Added Tesseract to PATH" -ForegroundColor Green
+    }
+}
+
+Write-Host ""
+
+# Step 2.6: Configure native dependencies (prefer system dev files, fallback to vcpkg)
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "STEP 2.6: Native dependencies (system or vcpkg)" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+
+$UsingVcpkg = $false
+
+# Detect system development files
+$sysRoot = "C:\Program Files\Tesseract-OCR"
+$sysIncludeRoot = Join-Path $sysRoot "include"
+$sysLibRoot = Join-Path $sysRoot "lib"
+$hasHeaders = (Test-Path (Join-Path $sysIncludeRoot "leptonica\allheaders.h")) -and (Test-Path (Join-Path $sysIncludeRoot "tesseract\capi.h"))
+$hasLibs = (Test-Path (Join-Path $sysLibRoot "leptonica.lib")) -and (Test-Path (Join-Path $sysLibRoot "tesseract.lib"))
+
+if ($hasHeaders -and $hasLibs) {
+    Write-Host "Found system Tesseract/Leptonica development files. Using system libraries." -ForegroundColor Green
+    $env:LEPT_NO_PKG_CONFIG = "1"
+    $env:TESS_NO_PKG_CONFIG = "1"
+    $env:LEPTONICA_INCLUDE_PATH = $sysIncludeRoot
+    $env:LEPTONICA_LINK_PATHS   = $sysLibRoot
+    $env:LEPTONICA_LINK_LIBS    = "leptonica"
+    $env:TESSERACT_INCLUDE_PATH = $sysIncludeRoot
+    $env:TESSERACT_LINK_PATHS   = $sysLibRoot
+    $env:TESSERACT_LINK_LIBS    = "tesseract"
+    # Ensure runtime DLLs available
+    if (Test-Path $sysRoot) { $env:PATH += ";$sysRoot" }
+    # Avoid stale vcpkg settings impacting build
+    Remove-Item Env:VCPKG_ROOT -ErrorAction SilentlyContinue
+    Remove-Item Env:VCPKG_DEFAULT_TRIPLET -ErrorAction SilentlyContinue
+} else {
+    Write-Host "System development files not found. Falling back to vcpkg installation." -ForegroundColor Yellow
+    $UsingVcpkg = $true
+
+    # Determine vcpkg path
+    $defaultVcpkgPaths = @(
+        "C:\\vcpkg",
+        (Join-Path $env:USERPROFILE "vcpkg")
+    )
+
+    $vcpkgRoot = $null
+    foreach ($p in $defaultVcpkgPaths) {
+        if (Test-Path (Join-Path $p "vcpkg.exe")) { $vcpkgRoot = $p; break }
+        if (Test-Path $p) { $vcpkgRoot = $p }
+    }
+    if (-not $vcpkgRoot) { $vcpkgRoot = $defaultVcpkgPaths[0] }
+
+    if (-not (Test-Path (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+        Write-Host "Installing vcpkg at $vcpkgRoot ..." -ForegroundColor Blue
+        try {
+            if (-not (Test-Path $vcpkgRoot)) { New-Item -ItemType Directory -Path $vcpkgRoot | Out-Null }
+            # Clone vcpkg
+            $gitExe = "git"
+            Push-Location $vcpkgRoot
+            if (-not (Test-Path (Join-Path $vcpkgRoot ".git"))) {
+                & $gitExe clone https://github.com/microsoft/vcpkg.git . 2>&1 | Out-Null
+            }
+            # Bootstrap
+            if (Test-Path (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat")) {
+                & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics 2>&1 | Write-Verbose
+            }
+            Pop-Location
+            Write-Host "vcpkg installed successfully" -ForegroundColor Green
+        } catch {
+            Pop-Location 2>$null
+            Write-Host "Failed to install vcpkg" -ForegroundColor Red
+            Write-Host $_.Exception.Message
+            Write-Host "Press any key to exit..."
+            $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+            exit 1
+        }
+    }
+
+    # Ensure env for vcpkg is set so Rust build scripts can find it
+    $env:VCPKG_ROOT = $vcpkgRoot
+    $env:PATH += ";" + (Join-Path $vcpkgRoot "")
+    $env:VCPKG_DEFAULT_TRIPLET = "x64-windows"
+
+    # Do not force pkg-config bypass when using vcpkg
+    Remove-Item Env:LEPT_NO_PKG_CONFIG -ErrorAction SilentlyContinue
+    Remove-Item Env:TESS_NO_PKG_CONFIG -ErrorAction SilentlyContinue
+
+    # Install required packages
+    Write-Host "Installing native dependencies via vcpkg (this may take a while)..." -ForegroundColor Blue
+    try {
+        & (Join-Path $vcpkgRoot "vcpkg.exe") install tesseract:x64-windows 2>&1 | Write-Verbose
+        # leptonica is a dependency of tesseract; ensure installed explicitly as well
+        & (Join-Path $vcpkgRoot "vcpkg.exe") install leptonica:x64-windows 2>&1 | Write-Verbose
+        Write-Host "vcpkg dependencies installed" -ForegroundColor Green
+    } catch {
+        Write-Host "vcpkg package installation failed" -ForegroundColor Red
+        Write-Host $_.Exception.Message
+        Write-Host "Press any key to exit..."
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        exit 1
+    }
+}
+
+Write-Host ""
+
 # Step 3: Build the application
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "STEP 3: Building FM Goal Musics" -ForegroundColor Cyan
@@ -225,10 +382,86 @@ set > "$tempEnv"
 }
 
 Write-Host ""
+
+# Re-assert vcpkg environment after VS setup (VsDevCmd may override VCPKG_ROOT)
+if ($UsingVcpkg) {
+    if (-not $vcpkgRoot -or -not (Test-Path (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+        $vcpkgRoot = "C:\vcpkg"
+    }
+    $env:VCPKG_ROOT = $vcpkgRoot
+    # Force dynamic triplet to match installed ports and avoid static-md mismatch
+    $env:VCPKG_DEFAULT_TRIPLET = "x64-windows"
+    $env:VCPKGRS_TRIPLET = "x64-windows"
+    $env:VCPKGRS_DYNAMIC = "1"
+    Remove-Item Env:VCPKGRS_STATIC -ErrorAction SilentlyContinue
+    $env:PATH += ";" + (Join-Path $vcpkgRoot "")
+}
+
+# Ensure libclang is available for bindgen (required by leptonica-sys)
+function Test-LibClangPath($dir) {
+    return (Test-Path (Join-Path $dir "libclang.dll")) -or (Test-Path (Join-Path $dir "clang.dll"))
+}
+
+if (-not $env:LIBCLANG_PATH -or -not (Test-LibClangPath $env:LIBCLANG_PATH)) {
+    Write-Host "Checking for libclang (required by bindgen)..." -ForegroundColor Blue
+    $candidateDirs = @(
+        "C:\\Program Files\\LLVM\\bin",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\Llvm\\x64\\bin",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\Llvm\\bin"
+    )
+    $found = $false
+    foreach ($dir in $candidateDirs) {
+        if (Test-LibClangPath $dir) { $env:LIBCLANG_PATH = $dir; $found = $true; break }
+    }
+    if (-not $found) {
+        Write-Host "libclang not found; attempting to install LLVM via winget..." -ForegroundColor Yellow
+        try {
+            $winget = (Get-Command winget -ErrorAction SilentlyContinue)
+            if ($winget) {
+                & winget install -e --id LLVM.LLVM --accept-package-agreements --accept-source-agreements --silent
+                $llvmDir = "C:\\Program Files\\LLVM\\bin"
+                if (Test-LibClangPath $llvmDir) {
+                    $env:LIBCLANG_PATH = $llvmDir
+                    Write-Host "Configured LIBCLANG_PATH=$llvmDir" -ForegroundColor Green
+                    # Add to PATH for runtime if needed
+                    $env:PATH += ";$llvmDir"
+                    $found = $true
+                }
+            } else {
+                Write-Host "winget not available; please install LLVM or ensure libclang.dll is present." -ForegroundColor Yellow
+            }
+        } catch {
+            Write-Host "Failed to install LLVM via winget: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+    if (-not $found) {
+        Write-Host "libclang still not found. You can install LLVM from https://llvm.org or via Visual Studio 'Clang/LLVM for MSBuild'." -ForegroundColor Red
+        Write-Host "Set LIBCLANG_PATH to the folder containing libclang.dll and re-run the installer." -ForegroundColor Red
+        Write-Host "Press any key to exit..."
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+        exit 1
+    }
+}
 Write-Host "Building application..." -ForegroundColor Blue
 Write-Host "   This will take 10-15 minutes on first build..." -ForegroundColor Yellow
 Write-Host "   Please be patient - this is normal!" -ForegroundColor Yellow
 Write-Host ""
+
+# Summarize dependency configuration for build
+if ($UsingVcpkg) {
+    Write-Host "Configured to use vcpkg dependencies (VCPKG_ROOT=$env:VCPKG_ROOT, triplet=$env:VCPKG_DEFAULT_TRIPLET)" -ForegroundColor Green
+} else {
+    Write-Host "Configured to use system Tesseract/Leptonica development files at '$sysRoot'" -ForegroundColor Green
+}
+
+# Ensure compatible windows-capture version for scap
+Write-Host "Refreshing dependency resolution for windows-capture=1.4.0..." -ForegroundColor Blue
+try {
+    $updateOutput = & $cargoPath update -p windows-capture --precise 1.4.0 2>&1
+    Write-Host "Dependency graph updated" -ForegroundColor Green
+} catch {
+    Write-Host "Warning: cargo update for windows-capture failed (will attempt to build anyway)" -ForegroundColor Yellow
+}
 
 # Build the project
 try {
