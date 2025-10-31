@@ -143,7 +143,8 @@ Write-Host ""
 # Verify Rust is working
 Write-Host "🔧 Verifying Rust installation..." -ForegroundColor Blue
 try {
-    $rustVersion = & "$env:USERPROFILE\.cargo\bin\rustc.exe" --version
+    $rustcPath = Join-Path $env:USERPROFILE ".cargo\bin\rustc.exe"
+    $rustVersion = & $rustcPath --version
     Write-Host "✅ Rust verification successful: $rustVersion" -ForegroundColor Green
 } catch {
     Write-Host "❌ Rust verification failed" -ForegroundColor Red
@@ -165,12 +166,12 @@ Write-Host "   This will take 10-15 minutes on first build..." -ForegroundColor 
 Write-Host "   Please be patient - this is normal!" -ForegroundColor Yellow
 Write-Host ""
 
-# Set environment variables for Visual Studio
-$env:PATH = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.39.33519\bin\Hostx64\x64;$env:PATH"
-$env:PATH = "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.39.33519\bin\Hostx64\x64;$env:PATH"
+# Refresh PATH to include Visual Studio and Rust
+$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 
 # Build the project
-$buildOutput = & "$env:USERPROFILE\.cargo\bin\cargo.exe" build --release --bin fm-goal-musics-gui 2>&1
+$cargoPath = Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe"
+$buildOutput = & $cargoPath build --release --bin fm-goal-musics-gui 2>&1
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Build failed!" -ForegroundColor Red
