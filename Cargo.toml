@@ -12,7 +12,7 @@ path = "src/gui_main.rs"
 scap = "0.1.0-beta.1"
 
 # OCR - Tesseract wrapper
-leptess = "0.14"
+leptess = "0.14.0"
 
 # Audio playback with MP3 support
 rodio = { version = "0.19", features = ["mp3"] }
@@ -44,9 +44,24 @@ rfd = "0.14"  # Native file dialogs
 # Hotkey listener
 rdev = "0.5"
 
+# Logging for production debugging
+log = "0.4"
+env_logger = "0.11"
+
+# Application packaging
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "0.3", features = ["winuser"] }
+
 [profile.release]
 opt-level = 3           # Maximum optimization
 lto = true              # Link-time optimization
 codegen-units = 1       # Better optimization, slower compile
 strip = true            # Strip symbols for smaller binary
-# panic = "abort" is disabled to allow panic recovery in hotkey listener
+panic = "abort"         # Abort on panic for smaller binary
+overflow-checks = false # Disable overflow checks in release
+
+[profile.release.package."*"]
+opt-level = 3           # Optimize dependencies too
