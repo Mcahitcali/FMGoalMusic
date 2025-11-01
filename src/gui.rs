@@ -1381,7 +1381,8 @@ impl eframe::App for FMGoalMusicsApp {
 
             // Initialize on first show
             if let Some(sel) = &mut self.region_selector {
-                if !self.hide_window_for_capture {
+                // Only minimize/hide if we haven't captured yet
+                if !sel.initialized && !self.hide_window_for_capture {
                     println!("   Preparing window for screenshot capture...");
 
                     // On Windows, hiding the main window closes the app
@@ -1429,7 +1430,8 @@ impl eframe::App for FMGoalMusicsApp {
                     }
 
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                    self.hide_window_for_capture = false;
+                    // Don't reset hide_window_for_capture to false - keep it true to prevent re-entering minimize logic
+                    // self.hide_window_for_capture = false;
                     self.capture_delay_frames = 0;
 
                     match capture_result {
