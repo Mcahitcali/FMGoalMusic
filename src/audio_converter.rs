@@ -22,11 +22,10 @@ fn get_musics_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
         return Ok(path.clone());
     }
     
-    let config_path = Config::config_path()?;
-    let config_dir = config_path
-        .parent()
-        .ok_or("Could not determine config directory")?;
-    let musics_dir = config_dir.join("musics");
+    // Use a user-writable data directory for storing converted music files
+    let base = dirs::data_dir().ok_or("Could not determine user data directory")?;
+    let app_dir = base.join("FMGoalMusic");
+    let musics_dir = app_dir.join("musics");
     fs::create_dir_all(&musics_dir)?;
     
     *cache = Some(musics_dir.clone());
