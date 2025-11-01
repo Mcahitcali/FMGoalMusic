@@ -112,10 +112,13 @@ impl OcrManager {
         // Step 7: Get text
         let text = self.tess.get_utf8_text()?;
         let text = text.trim().to_uppercase();
+        if !text.is_empty() {
+            println!("[fm-goal-musics][ocr-detect_goal] {}", text);
+        }
         
-        // Step 8: Check if "GOAL FOR" is detected exactly
-        // Look for the exact phrase "GOAL FOR" which appears in Football Manager
-        let detected = text.contains("GOAL FOR");
+        // Step 8: Check if goal text is detected
+        // Accept either "GOAL FOR {team}" or "GOL {team}"
+        let detected = text.contains("GOAL FOR") || text.contains("GOL ");
         
                 
         // Clean up temp file
@@ -160,11 +163,14 @@ impl OcrManager {
             
             let text = self.tess.get_utf8_text()?;
             let text = text.trim().to_uppercase();
+            if !text.is_empty() {
+                println!("[fm-goal-musics][ocr-try_alternative_preprocessing] {}", text);
+            }
             
             // Clean up
             let _ = std::fs::remove_file(&temp_path);
             
-            if text.contains("GOAL FOR") {
+            if text.contains("GOAL FOR") || text.contains("GOL ") {
                 return Ok(true);
             }
         }
@@ -178,11 +184,14 @@ impl OcrManager {
         
         let text = self.tess.get_utf8_text()?;
         let text = text.trim().to_uppercase();
+        if !text.is_empty() {
+            println!("[fm-goal-musics][ocr-try_alternative_preprocessing-edge_based_preprocessing] {}", text);
+        }
         
         // Clean up
         let _ = std::fs::remove_file(&temp_path);
         
-        if text.contains("GOAL FOR") {
+        if text.contains("GOAL FOR") || text.contains("GOL ") {
             return Ok(true);
         }
         
@@ -234,6 +243,23 @@ impl OcrManager {
         thresholded
     }
     
+    fn extract_team_from_text(text: &str) -> Option<String> {
+        let t = text.trim().to_uppercase();
+        if let Some(pos) = t.find("GOAL FOR") {
+            let after = t[pos + 8..].trim();
+            if !after.is_empty() {
+                return Some(after.to_string());
+            }
+        }
+        if let Some(pos) = t.find("GOL ") {
+            let after = t[pos + 4..].trim();
+            if !after.is_empty() {
+                return Some(after.to_string());
+            }
+        }
+        None
+    }
+    
     /// Detect goal and extract team name from "GOAL FOR [team_name]" pattern
     /// Returns Some(team_name) if goal detected, None otherwise
     pub fn detect_goal_with_team(&mut self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Option<String>, Box<dyn std::error::Error>> {
@@ -269,23 +295,20 @@ impl OcrManager {
         
         let text = self.tess.get_utf8_text()?;
         let text = text.trim().to_uppercase();
+        if !text.is_empty() {
+            println!("[fm-goal-musics][ocr-detect_goal_with_team] {}", text);
+        }
         
                 
         // Clean up temp file
         let _ = std::fs::remove_file(&temp_path);
         
-        // Extract team name from "GOAL FOR [team_name]" pattern
-        if let Some(pos) = text.find("GOAL FOR") {
-            let after_goal_for = &text[pos + 8..]; // "GOAL FOR" is 8 characters
-            let team_name = after_goal_for.trim();
-            
-            if !team_name.is_empty() {
-                return Ok(Some(team_name.to_string()));
-            }
+        if let Some(team) = Self::extract_team_from_text(&text) {
+            return Ok(Some(team));
         }
         
         // If not detected with standard method, try alternative preprocessing for colored text
-        if text.is_empty() || !text.contains("GOAL FOR") {
+        if text.is_empty() || (!text.contains("GOAL FOR") && !text.contains("GOL ")) {
             if let Ok(alt_detected) = self.try_alternative_preprocessing(image) {
                 if alt_detected {
                     // Try to extract team name with alternative preprocessing
@@ -324,16 +347,14 @@ impl OcrManager {
             
             let text = self.tess.get_utf8_text()?;
             let text = text.trim().to_uppercase();
+            if !text.is_empty() {
+                println!("[fm-goal-musics][ocr-extract_team_with_alternative] {}", text);
+            }
             
             let _ = std::fs::remove_file(&temp_path);
             
-            if let Some(pos) = text.find("GOAL FOR") {
-                let after_goal_for = &text[pos + 8..];
-                let team_name = after_goal_for.trim();
-                
-                if !team_name.is_empty() {
-                    return Ok(team_name.to_string());
-                }
+            if let Some(team_name) = Self::extract_team_from_text(&text) {
+                return Ok(team_name);
             }
         }
         
@@ -540,7 +561,7 @@ mod tests {
         
         // Add some "text-like" patterns in the center
         // This is a simplified version - real text rendering would use a font library
-        if text.contains("GOAL") {
+        if text.contains("GOAL") || text.contains("GOL") {
             // Draw some rectangular patterns to simulate text
             for y in height / 3..2 * height / 3 {
                 for x in width / 4..3 * width / 4 {
