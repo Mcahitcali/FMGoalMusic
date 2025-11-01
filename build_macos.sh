@@ -60,6 +60,12 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << EOF
     <true/>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <!-- Ensure Tesseract finds tessdata within the app bundle -->
+    <key>LSEnvironment</key>
+    <dict>
+        <key>TESSDATA_PREFIX</key>
+        <string>@@EXECUTABLE_PATH@@/../Resources/assets/tesseract</string>
+    </dict>
 </dict>
 </plist>
 EOF
@@ -94,6 +100,92 @@ echo "📚 Copying resources..."
 if [ -d "assets" ]; then
     cp -r assets "$APP_BUNDLE/Contents/Resources/"
 fi
+
+# Bundle Tesseract/Leptonica dylibs to make the app self-contained
+echo "🧩 Bundling Tesseract/Leptonica frameworks..."
+
+DYLIBS_DIR="$APP_BUNDLE/Contents/Frameworks"
+mkdir -p "$DYLIBS_DIR"
+
+# Locate dylibs from common Homebrew paths (Apple Silicon and Intel)
+TESSERACT_LIB=""
+LEPTONICA_LIB=""
+
+if [ -f "/opt/homebrew/opt/tesseract/lib/libtesseract.dylib" ]; then
+  TESSERACT_LIB="/opt/homebrew/opt/tesseract/lib/libtesseract.dylib"
+elif [ -f "/usr/local/opt/tesseract/lib/libtesseract.dylib" ]; then
+  TESSERACT_LIB="/usr/local/opt/tesseract/lib/libtesseract.dylib"
+fi
+
+if [ -f "/opt/homebrew/opt/leptonica/lib/liblept.dylib" ]; then
+  LEPTONICA_LIB="/opt/homebrew/opt/leptonica/lib/liblept.dylib"
+elif [ -f "/usr/local/opt/leptonica/lib/liblept.dylib" ]; then
+  LEPTONICA_LIB="/usr/local/opt/leptonica/lib/liblept.dylib"
+fi
+
+if [ -z "$TESSERACT_LIB" ] || [ -z "$LEPTONICA_LIB" ]; then
+  echo "❌ Could not locate libtesseract.dylib or liblept.dylib in Homebrew locations."
+  echo "   Please install via: brew install tesseract leptonica"
+  echo "   Or set TESSERACT_LIB and LEPTONICA_LIB env vars to the dylib paths, then re-run."
+  if [ -n "$TESSERACT_LIB" ]; then echo "   Found Tesseract at: $TESSERACT_LIB"; fi
+  if [ -n "$LEPTONICA_LIB" ]; then echo "   Found Leptonica at: $LEPTONICA_LIB"; fi
+  exit 1
+fi
+
+echo "   Tesseract:  $TESSERACT_LIB"
+echo "   Leptonica:  $LEPTONICA_LIB"
+
+cp "$TESSERACT_LIB" "$DYLIBS_DIR/libtesseract.dylib"
+cp "$LEPTONICA_LIB" "$DYLIBS_DIR/liblept.dylib"
+
+# Copy any dependent dylibs of libtesseract/liblept that live under Homebrew (to reduce external deps)
+copy_deps() {
+  local lib_path="$1"
+  otool -L "$lib_path" | awk '{print $1}' | grep -E "/(opt|Cellar)/" | while read -r dep; do
+    base=$(basename "$dep")
+    if [ ! -f "$DYLIBS_DIR/$base" ]; then
+      if [ -f "$dep" ]; then
+        echo "   📦 Copying dependency: $dep"
+        cp "$dep" "$DYLIBS_DIR/$base" || true
+      fi
+    fi
+  done
+}
+
+copy_deps "$DYLIBS_DIR/libtesseract.dylib"
+copy_deps "$DYLIBS_DIR/liblept.dylib"
+
+# Adjust rpaths and install names so the app uses bundled frameworks
+echo "🛠️  Rewriting library references..."
+
+# Add rpath to app binary
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" || true
+
+# Point app binary to bundled libs
+for LIB in libtesseract.dylib liblept.dylib; do
+  # Find any absolute references to Homebrew and rewrite to @rpath
+  for REF in $(otool -L "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" | awk '{print $1}' | grep -E "(libtesseract|liblept).*dylib" || true); do
+    echo "   🔗 Rewriting $REF -> @rpath/$LIB"
+    install_name_tool -change "$REF" "@rpath/$LIB" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" || true
+  done
+done
+
+# Ensure the bundled libs reference each other via @loader_path
+for LIB in "$DYLIBS_DIR"/*.dylib; do
+  # Change references to Homebrew libs inside each dylib to local copies
+  otool -L "$LIB" | awk '{print $1}' | grep -E "(libtesseract|liblept).*dylib" | while read -r REF; do
+    base=$(basename "$REF")
+    echo "   🧶 Rewriting $LIB needs $REF -> @loader_path/$base"
+    install_name_tool -change "$REF" "@loader_path/$base" "$LIB" || true
+  done
+  # Also set install_name of each dylib to @rpath form
+  base=$(basename "$LIB")
+  install_name_tool -id "@rpath/$base" "$LIB" || true
+done
+
+# Ad-hoc sign to satisfy Gatekeeper's basic checks (not notarized)
+echo "✍️  Ad-hoc signing app bundle..."
+codesign --force --deep -s - "$APP_BUNDLE" || true
 
 # Set executable permissions
 echo "🔐 Setting permissions..."
