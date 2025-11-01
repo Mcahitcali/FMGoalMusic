@@ -1397,13 +1397,22 @@ impl eframe::App for FMGoalMusicsApp {
 
                     match capture_result {
                         Err(e) => {
+                            // Make window visible again
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+
+                            // Log to console for debugging
+                            eprintln!("❌ Region selection capture failed: {}", e);
+                            eprintln!("   This error occurred during screen capture for region selection");
+
                             let mut st = self.state.lock().expect("Failed to acquire state lock");
                             st.status_message = format!("Region selection failed: {}", e);
+
                             self.selecting_region = false;
                             self.region_selector = None;
                             return;
                         }
                         Ok(()) => {
+                            println!("✓ Screenshot captured successfully for region selection");
                             sel.initialized = true;
                             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
                             sel.fullscreen_on = true;
@@ -1588,11 +1597,19 @@ impl RegionSelectState {
         // Use xcap to capture the entire screen
         use xcap::Monitor;
 
+        println!("🔍 Starting fullscreen capture for region selection...");
+
         // Get all monitors
         let monitors = Monitor::all()
-            .map_err(|e| format!("Failed to enumerate monitors: {}", e))?;
+            .map_err(|e| {
+                eprintln!("❌ Failed to enumerate monitors: {}", e);
+                format!("Failed to enumerate monitors: {}", e)
+            })?;
+
+        println!("   Found {} monitor(s)", monitors.len());
 
         if monitors.is_empty() {
+            eprintln!("❌ No monitors found!");
             return Err("No monitors found".into());
         }
 
@@ -1604,9 +1621,15 @@ impl RegionSelectState {
         let logical_w = monitor.width().unwrap_or(0);
         let logical_h = monitor.height().unwrap_or(0);
 
+        println!("   Monitor logical size: {}x{}", logical_w, logical_h);
+
+        println!("   Attempting to capture screen...");
+
         // Capture full screen with permission error handling
         let image = monitor.capture_image().map_err(|e| -> Box<dyn std::error::Error> {
             let error_msg = format!("{}", e);
+
+            eprintln!("❌ Screen capture failed: {}", error_msg);
 
             #[cfg(target_os = "macos")]
             if error_msg.contains("permission") || error_msg.contains("denied") || error_msg.contains("authorization") {
@@ -1623,8 +1646,26 @@ impl RegionSelectState {
                 ).into();
             }
 
+            #[cfg(target_os = "windows")]
+            if error_msg.contains("permission") || error_msg.contains("denied") || error_msg.contains("access") {
+                return format!(
+                    "Screen capture access denied on Windows.\n\
+                    \n\
+                    This might be due to:\n\
+                    1. Windows Privacy settings blocking screen capture\n\
+                    2. Antivirus software blocking the capture\n\
+                    3. Running in a restricted environment\n\
+                    \n\
+                    Try running the application as Administrator.\n\
+                    \n\
+                    Original error: {}", e
+                ).into();
+            }
+
             format!("Failed to capture screen: {}", e).into()
         })?;
+
+        println!("   ✓ Screen captured successfully");
 
         // Get dimensions and pixel data (physical resolution on Retina)
         let w = image.width();
