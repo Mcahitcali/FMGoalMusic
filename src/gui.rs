@@ -305,10 +305,22 @@ impl FMGoalMusicsApp {
     }
 
     fn start_region_selection(&mut self) {
+        use std::io::Write;
+
+        println!("═══════════════════════════════════════════════════════");
+        println!("🎯 REGION SELECTION BUTTON CLICKED!");
+        println!("   Platform: {}", std::env::consts::OS);
+        println!("   Starting region selection process...");
+        println!("═══════════════════════════════════════════════════════");
+        let _ = std::io::stdout().flush(); // Force output immediately
+
         self.selecting_region = true;
         self.region_selector = Some(RegionSelectState::default());
         self.hide_window_for_capture = false;
         self.capture_delay_frames = 0;
+
+        println!("   ✓ Region selector state initialized");
+        let _ = std::io::stdout().flush(); // Force output immediately
     }
 
     fn stop_preview(&mut self) {
@@ -1365,9 +1377,12 @@ impl eframe::App for FMGoalMusicsApp {
 
         // Region selector overlay window (implemented inline)
         if self.selecting_region {
+            println!("📸 Region selector active in update loop");
+
             // Initialize on first show
             if let Some(sel) = &mut self.region_selector {
                 if !self.hide_window_for_capture {
+                    println!("   Hiding main window for screenshot capture...");
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
                     self.hide_window_for_capture = true;
                     self.capture_delay_frames = 2;
@@ -1384,11 +1399,13 @@ impl eframe::App for FMGoalMusicsApp {
                     }
 
                     if self.capture_delay_frames > 0 {
+                        println!("   Waiting for window to hide... (frames left: {})", self.capture_delay_frames);
                         self.capture_delay_frames = self.capture_delay_frames.saturating_sub(1);
                         ctx.request_repaint();
                         return;
                     }
 
+                    println!("   Window hidden, starting screenshot capture...");
                     let capture_result = sel.capture_fullscreen();
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
