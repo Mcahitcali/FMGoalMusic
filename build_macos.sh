@@ -107,20 +107,45 @@ echo "🧩 Bundling Tesseract/Leptonica frameworks..."
 DYLIBS_DIR="$APP_BUNDLE/Contents/Frameworks"
 mkdir -p "$DYLIBS_DIR"
 
-# Locate dylibs from common Homebrew paths (Apple Silicon and Intel)
-TESSERACT_LIB=""
-LEPTONICA_LIB=""
+# Locate dylibs from common Homebrew paths (Apple Silicon and Intel),
+# with fallbacks to versioned names and brew --prefix
+TESSERACT_LIB=${TESSERACT_LIB:-}
+LEPTONICA_LIB=${LEPTONICA_LIB:-}
 
-if [ -f "/opt/homebrew/opt/tesseract/lib/libtesseract.dylib" ]; then
-  TESSERACT_LIB="/opt/homebrew/opt/tesseract/lib/libtesseract.dylib"
-elif [ -f "/usr/local/opt/tesseract/lib/libtesseract.dylib" ]; then
-  TESSERACT_LIB="/usr/local/opt/tesseract/lib/libtesseract.dylib"
+if [ -z "$TESSERACT_LIB" ]; then
+  for PATH_CAND in \
+    "/opt/homebrew/opt/tesseract/lib/libtesseract.dylib" \
+    "/usr/local/opt/tesseract/lib/libtesseract.dylib"; do
+    if [ -f "$PATH_CAND" ]; then TESSERACT_LIB="$PATH_CAND"; break; fi
+  done
 fi
 
-if [ -f "/opt/homebrew/opt/leptonica/lib/liblept.dylib" ]; then
-  LEPTONICA_LIB="/opt/homebrew/opt/leptonica/lib/liblept.dylib"
-elif [ -f "/usr/local/opt/leptonica/lib/liblept.dylib" ]; then
-  LEPTONICA_LIB="/usr/local/opt/leptonica/lib/liblept.dylib"
+if [ -z "$TESSERACT_LIB" ]; then
+  BREW_TESS_PREFIX=$(brew --prefix tesseract 2>/dev/null || true)
+  if [ -d "$BREW_TESS_PREFIX/lib" ]; then
+    # pick first matching versioned dylib
+    TESSERACT_LIB=$(ls "$BREW_TESS_PREFIX"/lib/libtesseract*.dylib 2>/dev/null | head -n1 || true)
+  fi
+fi
+
+if [ -z "$LEPTONICA_LIB" ]; then
+  for PATH_CAND in \
+    "/opt/homebrew/opt/leptonica/lib/liblept.dylib" \
+    "/usr/local/opt/leptonica/lib/liblept.dylib"; do
+    if [ -f "$PATH_CAND" ]; then LEPTONICA_LIB="$PATH_CAND"; break; fi
+  done
+fi
+
+if [ -z "$LEPTONICA_LIB" ]; then
+  BREW_LEPT_PREFIX=$(brew --prefix leptonica 2>/dev/null || true)
+  if [ -d "$BREW_LEPT_PREFIX/lib" ]; then
+    LEPTONICA_LIB=$(ls "$BREW_LEPT_PREFIX"/lib/liblept*.dylib 2>/dev/null | head -n1 || true)
+  fi
+fi
+
+# As a last resort for Leptonica, discover via libtesseract's dependencies
+if [ -z "$LEPTONICA_LIB" ] && [ -n "$TESSERACT_LIB" ]; then
+  LEPTONICA_LIB=$(otool -L "$TESSERACT_LIB" 2>/dev/null | awk '{print $1}' | grep -E 'liblept.*\\.dylib' | head -n1 || true)
 fi
 
 if [ -z "$TESSERACT_LIB" ] || [ -z "$LEPTONICA_LIB" ]; then
@@ -135,8 +160,11 @@ fi
 echo "   Tesseract:  $TESSERACT_LIB"
 echo "   Leptonica:  $LEPTONICA_LIB"
 
-cp "$TESSERACT_LIB" "$DYLIBS_DIR/libtesseract.dylib"
-cp "$LEPTONICA_LIB" "$DYLIBS_DIR/liblept.dylib"
+TESS_BASE=$(basename "$TESSERACT_LIB")
+LEPT_BASE=$(basename "$LEPTONICA_LIB")
+
+cp "$TESSERACT_LIB" "$DYLIBS_DIR/$TESS_BASE"
+cp "$LEPTONICA_LIB" "$DYLIBS_DIR/$LEPT_BASE"
 
 # Copy any dependent dylibs of libtesseract/liblept that live under Homebrew (to reduce external deps)
 copy_deps() {
@@ -152,8 +180,8 @@ copy_deps() {
   done
 }
 
-copy_deps "$DYLIBS_DIR/libtesseract.dylib"
-copy_deps "$DYLIBS_DIR/liblept.dylib"
+copy_deps "$DYLIBS_DIR/$TESS_BASE"
+copy_deps "$DYLIBS_DIR/$LEPT_BASE"
 
 # Adjust rpaths and install names so the app uses bundled frameworks
 echo "🛠️  Rewriting library references..."
@@ -161,13 +189,14 @@ echo "🛠️  Rewriting library references..."
 # Add rpath to app binary
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" || true
 
-# Point app binary to bundled libs
-for LIB in libtesseract.dylib liblept.dylib; do
-  # Find any absolute references to Homebrew and rewrite to @rpath
-  for REF in $(otool -L "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" | awk '{print $1}' | grep -E "(libtesseract|liblept).*dylib" || true); do
-    echo "   🔗 Rewriting $REF -> @rpath/$LIB"
-    install_name_tool -change "$REF" "@rpath/$LIB" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" || true
-  done
+# Point app binary to bundled libs (use discovered basenames)
+for REF in $(otool -L "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" | awk '{print $1}' | grep -E "libtesseract.*dylib" || true); do
+  echo "   🔗 Rewriting $REF -> @rpath/$TESS_BASE"
+  install_name_tool -change "$REF" "@rpath/$TESS_BASE" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" || true
+done
+for REF in $(otool -L "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" | awk '{print $1}' | grep -E "liblept.*dylib" || true); do
+  echo "   🔗 Rewriting $REF -> @rpath/$LEPT_BASE"
+  install_name_tool -change "$REF" "@rpath/$LEPT_BASE" "$APP_BUNDLE/Contents/MacOS/$BINARY_NAME" || true
 done
 
 # Ensure the bundled libs reference each other via @loader_path
