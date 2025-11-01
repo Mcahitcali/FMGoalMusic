@@ -509,6 +509,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             };
 
             let mut debouncer = Debouncer::new(debounce_ms);
+            let mut last_detection_time: Option<std::time::Instant> = None;
 
             {
                 let mut st = state_clone.lock().expect("Failed to acquire state lock");
@@ -542,6 +543,18 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                         continue;
                     }
                     ProcessState::Running => {}
+                }
+
+                // Skip expensive capture/OCR during debounce cooldown
+                if let Some(last_time) = last_detection_time {
+                    let elapsed = last_time.elapsed();
+                    if elapsed < Duration::from_millis(debounce_ms) {
+                        // Still in cooldown - sleep and skip expensive operations
+                        let remaining_ms = debounce_ms.saturating_sub(elapsed.as_millis() as u64);
+                        let sleep_ms = remaining_ms.min(500); // Wake up periodically to check state
+                        thread::sleep(Duration::from_millis(sleep_ms));
+                        continue;
+                    }
                 }
 
                 let image = match capture_manager.capture_region() {
@@ -589,6 +602,9 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 };
 
                 if should_play_sound && debouncer.should_trigger() {
+                    // Update last detection time to start cooldown period
+                    last_detection_time = Some(std::time::Instant::now());
+
                     // Play ambiance first (crowd reaction) with fade-in and length limit
                     if let Some(ref ambiance) = ambiance_manager {
                         if ambiance_length_ms > 0 {
@@ -602,7 +618,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                             }
                         }
                     }
-                    
+
                     // Play music immediately after with fade-in and length limit
                     let music_result = if music_length_ms > 0 {
                         audio_manager.play_sound_with_fade_and_limit(200, music_length_ms)
@@ -610,7 +626,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                         // No length limit, use regular fade-in
                         audio_manager.play_sound_with_fade(200)
                     };
-                    
+
                     match music_result {
                         Ok(()) => {
                             let mut st = state_clone.lock().expect("Failed to acquire state lock");

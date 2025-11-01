@@ -106,10 +106,10 @@ fn test_capture_region_validation() {
 #[test]
 fn test_fps_target() {
     // Verify FPS calculations
-    let target_fps = 60.0;
-    let frame_time_ms = 1000.0 / target_fps;
-    
-    assert!((frame_time_ms - 16.67).abs() < 0.1);
+    let target_fps = 60.0_f64;
+    let frame_time_ms = 1000.0_f64 / target_fps;
+
+    assert!((frame_time_ms - 16.67_f64).abs() < 0.1);
 }
 
 #[test]
