@@ -1382,39 +1382,63 @@ impl eframe::App for FMGoalMusicsApp {
             // Initialize on first show
             if let Some(sel) = &mut self.region_selector {
                 if !self.hide_window_for_capture {
-                    println!("   Hiding main window for screenshot capture...");
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                    println!("   Preparing window for screenshot capture...");
+
+                    // On Windows, hiding the main window closes the app
+                    // So we minimize it instead
+                    #[cfg(target_os = "windows")]
+                    {
+                        println!("   (Windows: Minimizing window instead of hiding)");
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                    }
+
+                    // On macOS/Linux, we can safely hide the window
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        println!("   (macOS/Linux: Hiding window)");
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                    }
+
                     self.hide_window_for_capture = true;
                     self.capture_delay_frames = 2;
                     ctx.request_repaint();
                     return;
                 }
                 if !sel.initialized {
-                    if !self.hide_window_for_capture {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-                        self.hide_window_for_capture = true;
-                        self.capture_delay_frames = 2;
-                        ctx.request_repaint();
-                        return;
-                    }
-
                     if self.capture_delay_frames > 0 {
-                        println!("   Waiting for window to hide... (frames left: {})", self.capture_delay_frames);
+                        println!("   Waiting for window to minimize/hide... (frames left: {})", self.capture_delay_frames);
                         self.capture_delay_frames = self.capture_delay_frames.saturating_sub(1);
                         ctx.request_repaint();
                         return;
                     }
 
-                    println!("   Window hidden, starting screenshot capture...");
+                    println!("   Window minimized/hidden, starting screenshot capture...");
                     let capture_result = sel.capture_fullscreen();
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+
+                    // Restore window visibility
+                    #[cfg(target_os = "windows")]
+                    {
+                        println!("   Restoring window (Windows: un-minimize)...");
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                    }
+
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        println!("   Restoring window (macOS/Linux: show)...");
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                    }
+
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                     self.hide_window_for_capture = false;
                     self.capture_delay_frames = 0;
 
                     match capture_result {
                         Err(e) => {
-                            // Make window visible again
+                            // Make window visible again (already done above, but ensure it's restored)
+                            #[cfg(target_os = "windows")]
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+
+                            #[cfg(not(target_os = "windows"))]
                             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
 
                             // Log to console for debugging
