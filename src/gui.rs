@@ -787,17 +787,25 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
 impl eframe::App for FMGoalMusicsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Header with title and Start/Stop button
-            ui.horizontal(|ui| {
-                // Start/Stop Detection button on the left
+            // Batch read state once per frame to minimize lock contention
+            let (is_stopped, is_running, status_color, status_message, detection_count) = {
                 let state = self.state.lock().expect("Failed to acquire state lock");
                 let is_stopped = state.process_state == ProcessState::Stopped;
                 let is_running = state.process_state == ProcessState::Running;
-                drop(state);
+                let status_color = match state.process_state {
+                    ProcessState::Running => egui::Color32::GREEN,
+                    ProcessState::Paused => egui::Color32::YELLOW,
+                    ProcessState::Stopped => egui::Color32::RED,
+                };
+                (is_stopped, is_running, status_color, state.status_message.clone(), state.detection_count)
+            };
 
+            // Header with title and Start/Stop button
+            ui.horizontal(|ui| {
+                // Start/Stop Detection button on the left
                 let button_text = if is_running { "⏹️ Stop Detection" } else { "▶️ Start Detection" };
                 let button_color = if is_running { egui::Color32::from_rgb(244, 67, 54) } else { egui::Color32::from_rgb(76, 175, 80) };
-                
+
                 if ui.add(egui::Button::new(button_text).fill(button_color)).clicked() {
                     if is_running {
                         self.stop_detection();
@@ -813,19 +821,13 @@ impl eframe::App for FMGoalMusicsApp {
 
             // Status bar
             {
-                let state = self.state.lock().expect("Failed to acquire state lock");
                 let window_rect = ctx.input(|i| i.viewport_rect());
                 let window_width = window_rect.width().round() as i32;
                 let window_height = window_rect.height().round() as i32;
                 ui.horizontal(|ui| {
                     ui.label("Status:");
-                    let status_color = match state.process_state {
-                        ProcessState::Running => egui::Color32::GREEN,
-                        ProcessState::Paused => egui::Color32::YELLOW,
-                        ProcessState::Stopped => egui::Color32::RED,
-                    };
-                    ui.colored_label(status_color, &state.status_message);
-                    ui.label(format!("| Detections: {}", state.detection_count));
+                    ui.colored_label(status_color, &status_message);
+                    ui.label(format!("| Detections: {}", detection_count));
                     if let Some((sw, sh)) = self.screen_resolution {
                         ui.label(format!("| Display: {}x{}", sw, sh));
                     }
