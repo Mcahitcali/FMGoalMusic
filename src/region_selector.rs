@@ -23,61 +23,45 @@ impl RegionSelector {
     }
     
     pub fn capture_screenshot(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Use scap to capture the entire screen
-        // Ensure platform support and permissions are available
-        if !scap::is_supported() {
-            return Err("Screen capture not supported on this platform".into());
+        // Use xcap to capture the entire screen
+        use xcap::Monitor;
+
+        // Get all monitors
+        let monitors = Monitor::all()
+            .map_err(|e| format!("Failed to enumerate monitors: {}", e))?;
+
+        if monitors.is_empty() {
+            return Err("No monitors found".into());
         }
-        if !scap::has_permission() {
-            // Try to request permission (macOS)
-            let _ = scap::request_permission();
-            if !scap::has_permission() {
-                return Err("Screen Recording permission is required. Please enable it and try again.".into());
+
+        // Get primary monitor (first in the list)
+        let monitor = monitors.into_iter().next()
+            .ok_or("Failed to get primary monitor")?;
+
+        // Capture full screen with permission error handling
+        // Note: xcap v0.7 returns ImageBuffer<Rgba<u8>, Vec<u8>> directly
+        let image = monitor.capture_image().map_err(|e| -> Box<dyn std::error::Error> {
+            let error_msg = format!("{}", e);
+
+            #[cfg(target_os = "macos")]
+            if error_msg.contains("permission") || error_msg.contains("denied") || error_msg.contains("authorization") {
+                return format!(
+                    "Screen Recording permission required.\n\
+                    \n\
+                    To grant permission on macOS:\n\
+                    1. Open System Preferences/Settings > Privacy & Security\n\
+                    2. Click 'Screen Recording'\n\
+                    3. Enable permission for this application\n\
+                    4. Restart the application and try again\n\
+                    \n\
+                    Original error: {}", e
+                ).into();
             }
-        }
-        use scap::capturer::{Capturer, Options, Resolution};
-        use scap::frame::{Frame, FrameType};
-        
-        let options = Options {
-            fps: 1,
-            target: None,
-            show_cursor: false,
-            show_highlight: false,
-            excluded_targets: None,
-            output_type: FrameType::BGRAFrame,
-            output_resolution: Resolution::Captured,
-            crop_area: None,
-            captures_audio: false,
-            ..Default::default()
-        };
-        
-        let mut capturer = Capturer::build(options)?;
-        capturer.start_capture();
-        
-        let frame = loop {
-            match capturer.get_next_frame()? {
-                Frame::Video(frame) => break frame,
-                Frame::Audio(_) => continue,
-            }
-        };
-        
-        capturer.stop_capture();
-        
-        // Convert to RGBA
-        use scap::frame::VideoFrame;
-        let img = match frame {
-            VideoFrame::BGRA(frame) => {
-                let mut pixels = frame.data.clone();
-                for chunk in pixels.chunks_exact_mut(4) {
-                    chunk.swap(0, 2); // B <-> R
-                }
-                ImageBuffer::from_raw(frame.width as u32, frame.height as u32, pixels)
-                    .ok_or("Failed to create ImageBuffer")?
-            }
-            _ => return Err("Unsupported video frame format".into()),
-        };
-        
-        self.screenshot = Some(img);
+
+            format!("Failed to capture screen: {}", e).into()
+        })?;
+
+        self.screenshot = Some(image);
         Ok(())
     }
     

@@ -80,15 +80,16 @@ impl TeamMatcher {
 ## Core Technologies
 
 ### Screen Capture
-**Library:** `scap` v0.1.5
-- GPU-accelerated screen capture
-- Platform-specific optimizations:
-  - **macOS:** Metal framework, IOSurface-backed capture
+**Library:** `xcap` v0.7.x
+- Cross-platform GPU-accelerated screen capture
+- Platform-specific implementations:
+  - **macOS:** ScreenCaptureKit (macOS 12.3+) or Core Graphics (older versions)
   - **Windows:** Windows.Graphics.Capture API (DirectX)
-  - **Linux:** X11/Wayland compositor integration
-- Region-based capture (configurable x, y, width, height)
+  - **Linux:** X11 or Wayland (via pipewire/portals)
+- Full screen capture with efficient region cropping
 - RGBA output format
-- Performance: 5-15ms latency (macOS), 10-20ms (Windows), 15-30ms (Linux)
+- Performance: 10-20ms latency on modern systems
+- Stable release, actively maintained (2024-2025)
 
 ### Optical Character Recognition (OCR)
 **Library:** `leptess` v0.14.0 (Tesseract wrapper)
@@ -218,21 +219,22 @@ fm-goal-musics/
 
 ```rust
 pub struct CaptureManager {
-    capturer: scap::Capturer,
-    region: (u32, u32, u32, u32),  // x, y, width, height
+    monitor: xcap::Monitor,
+    region: CaptureRegion,
 }
 
 impl CaptureManager {
-    pub fn new(region: (u32, u32, u32, u32)) -> Result<Self>
-    pub fn capture(&mut self) -> Result<RgbaImage>
+    pub fn new(region: CaptureRegion) -> Result<Self>
+    pub fn capture_region(&mut self) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>>
 }
 ```
 
 **Key Features:**
-- Single capturer instance (reused across captures)
-- Configurable region extraction
-- Error handling for permission issues
-- Platform-specific optimizations
+- Monitor instance reused across captures for optimal performance
+- Full screen capture with efficient region cropping
+- Cross-platform compatibility (Windows, macOS, Linux)
+- Error handling with helpful validation messages
+- Platform-specific GPU acceleration
 
 ### 2. OCR Manager (`ocr.rs`) 🔄
 **Responsibility:** Text detection and preprocessing
@@ -497,35 +499,36 @@ impl eframe::App for RegionSelector {
 ```toml
 [dependencies]
 # Screen Capture
-scap = "0.1.5"
+xcap = "0.7"
 
 # OCR
 leptess = "0.14.0"
 
 # Audio
-rodio = { version = "0.19.0", features = ["mp3"] }
+rodio = { version = "0.19", features = ["mp3"] }
 symphonia = { version = "0.5", features = ["mp3", "aac", "flac", "isomp4", "ogg"] }
 hound = "3"
 
 # GUI
-egui = "0.29.1"
-eframe = "0.29.1"
-rfd = "0.15.1"
+egui = "0.33.0"
+eframe = "0.33.0"
+rfd = "0.14"
 
 # Utilities
-image = "0.25.5"
+image = "0.25"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dirs = "5.0"
-rdev = "0.5.4"
+rdev = "0.5"
 unicode-normalization = "0.1"
 
 [profile.release]
 opt-level = 3
-lto = "fat"
+lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+overflow-checks = false
 ```
 
 ### Build Profiles

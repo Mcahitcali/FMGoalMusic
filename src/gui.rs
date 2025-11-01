@@ -1191,8 +1191,8 @@ impl eframe::App for FMGoalMusicsApp {
                         state.capture_region = [0, capture_y, screen_w, capture_height];
                     }
                 }
-                ui.label("(Click to select region on screen)");
             });
+            ui.label("💡 Recommended: Use visual selector for accurate coordinates on HiDPI/Retina displays");
 
             // Other configuration options
             {
@@ -1464,16 +1464,38 @@ impl eframe::App for FMGoalMusicsApp {
                             }
                             if response.drag_stopped() {
                                 if let (Some(s), Some(c)) = (sel.start, sel.current) {
-                                    let x1 = s.x.min(c.x);
-                                    let y1 = s.y.min(c.y);
-                                    let x2 = s.x.max(c.x);
-                                    let y2 = s.y.max(c.y);
+                                    // Get image position offset within the window
+                                    let img_min = response.rect.min;
 
-                                    // Convert to screen pixels
-                                    let x = (x1 / sel.scale) as u32;
-                                    let y = (y1 / sel.scale) as u32;
-                                    let w = ((x2 - x1) / sel.scale) as u32;
-                                    let h = ((y2 - y1) / sel.scale) as u32;
+                                    // Convert absolute positions to image-relative positions
+                                    let rel_x1 = (s.x - img_min.x).max(0.0);
+                                    let rel_y1 = (s.y - img_min.y).max(0.0);
+                                    let rel_x2 = (c.x - img_min.x).max(0.0);
+                                    let rel_y2 = (c.y - img_min.y).max(0.0);
+
+                                    let x1 = rel_x1.min(rel_x2);
+                                    let y1 = rel_y1.min(rel_y2);
+                                    let x2 = rel_x1.max(rel_x2);
+                                    let y2 = rel_y1.max(rel_y2);
+
+                                    // Step 1: Convert from display coordinates to physical screen pixels
+                                    let phys_x = x1 / sel.scale;
+                                    let phys_y = y1 / sel.scale;
+                                    let phys_w = (x2 - x1) / sel.scale;
+                                    let phys_h = (y2 - y1) / sel.scale;
+
+                                    // Step 2: Convert from physical pixels to logical pixels
+                                    // (divide by display scale: 2.0 for Retina)
+                                    let logical_x = (phys_x / sel.display_scale) as u32;
+                                    let logical_y = (phys_y / sel.display_scale) as u32;
+                                    let logical_w = (phys_w / sel.display_scale).max(1.0) as u32;
+                                    let logical_h = (phys_h / sel.display_scale).max(1.0) as u32;
+
+                                    // Step 3: Clamp to logical screen bounds
+                                    let x = logical_x.min(sel.logical_w.saturating_sub(1));
+                                    let y = logical_y.min(sel.logical_h.saturating_sub(1));
+                                    let w = logical_w.min(sel.logical_w - x);
+                                    let h = logical_h.min(sel.logical_h - y);
 
                                     selection_done = Some([x, y, w, h]);
                                 }
@@ -1504,11 +1526,22 @@ impl eframe::App for FMGoalMusicsApp {
 
                 // Apply results outside of the closure to avoid borrowing self and sel simultaneously
                 if let Some([x, y, w, h]) = selection_done {
+                    // Get dimensions while we still have the mutable borrow
+                    let (phys_w, phys_h) = (sel.img_w, sel.img_h);
+                    let (logical_w, logical_h) = (sel.logical_w, sel.logical_h);
+                    let display_scale = sel.display_scale;
+                    let fullscreen = sel.fullscreen_on;
+
+                    // Update state
                     let mut st = self.state.lock().expect("Failed to acquire state lock");
                     st.capture_region = [x, y, w, h];
-                    st.status_message = format!("Region selected: [{}, {}, {}, {}]", x, y, w, h);
+                    st.status_message = format!(
+                        "Region selected: [{}, {}, {}, {}] (Logical: {}x{}, Physical: {}x{}, Scale: {:.1}x)",
+                        x, y, w, h, logical_w, logical_h, phys_w, phys_h, display_scale
+                    );
+
                     // Restore window state
-                    if sel.fullscreen_on {
+                    if fullscreen {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
                     }
                     self.selecting_region = false;
@@ -1534,10 +1567,15 @@ struct RegionSelectState {
     initialized: bool,
     // Deferred GPU texture (created inside egui callbacks)
     texture: Option<egui::TextureHandle>,
-    // Raw pixels captured from screen
+    // Raw pixels captured from screen (physical resolution on Retina)
     img_w: usize,
     img_h: usize,
     pixels_rgba: Option<Vec<u8>>,
+    // Logical screen dimensions (what the OS reports)
+    logical_w: u32,
+    logical_h: u32,
+    // Display scale factor (e.g., 2.0 for Retina)
+    display_scale: f32,
     // UI interaction state
     scale: f32,
     start: Option<egui::Pos2>,
@@ -1547,62 +1585,72 @@ struct RegionSelectState {
 
 impl RegionSelectState {
     fn capture_fullscreen(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Check platform support and permissions
-        if !scap::is_supported() {
-            return Err("Screen capture not supported on this platform".into());
+        // Use xcap to capture the entire screen
+        use xcap::Monitor;
+
+        // Get all monitors
+        let monitors = Monitor::all()
+            .map_err(|e| format!("Failed to enumerate monitors: {}", e))?;
+
+        if monitors.is_empty() {
+            return Err("No monitors found".into());
         }
-        if !scap::has_permission() {
-            let _ = scap::request_permission();
-            if !scap::has_permission() {
-                return Err("Screen Recording permission is required. Enable it and restart the app.".into());
-            }
-        }
 
-        use scap::capturer::{Capturer, Options, Resolution};
-        use scap::frame::{Frame, FrameType, VideoFrame};
+        // Get primary monitor (first in the list)
+        let monitor = monitors.into_iter().next()
+            .ok_or("Failed to get primary monitor")?;
 
-        let options = Options {
-            fps: 1,
-            target: None,
-            show_cursor: false,
-            show_highlight: false,
-            excluded_targets: None,
-            output_type: FrameType::BGRAFrame,
-            output_resolution: Resolution::Captured,
-            crop_area: None,
-            captures_audio: false,
-            ..Default::default()
-        };
+        // Get logical dimensions (what the OS reports, e.g., 1512x982 on Retina)
+        let logical_w = monitor.width().unwrap_or(0);
+        let logical_h = monitor.height().unwrap_or(0);
 
-        let mut capturer = Capturer::build(options)?;
-        capturer.start_capture();
-        let frame = loop {
-            match capturer.get_next_frame()? {
-                Frame::Video(f) => break f,
-                Frame::Audio(_) => continue,
-            }
-        };
-        capturer.stop_capture();
+        // Capture full screen with permission error handling
+        let image = monitor.capture_image().map_err(|e| -> Box<dyn std::error::Error> {
+            let error_msg = format!("{}", e);
 
-        let (w, h, rgba) = match frame {
-            VideoFrame::BGRA(f) => {
-                let mut pixels = f.data.clone();
-                for p in pixels.chunks_exact_mut(4) { p.swap(0, 2); }
-                (f.width as u32, f.height as u32, pixels)
+            #[cfg(target_os = "macos")]
+            if error_msg.contains("permission") || error_msg.contains("denied") || error_msg.contains("authorization") {
+                return format!(
+                    "Screen Recording permission required.\n\
+                    \n\
+                    To grant permission on macOS:\n\
+                    1. Open System Preferences/Settings > Privacy & Security\n\
+                    2. Click 'Screen Recording'\n\
+                    3. Enable permission for this application\n\
+                    4. Restart the application and try again\n\
+                    \n\
+                    Original error: {}", e
+                ).into();
             }
-            VideoFrame::BGR0(f) => {
-                let mut pixels = Vec::with_capacity((f.width * f.height * 4) as usize);
-                for c in f.data.chunks_exact(4) { pixels.extend_from_slice(&[c[2], c[1], c[0], 255]); }
-                (f.width as u32, f.height as u32, pixels)
-            }
-            _ => return Err("Unsupported video frame format".into()),
+
+            format!("Failed to capture screen: {}", e).into()
+        })?;
+
+        // Get dimensions and pixel data (physical resolution on Retina)
+        let w = image.width();
+        let h = image.height();
+        let rgba = image.into_raw();
+
+        // Calculate display scale factor (e.g., 2.0 for Retina)
+        // Physical pixels / Logical pixels
+        let display_scale = if logical_w > 0 {
+            w as f32 / logical_w as f32
+        } else {
+            1.0
         };
 
         // Defer texture creation to the active egui Context inside the selector window.
         self.img_w = w as usize;
         self.img_h = h as usize;
+        self.logical_w = logical_w;
+        self.logical_h = logical_h;
+        self.display_scale = display_scale;
         self.pixels_rgba = Some(rgba);
         self.texture = None;
+
+        println!("Screenshot: {}x{} (physical) | Monitor: {}x{} (logical) | Scale: {}x",
+                 w, h, logical_w, logical_h, display_scale);
+
         Ok(())
     }
 }

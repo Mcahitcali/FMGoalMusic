@@ -8,8 +8,8 @@ name = "fm-goal-musics-gui"
 path = "src/gui_main.rs"
 
 [dependencies]
-# Screen capture - GPU-assisted
-scap = "0.1.0-beta.1"
+# Screen capture - GPU-assisted (cross-platform)
+xcap = "0.7"
 
 # OCR - Tesseract wrapper
 leptess = "0.14.0"

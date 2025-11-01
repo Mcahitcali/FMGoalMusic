@@ -454,15 +454,6 @@ if ($UsingVcpkg) {
     Write-Host "Configured to use system Tesseract/Leptonica development files at '$sysRoot'" -ForegroundColor Green
 }
 
-# Ensure compatible windows-capture version for scap
-Write-Host "Refreshing dependency resolution for windows-capture=1.4.0..." -ForegroundColor Blue
-try {
-    $updateOutput = & $cargoPath update -p windows-capture --precise 1.4.0 2>&1
-    Write-Host "Dependency graph updated" -ForegroundColor Green
-} catch {
-    Write-Host "Warning: cargo update for windows-capture failed (will attempt to build anyway)" -ForegroundColor Yellow
-}
-
 # Build the project
 try {
     $buildOutput = & $cargoPath build --release --bin fm-goal-musics-gui 2>&1

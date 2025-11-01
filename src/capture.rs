@@ -1,34 +1,32 @@
 use image::{ImageBuffer, Rgba};
-use scap::capturer::{Capturer, Options, Area, Point, Size, Resolution};
-use scap::frame::{Frame, FrameType};
+use xcap::Monitor;
 
-/// Screen capture manager that reuses the capturer instance for optimal performance
+/// Screen capture manager using xcap for cross-platform GPU-accelerated capture
 ///
 /// # Platform-Specific Implementation
 ///
 /// ## macOS
-/// - Uses Metal framework for GPU-accelerated capture via `scap`
+/// - Uses ScreenCaptureKit (macOS 12.3+) or Core Graphics (older versions)
 /// - Requires Screen Recording permission (System Preferences > Security & Privacy > Privacy > Screen Recording)
 /// - Captures at native display resolution for best quality
 /// - Supports Retina displays automatically
 ///
 /// ## Windows
-/// - Uses Windows.Graphics.Capture API (Windows 10+) via `scap`
+/// - Uses Windows.Graphics.Capture API (Windows 10 1903+)
 /// - GPU-accelerated capture using DirectX
 /// - No special permissions required
 /// - Supports multi-monitor setups
 ///
 /// ## Linux
-/// - Uses X11/Wayland capture via `scap`
+/// - Uses X11 or Wayland (via pipewire/portals)
 /// - Performance may vary based on compositor
 ///
 /// # Performance Notes
-/// - Capturer instance is reused across all captures (critical for performance)
-/// - Native resolution capture (no scaling overhead)
-/// - Crop area applied at capture time (not post-processing)
+/// - Monitor instance is reused across all captures for optimal performance
+/// - Native resolution capture with efficient cropping
+/// - Typical latency: 10-20ms on modern systems
 pub struct CaptureManager {
-    capturer: Capturer,
-    #[allow(dead_code)]
+    monitor: Monitor,
     region: CaptureRegion,
 }
 
@@ -45,7 +43,7 @@ impl CaptureRegion {
     pub fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
         Self { x, y, width, height }
     }
-    
+
     pub fn from_array(arr: [u32; 4]) -> Self {
         Self::new(arr[0], arr[1], arr[2], arr[3])
     }
@@ -53,168 +51,128 @@ impl CaptureRegion {
 
 impl CaptureManager {
     /// Create a new CaptureManager with the specified region
-    /// The capturer is initialized once and reused for all captures
+    /// The monitor is identified once and reused for all captures
     pub fn new(region: CaptureRegion) -> Result<Self, Box<dyn std::error::Error>> {
         println!("Initializing screen capturer...");
         println!("  Region: x={}, y={}, w={}, h={}", region.x, region.y, region.width, region.height);
-        
-        // Check platform support
-        if !scap::is_supported() {
-            return Err("Platform not supported".into());
+
+        // Get all available monitors
+        let monitors = Monitor::all()
+            .map_err(|e| format!("Failed to enumerate monitors: {}", e))?;
+
+        if monitors.is_empty() {
+            return Err("No monitors found".into());
         }
-        
-        // Check permissions (primarily for macOS)
-        if !scap::has_permission() {
-            #[cfg(target_os = "macos")]
-            println!("  ⚠️  macOS Screen Recording permission required");
-            #[cfg(not(target_os = "macos"))]
-            println!("  Requesting screen recording permission...");
-            
-            if !scap::request_permission() {
-                #[cfg(target_os = "macos")]
-                return Err(
-                    "Screen recording permission denied.\n\
-                    \n\
-                    To grant permission:\n\
-                    1. Open System Preferences > Security & Privacy\n\
-                    2. Click Privacy tab > Screen Recording\n\
-                    3. Add Terminal (or your terminal app) to the list\n\
-                    4. Restart the terminal and try again".into()
-                );
-                
-                #[cfg(not(target_os = "macos"))]
-                return Err("Screen recording permission denied".into());
-            }
-        }
-        
-        // Create options with crop area matching our region
-        // Platform-specific notes:
-        // - macOS: Uses Metal for GPU acceleration, respects Retina scaling
-        // - Windows: Uses Windows.Graphics.Capture API (DirectX-backed)
-        // - Linux: Uses X11/Wayland capture
-        let options = Options {
-            fps: 30, // Target FPS - actual capture rate may be higher
-            target: None, // Primary display (None = default screen)
-            show_cursor: false, // Don't capture cursor (performance optimization)
-            show_highlight: false, // Don't show capture highlight
-            excluded_targets: None,
-            output_type: FrameType::BGRAFrame, // BGRA is native format on most platforms
-            output_resolution: Resolution::Captured, // Native resolution (no scaling)
-            crop_area: Some(Area {
-                origin: Point {
-                    x: region.x as f64,
-                    y: region.y as f64,
-                },
-                size: Size {
-                    width: region.width as f64,
-                    height: region.height as f64,
-                },
-            }),
-            captures_audio: false, // Audio not needed (performance optimization)
-            ..Default::default()
-        };
-        
-        // Build capturer
-        let capturer = Capturer::build(options)
-            .map_err(|e| {
-                format!(
-                    "Failed to build capturer: {:?}\n\
-                    \n\
-                    This usually means the capture region is outside screen bounds.\n\
-                    Your region: [x={}, y={}, w={}, h={}] ends at ({}, {})\n\
-                    \n\
-                    To find your screen size:\n\
-                    1. Take a full screenshot\n\
-                    2. Check its dimensions (e.g., 1920x1080)\n\
-                    3. Update config.json with a valid region\n\
-                    \n\
-                    Example for 1920x1080 screen (bottom 100px):\n\
-                    \"capture_region\": [0, 980, 1920, 100]",
-                    e,
-                    region.x, region.y, region.width, region.height,
-                    region.x + region.width, region.y + region.height
-                )
-            })?;
-        
+
+        // Get primary monitor (first in the list)
+        let monitor = monitors.into_iter().next()
+            .ok_or("Failed to get primary monitor")?;
+
+        // Get monitor dimensions and name (handle Result return types in xcap v0.7)
+        let monitor_width = monitor.width().unwrap_or(0);
+        let monitor_height = monitor.height().unwrap_or(0);
+        let monitor_name = monitor.name().unwrap_or_else(|_| "Unknown".to_string());
+
         println!("✓ Screen capturer initialized");
-        
+        println!("  Monitor: {}x{} ({})", monitor_width, monitor_height, monitor_name);
+
+        // Validate region is within monitor bounds
+        if monitor_width == 0 || monitor_height == 0 {
+            return Err("Failed to get monitor dimensions".into());
+        }
+
+        if region.x >= monitor_width || region.y >= monitor_height {
+            return Err(format!(
+                "Capture region starting point ({}, {}) is outside monitor bounds (0, 0, {}, {})\n\
+                \n\
+                Please select a region within your screen.\n\
+                Your monitor size: {}x{}",
+                region.x, region.y, monitor_width, monitor_height,
+                monitor_width, monitor_height
+            ).into());
+        }
+
+        if region.x + region.width > monitor_width || region.y + region.height > monitor_height {
+            return Err(format!(
+                "Capture region ({}, {}, {}, {}) extends outside monitor bounds (0, 0, {}, {})\n\
+                \n\
+                Region ends at: ({}, {})\n\
+                Monitor size: {}x{}\n\
+                \n\
+                Please select a smaller region or one that fits within your screen.",
+                region.x, region.y, region.width, region.height,
+                monitor_width, monitor_height,
+                region.x + region.width, region.y + region.height,
+                monitor_width, monitor_height
+            ).into());
+        }
+
+        println!("  ✓ Region validated: within bounds");
+
         Ok(Self {
-            capturer,
+            monitor,
             region,
         })
     }
-    
+
     /// Capture the configured screen region
     /// Returns an RGBA image buffer
     ///
     /// # Performance
-    /// - macOS: Metal-accelerated, typically 5-15ms
-    /// - Windows: DirectX-accelerated, typically 10-20ms
-    /// - Linux: X11/Wayland, varies by compositor
+    /// - Captures ONLY the configured region (not full screen)
+    /// - Typical latency: 10-20ms on modern systems
+    /// - GPU-accelerated on Windows and macOS
     ///
     /// # Platform Notes
-    /// - Frame format is BGRA on most platforms (converted to RGBA)
-    /// - Crop area is applied during capture (no post-processing overhead)
-    /// - Capturer reuse is critical for performance (avoid recreating)
+    /// - Output format is RGBA8
+    /// - Direct region capture is more efficient than full screen + crop
+    /// - Monitor reuse is critical for performance
+    ///
+    /// # Permissions
+    /// - macOS: Requires Screen Recording permission
+    ///   If permission is denied, this will return an error with instructions
     pub fn capture_region(&mut self) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, Box<dyn std::error::Error>> {
-        // Start capture
-        self.capturer.start_capture();
-        
-        // Get next video frame
-        // Note: scap handles platform-specific capture internally
-        // - macOS: Metal framework (IOSurface)
-        // - Windows: Windows.Graphics.Capture API
-        // - Linux: X11/Wayland
-        let video_frame = loop {
-            match self.capturer.get_next_frame()? {
-                Frame::Video(frame) => break frame,
-                Frame::Audio(_) => continue, // Skip audio frames (we disabled audio capture)
+        // Capture ONLY the configured region using xcap's capture_region()
+        // This is more efficient than capturing full screen and cropping
+        // Platform-specific implementations:
+        // - macOS: ScreenCaptureKit or Core Graphics
+        // - Windows: Windows.Graphics.Capture API (DirectX)
+        // - Linux: X11 or Wayland
+        let image = self.monitor.capture_region(
+            self.region.x,
+            self.region.y,
+            self.region.width,
+            self.region.height,
+        ).map_err(|e| -> Box<dyn std::error::Error> {
+            // Provide helpful error messages based on the error type
+            let error_msg = format!("{}", e);
+
+            #[cfg(target_os = "macos")]
+            if error_msg.contains("permission") || error_msg.contains("denied") || error_msg.contains("authorization") {
+                return format!(
+                    "Screen Recording permission denied.\n\
+                    \n\
+                    To grant permission on macOS:\n\
+                    1. Open System Preferences/Settings > Privacy & Security\n\
+                    2. Click 'Screen Recording' (or 'Screen & System Audio Recording')\n\
+                    3. Enable permission for this application\n\
+                    4. Restart the application\n\
+                    \n\
+                    Original error: {}", e
+                ).into();
             }
-        };
-        
-        // Stop capture
-        self.capturer.stop_capture();
-        
-        // Handle different video frame types
-        use scap::frame::VideoFrame;
-        
-        let img_buffer = match video_frame {
-            VideoFrame::BGRA(frame) => {
-                // BGRA format - convert to RGBA by swapping B and R channels
-                let mut pixels = frame.data.clone();
-                for chunk in pixels.chunks_exact_mut(4) {
-                    chunk.swap(0, 2); // B <-> R
-                }
-                
-                ImageBuffer::from_raw(frame.width as u32, frame.height as u32, pixels)
-                    .ok_or("Failed to create ImageBuffer from BGRA frame")?
-            }
-            VideoFrame::BGR0(frame) => {
-                // BGR0 format - convert to RGBA (swap B and R, set alpha to 255)
-                let mut pixels = Vec::with_capacity((frame.width * frame.height * 4) as usize);
-                for chunk in frame.data.chunks_exact(4) {
-                    pixels.push(chunk[2]); // R
-                    pixels.push(chunk[1]); // G
-                    pixels.push(chunk[0]); // B
-                    pixels.push(255);      // A
-                }
-                
-                ImageBuffer::from_raw(frame.width as u32, frame.height as u32, pixels)
-                    .ok_or("Failed to create ImageBuffer from BGR0 frame")?
-            }
-            _ => {
-                return Err("Unsupported video frame format. Please use BGRAFrame output type.".into());
-            }
-        };
-        
-        Ok(img_buffer)
+
+            format!("Failed to capture screen region: {}", e).into()
+        })?;
+
+        Ok(image)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_capture_region_creation() {
         let region = CaptureRegion::new(0, 0, 200, 100);
@@ -223,7 +181,7 @@ mod tests {
         assert_eq!(region.width, 200);
         assert_eq!(region.height, 100);
     }
-    
+
     #[test]
     fn test_capture_region_from_array() {
         let region = CaptureRegion::from_array([10, 20, 300, 150]);
