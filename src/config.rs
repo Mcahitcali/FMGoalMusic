@@ -138,7 +138,7 @@ impl Config {
     /// Creates default config if file doesn't exist.
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let config_path = Self::config_path()?;
-        
+
         if config_path.exists() {
             let content = fs::read_to_string(&config_path)?;
             let mut config: Config = serde_json::from_str(&content)?;
@@ -152,6 +152,27 @@ impl Config {
             println!("✓ Loaded config from: {}", config_path.display());
             Ok(config)
         } else {
+            // Try migrating from legacy location (next to executable)
+            let legacy_path = (|| -> Result<PathBuf, Box<dyn std::error::Error>> {
+                let exe_path = env::current_exe()?;
+                let exe_dir = exe_path.parent().ok_or("Could not determine executable directory")?;
+                Ok(exe_dir.join("config").join("config.json"))
+            })();
+
+            if let Ok(legacy) = legacy_path {
+                if legacy.exists() {
+                    if let Ok(content) = fs::read_to_string(&legacy) {
+                        if let Ok(mut config) = serde_json::from_str::<Config>(&content) {
+                            // Save migrated config to new path
+                            config.save()?;
+                            println!("✓ Migrated config from legacy path: {}", legacy.display());
+                            println!("✓ New config at: {}", config_path.display());
+                            return Ok(config);
+                        }
+                    }
+                }
+            }
+
             // Create default config
             let config = Config::default();
             config.save()?;
@@ -176,14 +197,15 @@ impl Config {
         Ok(())
     }
     
-    /// Get the config file path (in app's base directory)
+    /// Get the config file path in a user-writable config directory
     pub fn config_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let exe_path = env::current_exe()?;
-        let exe_dir = exe_path.parent()
-            .ok_or("Could not determine executable directory")?;
-        
-        let config_dir = exe_dir.join("config");
-        Ok(config_dir.join("config.json"))
+        let base = dirs::config_dir()
+            .ok_or("Could not determine user config directory")?;
+        // Application-specific folder
+        let app_dir = base.join("FMGoalMusic");
+        // Ensure directory exists
+        fs::create_dir_all(&app_dir)?;
+        Ok(app_dir.join("config.json"))
     }
     
     /// Get the config directory path (for display purposes)
