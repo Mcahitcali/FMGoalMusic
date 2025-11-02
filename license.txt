@@ -1,0 +1,28 @@
+FM GOAL MUSICS LICENSE AGREEMENT
+
+---------------------------------
+
+This software ("FM Goal Musics") is provided by Mehmet Mücahit Çalı.
+
+By installing or using this software, you agree to the following terms:
+
+1. You use this software at your own risk. The author assumes no responsibility
+
+for any damage, data loss, or issues caused by use of this program.
+
+2. The software captures and analyzes parts of your computer screen only for the
+
+purpose of detecting text ("GOAL FOR ...") in Football Manager gameplay.
+
+3. No personal data is collected, transmitted, or stored by this software.
+
+4. Redistribution of this software, in whole or in part, without written permission
+
+of the author is prohibited.
+
+5. By clicking "I Agree", you acknowledge that you have read and accepted
+
+all terms and conditions of this license.
+
+© 2025 Mehmet Mücahit Çalı. All rights reserved.
+

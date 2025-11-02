@@ -68,3 +68,10 @@ overflow-checks = false # Disable overflow checks in release
 
 [profile.release.package."*"]
 opt-level = 3           # Optimize dependencies too
+
+
+
+[build-dependencies]
+winres = "0.1"
+
+
