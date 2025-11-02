@@ -30,8 +30,11 @@ serde_json = "1.0"
 # Display information (screen resolution)
 display-info = "0.4"
 
-# Image processing
-image = "0.25"
+# Image processing (only enable needed formats for faster compile + smaller binary)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+# Parallel processing for performance-critical code
+rayon = "1.10"
 
 # Platform directories
 dirs = "5.0"
