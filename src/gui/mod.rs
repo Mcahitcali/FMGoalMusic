@@ -1,3 +1,15 @@
+// GUI module for FM Goal Musics
+//
+// This module contains the main GUI application logic.
+// State-related types are in the `state` submodule.
+
+mod state;
+
+// Re-export public types
+pub use state::{AppState, MusicEntry, ProcessState};
+
+use state::{save_capture_image, AppTab, CapturePreview, PreviewAudio};
+
 use display_info::DisplayInfo;
 use eframe::egui;
 use image::ImageBuffer;
@@ -18,133 +30,6 @@ use crate::utils::Debouncer;
 
 // Region selector is implemented inline to avoid creating nested native
 // windows that can crash on some platforms when called from UI callbacks.
-
-/// Music entry with file path and optional keyboard shortcut
-#[derive(Clone, Debug)]
-pub struct MusicEntry {
-    pub name: String,
-    #[allow(dead_code)]
-    pub path: PathBuf,
-    pub shortcut: Option<String>,
-}
-
-struct PreviewAudio {
-    manager: AudioManager,
-    path: PathBuf,
-}
-
-#[derive(Default)]
-struct CapturePreview {
-    texture: Option<egui::TextureHandle>,
-    last_image: Option<egui::ColorImage>,
-    width: u32,
-    height: u32,
-    timestamp: Option<std::time::Instant>,
-}
-
-fn save_capture_image(image: &egui::ColorImage) -> Result<(), Box<dyn std::error::Error>> {
-    let path = rfd::FileDialog::new()
-        .add_filter("PNG Image", &["png"])
-        .set_file_name("capture_preview.png")
-        .save_file();
-
-    let Some(path) = path else {
-        return Ok(());
-    };
-
-    let mut buf = Vec::with_capacity(image.pixels.len() * 4);
-    for pixel in &image.pixels {
-        buf.extend_from_slice(&[pixel.r(), pixel.g(), pixel.b(), pixel.a()]);
-    }
-
-    image::save_buffer_with_format(
-        path,
-        &buf,
-        image.width() as u32,
-        image.height() as u32,
-        image::ColorType::Rgba8,
-        image::ImageFormat::Png,
-    )?;
-
-    Ok(())
-}
-
-/// Detection process state
-#[derive(Clone, Copy, PartialEq)]
-pub enum ProcessState {
-    Stopped,
-    Running,
-    Paused,
-}
-
-/// Shared state between GUI and background detection thread
-pub struct AppState {
-    pub music_list: Vec<MusicEntry>,
-    pub selected_music_index: Option<usize>,
-    pub process_state: ProcessState,
-    pub capture_region: [u32; 4],
-    pub ocr_threshold: u8,
-    pub debounce_ms: u64,
-    pub enable_morph_open: bool,
-    pub status_message: String,
-    pub detection_count: usize,
-    pub selected_team: Option<crate::config::SelectedTeam>,
-    pub music_volume: f32,
-    pub ambiance_volume: f32,
-    pub goal_ambiance_path: Option<String>,
-    pub ambiance_enabled: bool,
-    pub music_length_ms: u64,
-    pub ambiance_length_ms: u64,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            music_list: Vec::new(),
-            selected_music_index: None,
-            process_state: ProcessState::Stopped,
-            capture_region: [0, 0, 200, 100],
-            ocr_threshold: 0,
-            debounce_ms: 8000,
-            enable_morph_open: false,
-            status_message: "Ready".to_string(),
-            detection_count: 0,
-            selected_team: None,
-            music_volume: 1.0,
-            ambiance_volume: 0.6,
-            goal_ambiance_path: None,
-            ambiance_enabled: true,
-            music_length_ms: 20000, // 20 seconds
-            ambiance_length_ms: 20000, // 20 seconds
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AppTab {
-    Library,
-    TeamSelection,
-    Settings,
-    Help,
-}
-
-impl AppTab {
-    const ALL: [AppTab; 4] = [
-        AppTab::Library,
-        AppTab::TeamSelection,
-        AppTab::Settings,
-        AppTab::Help,
-    ];
-
-    fn label(self) -> &'static str {
-        match self {
-            AppTab::Library => "🎵 Library",
-            AppTab::TeamSelection => "⚽ Team Selection",
-            AppTab::Settings => "⚙️ Settings",
-            AppTab::Help => "ℹ️ Help",
-        }
-    }
-}
 
 /// Main GUI application
 enum DetectionCommand {
@@ -624,6 +509,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             };
 
             let mut debouncer = Debouncer::new(debounce_ms);
+            let mut last_detection_time: Option<std::time::Instant> = None;
 
             {
                 let mut st = state_clone.lock().expect("Failed to acquire state lock");
@@ -657,6 +543,18 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                         continue;
                     }
                     ProcessState::Running => {}
+                }
+
+                // Skip expensive capture/OCR during debounce cooldown
+                if let Some(last_time) = last_detection_time {
+                    let elapsed = last_time.elapsed();
+                    if elapsed < Duration::from_millis(debounce_ms) {
+                        // Still in cooldown - sleep and skip expensive operations
+                        let remaining_ms = debounce_ms.saturating_sub(elapsed.as_millis() as u64);
+                        let sleep_ms = remaining_ms.min(500); // Wake up periodically to check state
+                        thread::sleep(Duration::from_millis(sleep_ms));
+                        continue;
+                    }
                 }
 
                 let image = match capture_manager.capture_region() {
@@ -704,6 +602,9 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 };
 
                 if should_play_sound && debouncer.should_trigger() {
+                    // Update last detection time to start cooldown period
+                    last_detection_time = Some(std::time::Instant::now());
+
                     // Play ambiance first (crowd reaction) with fade-in and length limit
                     if let Some(ref ambiance) = ambiance_manager {
                         if ambiance_length_ms > 0 {
@@ -717,7 +618,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                             }
                         }
                     }
-                    
+
                     // Play music immediately after with fade-in and length limit
                     let music_result = if music_length_ms > 0 {
                         audio_manager.play_sound_with_fade_and_limit(200, music_length_ms)
@@ -725,7 +626,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                         // No length limit, use regular fade-in
                         audio_manager.play_sound_with_fade(200)
                     };
-                    
+
                     match music_result {
                         Ok(()) => {
                             let mut st = state_clone.lock().expect("Failed to acquire state lock");
@@ -787,17 +688,25 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
 impl eframe::App for FMGoalMusicsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Header with title and Start/Stop button
-            ui.horizontal(|ui| {
-                // Start/Stop Detection button on the left
+            // Batch read state once per frame to minimize lock contention
+            let (is_stopped, is_running, status_color, status_message, detection_count) = {
                 let state = self.state.lock().expect("Failed to acquire state lock");
                 let is_stopped = state.process_state == ProcessState::Stopped;
                 let is_running = state.process_state == ProcessState::Running;
-                drop(state);
+                let status_color = match state.process_state {
+                    ProcessState::Running => egui::Color32::GREEN,
+                    ProcessState::Paused => egui::Color32::YELLOW,
+                    ProcessState::Stopped => egui::Color32::RED,
+                };
+                (is_stopped, is_running, status_color, state.status_message.clone(), state.detection_count)
+            };
 
+            // Header with title and Start/Stop button
+            ui.horizontal(|ui| {
+                // Start/Stop Detection button on the left
                 let button_text = if is_running { "⏹️ Stop Detection" } else { "▶️ Start Detection" };
                 let button_color = if is_running { egui::Color32::from_rgb(244, 67, 54) } else { egui::Color32::from_rgb(76, 175, 80) };
-                
+
                 if ui.add(egui::Button::new(button_text).fill(button_color)).clicked() {
                     if is_running {
                         self.stop_detection();
@@ -813,19 +722,13 @@ impl eframe::App for FMGoalMusicsApp {
 
             // Status bar
             {
-                let state = self.state.lock().expect("Failed to acquire state lock");
                 let window_rect = ctx.input(|i| i.viewport_rect());
                 let window_width = window_rect.width().round() as i32;
                 let window_height = window_rect.height().round() as i32;
                 ui.horizontal(|ui| {
                     ui.label("Status:");
-                    let status_color = match state.process_state {
-                        ProcessState::Running => egui::Color32::GREEN,
-                        ProcessState::Paused => egui::Color32::YELLOW,
-                        ProcessState::Stopped => egui::Color32::RED,
-                    };
-                    ui.colored_label(status_color, &state.status_message);
-                    ui.label(format!("| Detections: {}", state.detection_count));
+                    ui.colored_label(status_color, &status_message);
+                    ui.label(format!("| Detections: {}", detection_count));
                     if let Some((sw, sh)) = self.screen_resolution {
                         ui.label(format!("| Display: {}x{}", sw, sh));
                     }

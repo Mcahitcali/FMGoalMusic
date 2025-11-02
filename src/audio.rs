@@ -1,8 +1,6 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
 
 /// Audio manager that preloads audio into memory and provides non-blocking playback
 pub struct AudioManager {
@@ -19,7 +17,7 @@ impl AudioManager {
         let sink = Sink::try_new(&stream_handle)?;
 
         // Warm up the decoder by decoding the audio once (but don't play it)
-        // We need to clone the data because Decoder requires 'static
+        // Note: We must clone here as rodio's Decoder requires owned data with 'static lifetime
         let cursor = std::io::Cursor::new(audio_data.clone());
         let decoder = Decoder::new(cursor)?;
 
@@ -57,7 +55,7 @@ impl AudioManager {
         let sink = Sink::try_new(&stream_handle)?;
 
         // Warm up the decoder by decoding the audio once (but don't play it)
-        // We need to clone the data because Decoder requires 'static
+        // Note: We must clone here as rodio's Decoder requires owned data with 'static lifetime
         let cursor = std::io::Cursor::new((*data).clone());
         let decoder = Decoder::new(cursor)?;
 
@@ -77,6 +75,7 @@ impl AudioManager {
     /// Play the preloaded sound (non-blocking)
     /// This creates a new decoder from the in-memory data and plays it
     pub fn play_sound(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // Note: We must clone here as rodio's Decoder requires owned data with 'static lifetime
         let cursor = std::io::Cursor::new((*self.audio_data).clone());
         let decoder = Decoder::new(cursor)?;
 
@@ -112,6 +111,7 @@ impl AudioManager {
     /// Play the preloaded sound with a fade-in effect
     /// Volume transitions from 0 to target volume over specified duration
     pub fn play_sound_with_fade(&self, fade_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
+        // Note: We must clone here as rodio's Decoder requires owned data with 'static lifetime
         let cursor = std::io::Cursor::new((*self.audio_data).clone());
         let decoder = Decoder::new(cursor)?;
 
@@ -160,19 +160,10 @@ impl AudioManager {
         Ok(())
     }
 
-    /// Get or create a fresh sink for playback
-    fn get_fresh_sink(&self) -> Result<Sink, Box<dyn std::error::Error>> {
-        let sink = Sink::try_new(&self.stream_handle)?;
-        // Apply current volume setting
-        let volume = *self.volume.lock()
-            .map_err(|_| "Volume mutex poisoned".to_string())?;
-        sink.set_volume(volume);
-        Ok(sink)
-    }
-
     /// Play the preloaded sound with fade-in and automatic stop after specified duration
     /// Combines fade-in effect with timed stopping and fade-out
     pub fn play_sound_with_fade_and_limit(&self, fade_duration_ms: u64, max_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
+        // Note: We must clone here as rodio's Decoder requires owned data with 'static lifetime
         let cursor = std::io::Cursor::new((*self.audio_data).clone());
         let decoder = Decoder::new(cursor)?;
 
@@ -250,72 +241,6 @@ impl AudioManager {
         Ok(())
     }
 
-    /// Play the preloaded sound with automatic stop after specified duration (no fade)
-    pub fn play_sound_with_limit(&self, max_duration_ms: u64) -> Result<(), Box<dyn std::error::Error>> {
-        let cursor = std::io::Cursor::new((*self.audio_data).clone());
-        let decoder = Decoder::new(cursor)?;
-
-        // Stop any currently playing audio and use the existing sink
-        {
-            let mut sink = self.sink.lock()
-                .map_err(|_| "Audio sink poisoned".to_string())?;
-            sink.stop();
-            // Clear any queued audio
-            if let Ok(new_sink) = Sink::try_new(&self.stream_handle) {
-                *sink = new_sink;
-            }
-        }
-        
-        // Get the sink for playback
-        let sink = self.sink.lock()
-            .map_err(|_| "Audio sink poisoned".to_string())?;
-        
-        // Apply current volume setting
-        let volume = *self.volume.lock()
-            .map_err(|_| "Volume mutex poisoned".to_string())?;
-        sink.set_volume(volume);
-        
-        sink.append(decoder);
-        sink.play();
-
-        // Spawn thread to stop audio after duration with fade-out
-        let sink_clone = Arc::clone(&self.sink);
-        std::thread::spawn(move || {
-            // Calculate fade-out timing
-            let fade_out_duration = 2000; // 2 seconds fade-out
-            let playback_duration = if max_duration_ms > fade_out_duration {
-                max_duration_ms - fade_out_duration
-            } else {
-                0 // No playback time, just fade out immediately
-            };
-
-            // Wait for normal playback duration
-            if playback_duration > 0 {
-                thread::sleep(Duration::from_millis(playback_duration));
-            }
-
-            // Fade-out phase
-            let fade_out_steps = 50;
-            let fade_out_step_duration = fade_out_duration / fade_out_steps;
-            let volume_decrement = volume / fade_out_steps as f32;
-            
-            for i in 1..=fade_out_steps {
-                thread::sleep(Duration::from_millis(fade_out_step_duration));
-                if let Ok(sink) = sink_clone.lock() {
-                    let current_volume = volume - (volume_decrement * i as f32);
-                    sink.set_volume(current_volume.max(0.0));
-                }
-            }
-
-            // Stop the audio after fade-out completes
-            if let Ok(sink) = sink_clone.lock() {
-                sink.stop();
-            }
-        });
-
-        Ok(())
-    }
-    
     /// Set the volume for this audio manager (0.0 to 1.0)
     pub fn set_volume(&self, volume: f32) {
         let clamped = volume.clamp(0.0, 1.0);
@@ -327,13 +252,6 @@ impl AudioManager {
             sink.set_volume(clamped);
         }
     }
-    
-    /// Get the current volume
-    pub fn get_volume(&self) -> f32 {
-        self.volume.lock()
-            .map(|v| *v)
-            .unwrap_or(1.0)
-    }
 
     /// Stop any currently playing audio and clear queued sounds
     pub fn stop(&self) {
@@ -343,14 +261,6 @@ impl AudioManager {
                 *sink = new_sink;
             }
         }
-    }
-
-    /// Returns true if audio is currently playing
-    pub fn is_playing(&self) -> bool {
-        self.sink
-            .lock()
-            .map(|sink| !sink.empty())
-            .unwrap_or(false)
     }
 }
 
