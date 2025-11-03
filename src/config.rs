@@ -98,6 +98,14 @@ pub struct Config {
     /// Selected team for conditional audio playback
     #[serde(default)]
     pub selected_team: Option<SelectedTeam>,
+
+    /// Automatically check for updates on startup
+    #[serde(default = "default_auto_check_updates")]
+    pub auto_check_updates: bool,
+
+    /// Version to skip update notifications for
+    #[serde(default)]
+    pub skipped_version: Option<String>,
 }
 
 fn default_ambiance_enabled() -> bool {
@@ -110,6 +118,10 @@ fn default_music_length() -> u64 {
 
 fn default_ambiance_length() -> u64 {
     20000 // 20 seconds
+}
+
+fn default_auto_check_updates() -> bool {
+    true // Enable by default so users discover updates
 }
 
 impl Default for Config {
@@ -129,6 +141,8 @@ impl Default for Config {
             music_length_ms: default_music_length(),
             ambiance_length_ms: default_ambiance_length(),
             selected_team: None,
+            auto_check_updates: default_auto_check_updates(),
+            skipped_version: None,
         }
     }
 }
