@@ -165,10 +165,10 @@ impl Config {
             if config.capture_region == [0, 0, 200, 100] {
                 config.capture_region = default_capture_region();
                 config.save()?;
-                println!("✓ Migrated capture region to screen-based default");
+                log::info!("✓ Migrated capture region to screen-based default");
             }
 
-            println!("✓ Loaded config from: {}", config_path.display());
+            log::info!("✓ Loaded config from: {}", config_path.display());
             Ok(config)
         } else {
             // Try migrating from legacy location (next to executable)
@@ -184,8 +184,8 @@ impl Config {
                         if let Ok(mut config) = serde_json::from_str::<Config>(&content) {
                             // Save migrated config to new path
                             config.save()?;
-                            println!("✓ Migrated config from legacy path: {}", legacy.display());
-                            println!("✓ New config at: {}", config_path.display());
+                            log::info!("✓ Migrated config from legacy path: {}", legacy.display());
+                            log::info!("✓ New config at: {}", config_path.display());
                             return Ok(config);
                         }
                     }
@@ -195,8 +195,8 @@ impl Config {
             // Create default config
             let config = Config::default();
             config.save()?;
-            println!("✓ Created default config at: {}", config_path.display());
-            println!("  Edit this file to customize settings.");
+            log::info!("✓ Created default config at: {}", config_path.display());
+            log::info!("  Edit this file to customize settings.");
             Ok(config)
         }
     }

@@ -14,6 +14,11 @@ mod teams;
 mod team_matcher;
 mod update_checker;
 
+use display_info::DisplayInfo;
+use sysinfo::System;
+
+const LOG_TARGET_STARTUP: &str = "fm_goal_musics::startup";
+
 /// Initialize file logging with rotation
 ///
 /// Logs are written to:
@@ -77,11 +82,54 @@ fn initialize_logging() {
     }
 }
 
+fn log_runtime_environment() {
+    let mut system = System::new_all();
+    system.refresh_all();
+
+    let version = env!("CARGO_PKG_VERSION");
+    let os_name = System::long_os_version()
+        .or_else(|| System::name())
+        .unwrap_or_else(|| "Unknown OS".to_string());
+    let kernel = System::kernel_version()
+        .unwrap_or_else(|| "Unknown Kernel".to_string());
+    let host = System::host_name()
+        .unwrap_or_else(|| "Unknown Host".to_string());
+    let architecture = std::env::consts::ARCH;
+
+    log::info!(
+        target: LOG_TARGET_STARTUP,
+        "Starting FM Goal Musics v{} on {} ({})",
+        version,
+        host,
+        architecture
+    );
+    log::info!(target: LOG_TARGET_STARTUP, "Operating System: {} (kernel {})", os_name, kernel);
+
+    // CPU and memory usage intentionally not logged (per user request)
+
+    if let Ok(displays) = DisplayInfo::all() {
+        log::info!(
+            target: LOG_TARGET_STARTUP,
+            "Displays: {} detected",
+            displays.len()
+        );
+        for (index, display) in displays.iter().enumerate() {
+            log::debug!(
+                target: LOG_TARGET_STARTUP,
+                "  Display {}: {}x{}{}",
+                index,
+                display.width,
+                display.height,
+                if display.is_primary { " (primary)" } else { "" }
+            );
+        }
+    }
+}
+
 fn main() -> Result<(), eframe::Error> {
     // Initialize file logging with rotation
     initialize_logging();
-
-    log::info!("Starting FM Goal Musics application");
+    log_runtime_environment();
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

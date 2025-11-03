@@ -95,13 +95,13 @@ impl FMGoalMusicsApp {
         let team_database = match crate::teams::TeamDatabase::load() {
             Ok(db) => {
                 let db_path = crate::teams::TeamDatabase::database_path_display();
-                println!("[fm-goal-musics] Team database loaded successfully from: {}", db_path);
+                log::info!("[fm-goal-musics] Team database loaded successfully from: {}", db_path);
                 Some(db)
             }
             Err(e) => {
-                eprintln!("[fm-goal-musics] ERROR: Failed to load team database: {}", e);
-                eprintln!("[fm-goal-musics] Team selection will not be available.");
-                eprintln!("[fm-goal-musics] Expected location: {}", crate::teams::TeamDatabase::database_path_display());
+                log::error!("[fm-goal-musics] ERROR: Failed to load team database: {}", e);
+                log::error!("[fm-goal-musics] Team selection will not be available.");
+                log::error!("[fm-goal-musics] Expected location: {}", crate::teams::TeamDatabase::database_path_display());
                 None
             }
         };
@@ -189,10 +189,10 @@ impl FMGoalMusicsApp {
                     }
                 }).collect();
                 
-                println!("✓ Loaded {} music files from config", state.music_list.len());
+                log::info!("✓ Loaded {} music files from config", state.music_list.len());
             }
             Err(e) => {
-                println!("⚠ Failed to load config: {}", e);
+                log::warn!("⚠ Failed to load config: {}", e);
                 // Use default screen-based capture region
                 if let Some((screen_w, screen_h)) = screen_resolution {
                     let mut state = app.state.lock().expect("Failed to acquire state lock during music refresh");
@@ -238,22 +238,18 @@ impl FMGoalMusicsApp {
     }
 
     fn start_region_selection(&mut self) {
-        use std::io::Write;
-
-        println!("═══════════════════════════════════════════════════════");
-        println!("🎯 REGION SELECTION BUTTON CLICKED!");
-        println!("   Platform: {}", std::env::consts::OS);
-        println!("   Starting region selection process...");
-        println!("═══════════════════════════════════════════════════════");
-        let _ = std::io::stdout().flush(); // Force output immediately
+        log::info!("═══════════════════════════════════════════════════════");
+        log::info!("🎯 REGION SELECTION BUTTON CLICKED!");
+        log::info!("   Platform: {}", std::env::consts::OS);
+        log::info!("   Starting region selection process...");
+        log::info!("═══════════════════════════════════════════════════════");
 
         self.selecting_region = true;
         self.region_selector = Some(RegionSelectState::default());
         self.hide_window_for_capture = false;
         self.capture_delay_frames = 0;
 
-        println!("   ✓ Region selector state initialized");
-        let _ = std::io::stdout().flush(); // Force output immediately
+        log::info!("   ✓ Region selector state initialized");
     }
 
     fn stop_preview(&mut self) {
@@ -272,7 +268,7 @@ impl FMGoalMusicsApp {
         }
 
         let bytes = fs::read(path).map_err(|e| format!("Failed to read audio file '{}': {}", path.display(), e))?;
-        println!("✓ Preloaded audio file: {} ({} bytes)", path.display(), bytes.len());
+        log::info!("✓ Preloaded audio file: {} ({} bytes)", path.display(), bytes.len());
         let arc = Arc::new(bytes);
         self.cached_audio_data = Some((path.to_path_buf(), Arc::clone(&arc)));
         Ok(arc)
@@ -352,9 +348,9 @@ impl FMGoalMusicsApp {
         };
 
         if let Err(e) = config.save() {
-            println!("⚠ Failed to save config: {}", e);
+            log::warn!("⚠ Failed to save config: {}", e);
         } else {
-            println!("✓ Config saved");
+            log::info!("✓ Config saved");
         }
     }
 
@@ -443,7 +439,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             let ambiance_length_ms = state.ambiance_length_ms;
             let selected_monitor_index = state.selected_monitor_index;
 
-            println!(
+            log::info!(
                 "[fm-goal-musics] Starting detection\n  music='{}'\n  region=[{}, {}, {}, {}]\n  ocr_threshold={}\n  debounce_ms={}\n  morph_open={}",
                 entry.name,
                 capture_region[0], capture_region[1], capture_region[2], capture_region[3],
@@ -451,9 +447,9 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 debounce_ms,
                 enable_morph_open
             );
-            
+
             if let Some(ref team) = selected_team {
-                println!("  team_selection={} ({})", team.display_name, team.league);
+                log::info!("  team_selection={} ({})", team.display_name, team.league);
             }
 
             state.process_state = ProcessState::Running;
@@ -478,11 +474,11 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             if let Some(ref path) = ambiance_path {
                 match std::fs::read(path) {
                     Ok(bytes) => {
-                        println!("[fm-goal-musics] Preloaded ambiance sound: {} ({} bytes)", path, bytes.len());
+                        log::info!("[fm-goal-musics] Preloaded ambiance sound: {} ({} bytes)", path, bytes.len());
                         Some(Arc::new(bytes))
                     },
                     Err(e) => {
-                        println!("[fm-goal-musics] Warning: Failed to read ambiance file: {}", e);
+                        log::warn!("[fm-goal-musics] Warning: Failed to read ambiance file: {}", e);
                         None
                     }
                 }
@@ -522,11 +518,11 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 match AudioManager::from_preloaded(Arc::clone(data)) {
                     Ok(manager) => {
                         manager.set_volume(ambiance_volume);
-                        println!("[fm-goal-musics] Ambiance audio manager initialized");
+                        log::info!("[fm-goal-musics] Ambiance audio manager initialized");
                         Some(manager)
                     },
                     Err(e) => {
-                        println!("[fm-goal-musics] Warning: Failed to initialize ambiance manager: {}", e);
+                        log::warn!("[fm-goal-musics] Warning: Failed to initialize ambiance manager: {}", e);
                         None
                     }
                 }
@@ -556,19 +552,19 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     Ok(db) => {
                         match db.find_team(&sel_team.league, &sel_team.team_key) {
                             Some(team) => {
-                                println!("[fm-goal-musics] Team matcher initialized for: {}", sel_team.display_name);
+                                log::info!("[fm-goal-musics] Team matcher initialized for: {}", sel_team.display_name);
                                 Some(crate::team_matcher::TeamMatcher::new(&team))
                             }
                             None => {
-                                println!("[fm-goal-musics] Warning: Selected team not found in database");
+                                log::warn!("[fm-goal-musics] Warning: Selected team not found in database");
                                 None
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("[fm-goal-musics] ERROR: Failed to load team database in detection thread: {}", e);
-                        eprintln!("[fm-goal-musics] Team-specific goal detection will not work.");
-                        eprintln!("[fm-goal-musics] Check that teams.json exists at: {}", crate::teams::TeamDatabase::database_path_display());
+                        log::error!("[fm-goal-musics] ERROR: Failed to load team database in detection thread: {}", e);
+                        log::error!("[fm-goal-musics] Team-specific goal detection will not work.");
+                        log::error!("[fm-goal-musics] Check that teams.json exists at: {}", crate::teams::TeamDatabase::database_path_display());
                         None
                     }
                 }
@@ -645,16 +641,16 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     match ocr_manager.detect_goal_with_team(&image) {
                         Ok(Some(detected_team)) => {
                             if matcher.matches(&detected_team) {
-                                println!("[fm-goal-musics] 🎯 GOAL FOR SELECTED TEAM: {}", detected_team);
+                                log::info!("[fm-goal-musics] 🎯 GOAL FOR SELECTED TEAM: {}", detected_team);
                                 true
                             } else {
-                                println!("[fm-goal-musics] Goal detected for: {} (not selected team)", detected_team);
+                                log::info!("[fm-goal-musics] Goal detected for: {} (not selected team)", detected_team);
                                 false
                             }
                         }
                         Ok(None) => false,
                         Err(e) => {
-                            println!("[fm-goal-musics] OCR error: {}", e);
+                            log::error!("[fm-goal-musics] OCR error: {}", e);
                             false
                         }
                     }
@@ -663,7 +659,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     match ocr_manager.detect_goal(&image) {
                         Ok(detected) => detected,
                         Err(e) => {
-                            println!("[fm-goal-musics] OCR error: {}", e);
+                            log::error!("[fm-goal-musics] OCR error: {}", e);
                             false
                         }
                     }
@@ -677,12 +673,12 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     if let Some(ref ambiance) = ambiance_manager {
                         if ambiance_length_ms > 0 {
                             if let Err(e) = ambiance.play_sound_with_fade_and_limit(200, ambiance_length_ms) {
-                                println!("[fm-goal-musics] Failed to play ambiance: {}", e);
+                                log::error!("[fm-goal-musics] Failed to play ambiance: {}", e);
                             }
                         } else {
                             // No length limit, use regular fade-in
                             if let Err(e) = ambiance.play_sound_with_fade(200) {
-                                println!("[fm-goal-musics] Failed to play ambiance: {}", e);
+                                log::error!("[fm-goal-musics] Failed to play ambiance: {}", e);
                             }
                         }
                     }
@@ -712,7 +708,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                             );
                         }
                         Err(e) => {
-                            println!("[fm-goal-musics] Failed to play music: {}", e);
+                            log::error!("[fm-goal-musics] Failed to play music: {}", e);
                             let mut st = state_clone.lock().expect("Failed to acquire state lock");
                             st.status_message = format!("Failed to play music: {}", e);
                         }
@@ -1558,26 +1554,26 @@ impl eframe::App for FMGoalMusicsApp {
 
         // Region selector overlay window (implemented inline)
         if self.selecting_region {
-            println!("📸 Region selector active in update loop");
+            log::info!("📸 Region selector active in update loop");
 
             // Initialize on first show
             if let Some(sel) = &mut self.region_selector {
                 // Only minimize/hide if we haven't captured yet
                 if !sel.initialized && !self.hide_window_for_capture {
-                    println!("   Preparing window for screenshot capture...");
+                    log::info!("   Preparing window for screenshot capture...");
 
                     // On Windows, hiding the main window closes the app
                     // So we minimize it instead
                     #[cfg(target_os = "windows")]
                     {
-                        println!("   (Windows: Minimizing window instead of hiding)");
+                        log::info!("   (Windows: Minimizing window instead of hiding)");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                     }
 
                     // On macOS/Linux, we can safely hide the window
                     #[cfg(not(target_os = "windows"))]
                     {
-                        println!("   (macOS/Linux: Hiding window)");
+                        log::info!("   (macOS/Linux: Hiding window)");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
                     }
 
@@ -1588,25 +1584,25 @@ impl eframe::App for FMGoalMusicsApp {
                 }
                 if !sel.initialized {
                     if self.capture_delay_frames > 0 {
-                        println!("   Waiting for window to minimize/hide... (frames left: {})", self.capture_delay_frames);
+                        log::info!("   Waiting for window to minimize/hide... (frames left: {})", self.capture_delay_frames);
                         self.capture_delay_frames = self.capture_delay_frames.saturating_sub(1);
                         ctx.request_repaint();
                         return;
                     }
 
-                    println!("   Window minimized/hidden, starting screenshot capture...");
+                    log::info!("   Window minimized/hidden, starting screenshot capture...");
                     let capture_result = sel.capture_fullscreen();
 
                     // Restore window visibility
                     #[cfg(target_os = "windows")]
                     {
-                        println!("   Restoring window (Windows: un-minimize)...");
+                        log::info!("   Restoring window (Windows: un-minimize)...");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                     }
 
                     #[cfg(not(target_os = "windows"))]
                     {
-                        println!("   Restoring window (macOS/Linux: show)...");
+                        log::info!("   Restoring window (macOS/Linux: show)...");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     }
 
@@ -1625,8 +1621,8 @@ impl eframe::App for FMGoalMusicsApp {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
 
                             // Log to console for debugging
-                            eprintln!("❌ Region selection capture failed: {}", e);
-                            eprintln!("   This error occurred during screen capture for region selection");
+                            log::error!("❌ Region selection capture failed: {}", e);
+                            log::error!("   This error occurred during screen capture for region selection");
 
                             let mut st = self.state.lock().expect("Failed to acquire state lock");
                             st.status_message = format!("Region selection failed: {}", e);
@@ -1636,7 +1632,7 @@ impl eframe::App for FMGoalMusicsApp {
                             return;
                         }
                         Ok(()) => {
-                            println!("✓ Screenshot captured successfully for region selection");
+                            log::info!("✓ Screenshot captured successfully for region selection");
                             sel.initialized = true;
                             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
                             sel.fullscreen_on = true;
@@ -1821,19 +1817,19 @@ impl RegionSelectState {
         // Use xcap to capture the entire screen
         use xcap::Monitor;
 
-        println!("🔍 Starting fullscreen capture for region selection...");
+        log::info!("🔍 Starting fullscreen capture for region selection...");
 
         // Get all monitors
         let monitors = Monitor::all()
             .map_err(|e| {
-                eprintln!("❌ Failed to enumerate monitors: {}", e);
+                log::error!("❌ Failed to enumerate monitors: {}", e);
                 format!("Failed to enumerate monitors: {}", e)
             })?;
 
-        println!("   Found {} monitor(s)", monitors.len());
+        log::info!("   Found {} monitor(s)", monitors.len());
 
         if monitors.is_empty() {
-            eprintln!("❌ No monitors found!");
+            log::error!("❌ No monitors found!");
             return Err("No monitors found".into());
         }
 
@@ -1845,15 +1841,15 @@ impl RegionSelectState {
         let logical_w = monitor.width().unwrap_or(0);
         let logical_h = monitor.height().unwrap_or(0);
 
-        println!("   Monitor logical size: {}x{}", logical_w, logical_h);
+        log::info!("   Monitor logical size: {}x{}", logical_w, logical_h);
 
-        println!("   Attempting to capture screen...");
+        log::info!("   Attempting to capture screen...");
 
         // Capture full screen with permission error handling
         let image = monitor.capture_image().map_err(|e| -> Box<dyn std::error::Error> {
             let error_msg = format!("{}", e);
 
-            eprintln!("❌ Screen capture failed: {}", error_msg);
+            log::error!("❌ Screen capture failed: {}", error_msg);
 
             #[cfg(target_os = "macos")]
             if error_msg.contains("permission") || error_msg.contains("denied") || error_msg.contains("authorization") {
@@ -1889,7 +1885,7 @@ impl RegionSelectState {
             format!("Failed to capture screen: {}", e).into()
         })?;
 
-        println!("   ✓ Screen captured successfully");
+        log::info!("   ✓ Screen captured successfully");
 
         // Get dimensions and pixel data (physical resolution on Retina)
         let w = image.width();
@@ -1913,7 +1909,7 @@ impl RegionSelectState {
         self.pixels_rgba = Some(rgba);
         self.texture = None;
 
-        println!("Screenshot: {}x{} (physical) | Monitor: {}x{} (logical) | Scale: {}x",
+        log::info!("Screenshot: {}x{} (physical) | Monitor: {}x{} (logical) | Scale: {}x",
                  w, h, logical_w, logical_h, display_scale);
 
         Ok(())
