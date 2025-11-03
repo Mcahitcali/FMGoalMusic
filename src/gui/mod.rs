@@ -147,6 +147,7 @@ impl FMGoalMusicsApp {
                 state.ambiance_length_ms = config.ambiance_length_ms;
                 state.auto_check_updates = config.auto_check_updates;
                 state.skipped_version = config.skipped_version.clone();
+                state.selected_monitor_index = config.selected_monitor_index;
 
                 // Initialize update checker if enabled
                 if config.auto_check_updates {
@@ -347,6 +348,7 @@ impl FMGoalMusicsApp {
             ambiance_length_ms: state.ambiance_length_ms,
             auto_check_updates: state.auto_check_updates,
             skipped_version: state.skipped_version.clone(),
+            selected_monitor_index: state.selected_monitor_index,
         };
 
         if let Err(e) = config.save() {
@@ -404,7 +406,7 @@ impl FMGoalMusicsApp {
             let _ = handle.join();
         }
 
-let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms) = {
+let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms, selected_monitor_index) = {
             let mut state = self.state.lock().expect("Failed to acquire state lock");
 
             if state.process_state != ProcessState::Stopped {
@@ -439,6 +441,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             let ambiance_enabled = state.ambiance_enabled;
             let music_length_ms = state.music_length_ms;
             let ambiance_length_ms = state.ambiance_length_ms;
+            let selected_monitor_index = state.selected_monitor_index;
 
             println!(
                 "[fm-goal-musics] Starting detection\n  music='{}'\n  region=[{}, {}, {}, {}]\n  ocr_threshold={}\n  debounce_ms={}\n  morph_open={}",
@@ -457,7 +460,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             state.status_message = format!("Starting detection with '{}'", entry.name);
             state.detection_count = 0;
 
-(entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms)
+(entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms, selected_monitor_index)
         };
 
         let audio_data = match self.get_or_load_audio_data(&music_path) {
@@ -531,7 +534,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 None
             };
 
-            let mut capture_manager = match CaptureManager::new(CaptureRegion::from_array(capture_region)) {
+            let mut capture_manager = match CaptureManager::new(CaptureRegion::from_array(capture_region), selected_monitor_index) {
                 Ok(manager) => manager,
                 Err(e) => {
                     notify_error(format!("Capture init failed: {}", e));
@@ -1330,6 +1333,39 @@ impl eframe::App for FMGoalMusicsApp {
                 }
             });
             ui.label("💡 Recommended: Use visual selector for accurate coordinates on HiDPI/Retina displays");
+
+            // Monitor selection (multi-monitor support)
+            ui.horizontal(|ui| {
+                ui.label("Display:");
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
+
+                // Get available monitors count
+                let monitor_count = xcap::Monitor::all()
+                    .map(|monitors| monitors.len())
+                    .unwrap_or(1);
+
+                // Show dropdown with monitor indices
+                let prev_index = state.selected_monitor_index;
+                egui::ComboBox::from_label("")
+                    .selected_text(format!("Monitor {} ({})",
+                        state.selected_monitor_index + 1,
+                        if state.selected_monitor_index == 0 { "Primary" } else { "Secondary" }))
+                    .show_ui(ui, |ui| {
+                        for i in 0..monitor_count {
+                            let label = format!("Monitor {} ({})",
+                                i + 1,
+                                if i == 0 { "Primary" } else { "Secondary" });
+                            ui.selectable_value(&mut state.selected_monitor_index, i, label);
+                        }
+                    });
+
+                // Save config if changed
+                if state.selected_monitor_index != prev_index {
+                    drop(state);
+                    self.save_config();
+                }
+            });
+            ui.label("💡 Select which monitor to capture from (0 = primary display)");
 
             // Other configuration options
             {

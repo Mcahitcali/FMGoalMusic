@@ -106,6 +106,10 @@ pub struct Config {
     /// Version to skip update notifications for
     #[serde(default)]
     pub skipped_version: Option<String>,
+
+    /// Selected monitor index (0 = primary, 1 = second, etc.)
+    #[serde(default)]
+    pub selected_monitor_index: usize,
 }
 
 fn default_ambiance_enabled() -> bool {
@@ -143,6 +147,7 @@ impl Default for Config {
             selected_team: None,
             auto_check_updates: default_auto_check_updates(),
             skipped_version: None,
+            selected_monitor_index: 0, // Primary monitor by default
         }
     }
 }
