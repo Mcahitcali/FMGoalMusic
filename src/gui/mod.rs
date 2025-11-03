@@ -94,11 +94,14 @@ impl FMGoalMusicsApp {
         // Load team database
         let team_database = match crate::teams::TeamDatabase::load() {
             Ok(db) => {
-                println!("[fm-goal-musics] Team database loaded successfully");
+                let db_path = crate::teams::TeamDatabase::database_path_display();
+                println!("[fm-goal-musics] Team database loaded successfully from: {}", db_path);
                 Some(db)
             }
             Err(e) => {
-                println!("[fm-goal-musics] Warning: Failed to load team database: {}", e);
+                eprintln!("[fm-goal-musics] ERROR: Failed to load team database: {}", e);
+                eprintln!("[fm-goal-musics] Team selection will not be available.");
+                eprintln!("[fm-goal-musics] Expected location: {}", crate::teams::TeamDatabase::database_path_display());
                 None
             }
         };
@@ -560,7 +563,9 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                         }
                     }
                     Err(e) => {
-                        println!("[fm-goal-musics] Warning: Failed to load team database: {}", e);
+                        eprintln!("[fm-goal-musics] ERROR: Failed to load team database in detection thread: {}", e);
+                        eprintln!("[fm-goal-musics] Team-specific goal detection will not work.");
+                        eprintln!("[fm-goal-musics] Check that teams.json exists at: {}", crate::teams::TeamDatabase::database_path_display());
                         None
                     }
                 }
@@ -1472,10 +1477,12 @@ impl eframe::App for FMGoalMusicsApp {
                 });
                 
                 ui.collapsing("🔧 Configuring teams.json", |ui| {
-                    ui.label("The teams database is located at:");
-                    ui.label("  macOS: ~/Library/Application Support/fm-goal-musics/teams.json");
-                    ui.label("  Windows: %APPDATA%/fm-goal-musics/teams.json");
-                    ui.label("  Linux: ~/.config/fm-goal-musics/teams.json");
+                    ui.label("The teams database is automatically created on first run at:");
+                    ui.label("  macOS: ~/Library/Application Support/FMGoalMusic/teams.json");
+                    ui.label("  Windows: %APPDATA%/FMGoalMusic/teams.json");
+                    ui.label("  Linux: ~/.config/FMGoalMusic/teams.json");
+                    ui.label("");
+                    ui.label("You can safely edit this file to add your favorite teams!");
                     ui.label("");
                     ui.label("Structure:");
                     ui.label("  {");
