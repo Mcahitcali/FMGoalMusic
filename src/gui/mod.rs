@@ -363,7 +363,10 @@ impl FMGoalMusicsApp {
             if old_config.enable_morph_open != new_config.enable_morph_open {
                 changes.push(format!("enable_morph_open: {} -> {}", old_config.enable_morph_open, new_config.enable_morph_open));
             }
-            if old_config.music_list != new_config.music_list {
+            if old_config.music_list.len() != new_config.music_list.len() || 
+               old_config.music_list.iter().zip(new_config.music_list.iter()).any(|(old, new)| {
+                   old.name != new.name || old.path != new.path || old.shortcut != new.shortcut
+               }) {
                 changes.push(format!("music_list: {} entries -> {} entries", old_config.music_list.len(), new_config.music_list.len()));
             }
             if old_config.selected_music_index != new_config.selected_music_index {
