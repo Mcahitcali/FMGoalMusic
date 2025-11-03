@@ -44,14 +44,13 @@ pub fn check_for_updates() -> UpdateCheckResult {
     let response = match ureq::get(API_URL)
         .set("User-Agent", &user_agent)  // GitHub requires User-Agent
         .set("Accept", "application/vnd.github+json")
-        .timeout(std::time::Duration::from_secs(10))  // 10 second timeout
+        .timeout(std::time::Duration::from_secs(15))  // 15 second timeout
         .call()
     {
         Ok(resp) => resp,
-        Err(e) => {
-            let error_msg = format!("Network error: {}", e);
-            log::error!("[update-checker] {}", error_msg);
-            return UpdateCheckResult::Error { message: error_msg };
+        Err(_e) => {
+            log::error!("[update-checker] Network error: {}", _e);
+            return UpdateCheckResult::Error { message: "Network Error".to_string() };
         }
     };
 
