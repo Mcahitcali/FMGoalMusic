@@ -20,13 +20,17 @@ pub struct TeamDatabase {
 impl TeamDatabase {
     /// Load team database from JSON file
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        let db_path = Self::get_database_path();
-        
+        let db_path = Self::database_path()?;
+
         if !db_path.exists() {
-            // Return embedded default database if file doesn't exist
-            return Self::load_embedded();
+            // First run: copy embedded database to user config directory
+            println!("[teams] teams.json not found in user config directory, creating from embedded default");
+            let database = Self::load_embedded()?;
+            database.save()?;
+            return Ok(database);
         }
 
+        // Load from user config directory
         let content = fs::read_to_string(&db_path)?;
         let database: TeamDatabase = serde_json::from_str(&content)?;
         Ok(database)
@@ -39,11 +43,38 @@ impl TeamDatabase {
         Ok(database)
     }
 
-    /// Get the path to the teams database file
-    fn get_database_path() -> PathBuf {
-        let mut path = PathBuf::from("config");
-        path.push("teams.json");
-        path
+    /// Save team database to user config directory
+    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let db_path = Self::database_path()?;
+
+        // Ensure parent directory exists
+        if let Some(parent) = db_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let json = serde_json::to_string_pretty(self)?;
+        fs::write(&db_path, json)?;
+
+        println!("[teams] Saved teams database to: {}", db_path.display());
+        Ok(())
+    }
+
+    /// Get the path to the teams database file in user-writable config directory
+    pub fn database_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+        let base = dirs::config_dir()
+            .ok_or("Could not determine user config directory")?;
+        // Application-specific folder
+        let app_dir = base.join("FMGoalMusic");
+        // Ensure directory exists
+        fs::create_dir_all(&app_dir)?;
+        Ok(app_dir.join("teams.json"))
+    }
+
+    /// Get the teams database path for display purposes
+    pub fn database_path_display() -> String {
+        Self::database_path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "unknown".to_string())
     }
 
     /// Get list of all league names
