@@ -92,17 +92,9 @@ fn log_runtime_environment() {
         .unwrap_or_else(|| "Unknown OS".to_string());
     let kernel = System::kernel_version()
         .unwrap_or_else(|| "Unknown Kernel".to_string());
-    let host = System::host_name()
-        .unwrap_or_else(|| "Unknown Host".to_string());
     let architecture = std::env::consts::ARCH;
 
-    log::info!(
-        target: LOG_TARGET_STARTUP,
-        "Starting FM Goal Musics v{} on {} ({})",
-        version,
-        host,
-        architecture
-    );
+    log::info!(target: LOG_TARGET_STARTUP,"Starting FM Goal Musics v{} on ({})", version, architecture);
     log::info!(target: LOG_TARGET_STARTUP, "Operating System: {} (kernel {})", os_name, kernel);
 
     // CPU and memory usage intentionally not logged (per user request)
