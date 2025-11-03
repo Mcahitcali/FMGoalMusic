@@ -90,9 +90,13 @@ pub fn check_for_updates() -> UpdateCheckResult {
         }
     };
 
-    if latest_version > current_version {
+    // Only check for major/minor version changes, ignore patch versions
+    let has_major_minor_update = latest_version.major > current_version.major || 
+                                (latest_version.major == current_version.major && latest_version.minor > current_version.minor);
+
+    if has_major_minor_update {
         log::info!(
-            "[update-checker] Update available: {} -> {}",
+            "[update-checker] Update available: {} -> {} (major/minor change)",
             current_version_str,
             latest_version_str
         );
@@ -103,7 +107,7 @@ pub fn check_for_updates() -> UpdateCheckResult {
             download_url: release.html_url,
         }
     } else {
-        log::info!("[update-checker] App is up to date ({})", current_version_str);
+        log::info!("[update-checker] App is up to date for major/minor versions ({})", current_version_str);
         UpdateCheckResult::UpToDate {
             current_version: current_version_str.to_string(),
         }
@@ -143,9 +147,21 @@ mod tests {
         let v1 = semver::Version::parse("0.1.0").unwrap();
         let v2 = semver::Version::parse("0.2.0").unwrap();
         let v3 = semver::Version::parse("0.1.5").unwrap();
+        let v4 = semver::Version::parse("0.2.3").unwrap();
+        let v5 = semver::Version::parse("0.2.4").unwrap();
 
-        assert!(v2 > v1);
-        assert!(v3 > v1);
-        assert!(v2 > v3);
+        assert!(v2 > v1); // major/minor change
+        assert!(v3 > v1); // major/minor change (0.1.5 > 0.1.0)
+        assert!(v2 > v3); // major/minor change (0.2.0 > 0.1.5)
+        assert!(v5 > v4); // patch change only
+        
+        // Test our major/minor logic
+        let has_major_minor_1_to_2 = v2.major > v1.major || (v2.major == v1.major && v2.minor > v1.minor);
+        let has_major_minor_3_to_4 = v4.major > v3.major || (v4.major == v3.major && v4.minor > v3.minor);
+        let has_major_minor_4_to_5 = v5.major > v4.major || (v5.major == v4.major && v5.minor > v4.minor);
+        
+        assert!(has_major_minor_1_to_2); // 0.1.x to 0.2.x should notify
+        assert!(has_major_minor_3_to_4); // 0.1.x to 0.2.x should notify
+        assert!(!has_major_minor_4_to_5); // 0.2.3 to 0.2.4 should NOT notify
     }
 }
