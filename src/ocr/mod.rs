@@ -41,12 +41,12 @@ use detection::TesseractDetector;
 ///
 /// // Simple detection
 /// if ocr.detect_goal(&image)? {
-///     println!("Goal detected!");
+///     log::info!("Goal detected!");
 /// }
 ///
 /// // Detection with team name
 /// if let Some(team) = ocr.detect_goal_with_team(&image)? {
-///     println!("Goal for {}!", team);
+///     log::info!("Goal for {}!", team);
 /// }
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
@@ -79,12 +79,12 @@ impl OcrManager {
         let preprocessor = ImagePreprocessor::new(threshold, enable_morph_open);
         let detector = TesseractDetector::new()?;
 
-        println!("  Threshold: {}", if threshold == 0 {
+        log::info!("  Threshold: {}", if threshold == 0 {
             "Automatic (Otsu)".to_string()
         } else {
             format!("Manual ({})", threshold)
         });
-        println!("  Morphological opening: {}", if enable_morph_open { "Enabled" } else { "Disabled" });
+        log::info!("  Morphological opening: {}", if enable_morph_open { "Enabled" } else { "Disabled" });
 
         Ok(Self {
             preprocessor,
