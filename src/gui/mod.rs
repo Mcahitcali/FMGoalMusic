@@ -321,7 +321,7 @@ impl FMGoalMusicsApp {
     fn save_config(&self) {
         let state = self.state.lock().expect("Failed to acquire state lock");
         
-        let config = Config {
+        let new_config = Config {
             capture_region: state.capture_region,
             ocr_threshold: state.ocr_threshold,
             debounce_ms: state.debounce_ms,
@@ -347,10 +347,71 @@ impl FMGoalMusicsApp {
             selected_monitor_index: state.selected_monitor_index,
         };
 
-        if let Err(e) = config.save() {
+        // Load previous config to compare changes
+        let mut changes = Vec::new();
+        if let Ok(old_config) = Config::load() {
+            // Compare each field and log differences
+            if old_config.capture_region != new_config.capture_region {
+                changes.push(format!("capture_region: {:?} -> {:?}", old_config.capture_region, new_config.capture_region));
+            }
+            if old_config.ocr_threshold != new_config.ocr_threshold {
+                changes.push(format!("ocr_threshold: {} -> {}", old_config.ocr_threshold, new_config.ocr_threshold));
+            }
+            if old_config.debounce_ms != new_config.debounce_ms {
+                changes.push(format!("debounce_ms: {} -> {}", old_config.debounce_ms, new_config.debounce_ms));
+            }
+            if old_config.enable_morph_open != new_config.enable_morph_open {
+                changes.push(format!("enable_morph_open: {} -> {}", old_config.enable_morph_open, new_config.enable_morph_open));
+            }
+            if old_config.music_list != new_config.music_list {
+                changes.push(format!("music_list: {} entries -> {} entries", old_config.music_list.len(), new_config.music_list.len()));
+            }
+            if old_config.selected_music_index != new_config.selected_music_index {
+                changes.push(format!("selected_music_index: {:?} -> {:?}", old_config.selected_music_index, new_config.selected_music_index));
+            }
+            if old_config.selected_team != new_config.selected_team {
+                changes.push(format!("selected_team: {:?} -> {:?}", old_config.selected_team, new_config.selected_team));
+            }
+            if (old_config.music_volume - new_config.music_volume).abs() > f32::EPSILON {
+                changes.push(format!("music_volume: {:.2} -> {:.2}", old_config.music_volume, new_config.music_volume));
+            }
+            if (old_config.ambiance_volume - new_config.ambiance_volume).abs() > f32::EPSILON {
+                changes.push(format!("ambiance_volume: {:.2} -> {:.2}", old_config.ambiance_volume, new_config.ambiance_volume));
+            }
+            if old_config.goal_ambiance_path != new_config.goal_ambiance_path {
+                changes.push(format!("goal_ambiance_path: {:?} -> {:?}", old_config.goal_ambiance_path, new_config.goal_ambiance_path));
+            }
+            if old_config.ambiance_enabled != new_config.ambiance_enabled {
+                changes.push(format!("ambiance_enabled: {} -> {}", old_config.ambiance_enabled, new_config.ambiance_enabled));
+            }
+            if old_config.music_length_ms != new_config.music_length_ms {
+                changes.push(format!("music_length_ms: {} -> {}", old_config.music_length_ms, new_config.music_length_ms));
+            }
+            if old_config.ambiance_length_ms != new_config.ambiance_length_ms {
+                changes.push(format!("ambiance_length_ms: {} -> {}", old_config.ambiance_length_ms, new_config.ambiance_length_ms));
+            }
+            if old_config.auto_check_updates != new_config.auto_check_updates {
+                changes.push(format!("auto_check_updates: {} -> {}", old_config.auto_check_updates, new_config.auto_check_updates));
+            }
+            if old_config.skipped_version != new_config.skipped_version {
+                changes.push(format!("skipped_version: {:?} -> {:?}", old_config.skipped_version, new_config.skipped_version));
+            }
+            if old_config.selected_monitor_index != new_config.selected_monitor_index {
+                changes.push(format!("selected_monitor_index: {} -> {}", old_config.selected_monitor_index, new_config.selected_monitor_index));
+            }
+        }
+
+        if let Err(e) = new_config.save() {
             log::warn!("⚠ Failed to save config: {}", e);
         } else {
-            log::info!("✓ Config saved");
+            if changes.is_empty() {
+                log::info!("✓ Config saved (no changes detected)");
+            } else {
+                log::info!("✓ Config saved with changes:");
+                for change in changes {
+                    log::info!("  - {}", change);
+                }
+            }
         }
     }
 
