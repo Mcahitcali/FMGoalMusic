@@ -1,6 +1,6 @@
 !include "MUI2.nsh"
 
-!define BASE ".."  ; GitHub Actions'da bu script build_scripts klasöründe çalışacak
+!define BASE "C:\Users\mhsnd\Documents\FMGoalMusic"
 
 !define APP_NAME "FM Goal Musics"
 
@@ -110,11 +110,11 @@ DetailPrint "Extract tessdata (system fallback)"
 
 !ifdef STRICT
 
-File /r "${BASE}\tessdata\*.*"
+File /r "C:\Program Files\Tesseract-OCR\tessdata\*.*"
 
 !else
 
-File /nonfatal /r "${BASE}\tessdata\*.*"
+File /nonfatal /r "C:\Program Files\Tesseract-OCR\tessdata\*.*"
 
 !endif
 
