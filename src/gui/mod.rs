@@ -36,12 +36,20 @@ enum DetectionCommand {
     StopAudio,
 }
 
-/// Update modal display state
-struct UpdateModalState {
-    latest_version: String,
-    current_version: String,
-    release_notes: String,
-    download_url: String,
+/// Update modal display state - mirrors UpdateCheckResult for UI display
+enum UpdateModalState {
+    UpdateAvailable {
+        latest_version: String,
+        current_version: String,
+        release_notes: String,
+        download_url: String,
+    },
+    UpToDate {
+        current_version: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 pub struct FMGoalMusicsApp {
@@ -145,15 +153,13 @@ impl FMGoalMusicsApp {
 
                     // Spawn background thread to check for updates
                     thread::spawn(move || {
-                        match crate::update_checker::check_for_updates() {
-                            Ok(result) => {
-                                // Only send if update is available and not skipped
-                                if result.update_available && !crate::update_checker::should_skip_version(&result.latest_version, &skipped_version) {
-                                    let _ = tx.send(result);
-                                }
-                            }
-                            Err(e) => {
-                                log::error!("[update-checker] Failed to check for updates: {}", e);
+                        let result = crate::update_checker::check_for_updates();
+
+                        // For startup checks, only send if update is available and not skipped
+                        // Don't show "up to date" or errors on startup (silent)
+                        if let crate::update_checker::UpdateCheckResult::UpdateAvailable { ref latest_version, .. } = result {
+                            if !crate::update_checker::should_skip_version(latest_version, &skipped_version) {
+                                let _ = tx.send(result);
                             }
                         }
                     });
@@ -350,24 +356,14 @@ impl FMGoalMusicsApp {
     fn check_for_updates_manually(&mut self) {
         log::info!("[update-checker] Manual update check requested");
 
-        let state = self.state.lock().expect("Failed to acquire state lock");
-        let skipped_version = state.skipped_version.clone();
-        drop(state);
-
         let (tx, rx) = mpsc::channel();
         self.update_check_rx = Some(rx);
 
         // Spawn background thread to check for updates
         thread::spawn(move || {
-            match crate::update_checker::check_for_updates() {
-                Ok(result) => {
-                    // For manual checks, always show result (even if skipped)
-                    let _ = tx.send(result);
-                }
-                Err(e) => {
-                    log::error!("[update-checker] Failed to check for updates: {}", e);
-                }
-            }
+            let result = crate::update_checker::check_for_updates();
+            // For manual checks, always send result (all cases: update, up-to-date, error)
+            let _ = tx.send(result);
         });
     }
 
@@ -754,85 +750,153 @@ impl eframe::App for FMGoalMusicsApp {
         // Check for update results from background thread
         if let Some(rx) = &self.update_check_rx {
             if let Ok(result) = rx.try_recv() {
-                if result.update_available {
-                    // Store result and show modal
-                    self.update_modal_state = Some(UpdateModalState {
-                        latest_version: result.latest_version,
-                        current_version: result.current_version,
-                        release_notes: result.release_notes,
-                        download_url: result.download_url,
-                    });
-                } else {
-                    // For manual checks, show "up to date" message
-                    log::info!("[update-checker] App is up to date");
-                }
+                // Convert UpdateCheckResult to UpdateModalState and show modal
+                self.update_modal_state = Some(match result {
+                    crate::update_checker::UpdateCheckResult::UpdateAvailable {
+                        latest_version,
+                        current_version,
+                        release_notes,
+                        download_url,
+                    } => UpdateModalState::UpdateAvailable {
+                        latest_version,
+                        current_version,
+                        release_notes,
+                        download_url,
+                    },
+                    crate::update_checker::UpdateCheckResult::UpToDate { current_version } => {
+                        UpdateModalState::UpToDate { current_version }
+                    }
+                    crate::update_checker::UpdateCheckResult::Error { message } => {
+                        UpdateModalState::Error { message }
+                    }
+                });
             }
         }
 
-        // Render update modal if update is available
+        // Render update modal based on check result
         if let Some(modal_state) = &self.update_modal_state {
             let mut close_modal = false;
             let mut skip_version = false;
+            let mut latest_version_to_skip: Option<String> = None;
 
-            egui::Window::new("🔄 Update Available")
-                .collapsible(false)
-                .resizable(false)
-                .default_width(500.0)
-                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-                .show(ctx, |ui| {
-                    ui.heading("A new version is available!");
+            match modal_state {
+                UpdateModalState::UpdateAvailable {
+                    latest_version,
+                    current_version,
+                    release_notes,
+                    download_url,
+                } => {
+                    egui::Window::new("🔄 Update Available")
+                        .collapsible(false)
+                        .resizable(false)
+                        .default_width(500.0)
+                        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                        .show(ctx, |ui| {
+                            ui.heading("A new version is available!");
 
-                    ui.separator();
+                            ui.separator();
 
-                    // Version comparison
-                    ui.horizontal(|ui| {
-                        ui.label("Current version:");
-                        ui.label(&modal_state.current_version);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Latest version:");
-                        ui.colored_label(egui::Color32::GREEN, &modal_state.latest_version);
-                    });
+                            // Version comparison
+                            ui.horizontal(|ui| {
+                                ui.label("Current version:");
+                                ui.label(current_version);
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Latest version:");
+                                ui.colored_label(egui::Color32::GREEN, latest_version);
+                            });
 
-                    ui.separator();
+                            ui.separator();
 
-                    // Changelog
-                    ui.heading("What's New:");
-                    egui::ScrollArea::vertical()
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            ui.label(&modal_state.release_notes);
+                            // Changelog
+                            ui.heading("What's New:");
+                            egui::ScrollArea::vertical()
+                                .max_height(200.0)
+                                .show(ui, |ui| {
+                                    ui.label(release_notes);
+                                });
+
+                            ui.separator();
+
+                            // Action buttons
+                            ui.horizontal(|ui| {
+                                if ui.button("📥 Download Update").clicked() {
+                                    if let Err(e) = open::that(download_url) {
+                                        log::error!("[update-checker] Failed to open browser: {}", e);
+                                    }
+                                    close_modal = true;
+                                }
+
+                                if ui.button("⏭️ Skip This Version").clicked() {
+                                    skip_version = true;
+                                    latest_version_to_skip = Some(latest_version.clone());
+                                    close_modal = true;
+                                }
+
+                                if ui.button("⏰ Remind Me Later").clicked() {
+                                    close_modal = true;
+                                }
+                            });
                         });
+                }
+                UpdateModalState::UpToDate { current_version } => {
+                    egui::Window::new("✅ Up to Date")
+                        .collapsible(false)
+                        .resizable(false)
+                        .default_width(400.0)
+                        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                        .show(ctx, |ui| {
+                            ui.heading("You're running the latest version!");
 
-                    ui.separator();
+                            ui.separator();
 
-                    // Action buttons
-                    ui.horizontal(|ui| {
-                        if ui.button("📥 Download Update").clicked() {
-                            // Open GitHub releases page
-                            if let Err(e) = open::that(&modal_state.download_url) {
-                                log::error!("[update-checker] Failed to open browser: {}", e);
+                            ui.horizontal(|ui| {
+                                ui.label("Current version:");
+                                ui.colored_label(egui::Color32::GREEN, current_version);
+                            });
+
+                            ui.separator();
+
+                            if ui.button("✓ OK").clicked() {
+                                close_modal = true;
                             }
-                            close_modal = true;
-                        }
+                        });
+                }
+                UpdateModalState::Error { message } => {
+                    egui::Window::new("⚠️ Update Check Failed")
+                        .collapsible(false)
+                        .resizable(false)
+                        .default_width(450.0)
+                        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                        .show(ctx, |ui| {
+                            ui.heading("Failed to check for updates");
 
-                        if ui.button("⏭️ Skip This Version").clicked() {
-                            skip_version = true;
-                            close_modal = true;
-                        }
+                            ui.separator();
 
-                        if ui.button("⏰ Remind Me Later").clicked() {
-                            close_modal = true;
-                        }
-                    });
-                });
+                            ui.label("Error:");
+                            ui.colored_label(egui::Color32::RED, message);
+
+                            ui.separator();
+
+                            ui.label("Please check your internet connection and try again later.");
+
+                            ui.separator();
+
+                            if ui.button("✓ OK").clicked() {
+                                close_modal = true;
+                            }
+                        });
+                }
+            }
 
             // Handle modal actions outside the closure
             if skip_version {
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
-                state.skipped_version = Some(modal_state.latest_version.clone());
-                drop(state);
-                self.save_config();
+                if let Some(version) = latest_version_to_skip {
+                    let mut state = self.state.lock().expect("Failed to acquire state lock");
+                    state.skipped_version = Some(version);
+                    drop(state);
+                    self.save_config();
+                }
             }
 
             if close_modal {
