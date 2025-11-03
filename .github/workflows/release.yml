@@ -28,11 +28,6 @@ jobs:
             target: x86_64-apple-darwin
             binary_name: fm-goal-musics-gui
             artifact_name: FMGoalMusic-macOS
-          - name: Linux
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            binary_name: fm-goal-musics-gui
-            artifact_name: FMGoalMusic-Linux
 
     steps:
       - name: Checkout repository
@@ -43,12 +38,8 @@ jobs:
         with:
           targets: ${{ matrix.platform.target }}
 
-      - name: Install musl-tools (Linux)
-        run: sudo apt-get update && sudo apt-get install --yes musl-tools
-        if: matrix.platform.name == 'Linux'
-
       - name: Cache dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -92,7 +83,7 @@ jobs:
 
       - name: Upload Windows artifacts
         if: matrix.platform.name == 'Windows'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.artifact_name }}
           path: |
@@ -101,7 +92,7 @@ jobs:
 
       - name: Upload Unix artifacts
         if: matrix.platform.name != 'Windows'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.artifact_name }}
           path: ${{ matrix.platform.artifact_name }}.tar.gz
@@ -113,7 +104,7 @@ jobs:
     
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
 
@@ -124,7 +115,6 @@ jobs:
             artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe
             artifacts/FMGoalMusic-Windows/fm-goal-musics-gui.exe
             artifacts/FMGoalMusic-macOS/FMGoalMusic-macOS.tar.gz
-            artifacts/FMGoalMusic-Linux/FMGoalMusic-Linux.tar.gz
           draft: false
           prerelease: false
           generate_release_notes: true
