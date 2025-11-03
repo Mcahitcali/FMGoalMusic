@@ -62,6 +62,9 @@ pub struct AppState {
     // Update checker fields
     pub auto_check_updates: bool,
     pub skipped_version: Option<String>,
+
+    // Multi-monitor support
+    pub selected_monitor_index: usize,
 }
 
 impl Default for AppState {
@@ -85,6 +88,7 @@ impl Default for AppState {
             ambiance_length_ms: 20000, // 20 seconds
             auto_check_updates: true,
             skipped_version: None,
+            selected_monitor_index: 0, // Primary monitor
         }
     }
 }

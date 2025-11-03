@@ -50,11 +50,16 @@ impl CaptureRegion {
 }
 
 impl CaptureManager {
-    /// Create a new CaptureManager with the specified region
+    /// Create a new CaptureManager with the specified region and monitor index
     /// The monitor is identified once and reused for all captures
-    pub fn new(region: CaptureRegion) -> Result<Self, Box<dyn std::error::Error>> {
+    ///
+    /// # Arguments
+    /// * `region` - Screen region to capture
+    /// * `monitor_index` - Monitor index (0 = primary, 1 = second, etc.)
+    pub fn new(region: CaptureRegion, monitor_index: usize) -> Result<Self, Box<dyn std::error::Error>> {
         println!("Initializing screen capturer...");
         println!("  Region: x={}, y={}, w={}, h={}", region.x, region.y, region.width, region.height);
+        println!("  Monitor index: {}", monitor_index);
 
         // Get all available monitors
         let monitors = Monitor::all()
@@ -64,9 +69,16 @@ impl CaptureManager {
             return Err("No monitors found".into());
         }
 
-        // Get primary monitor (first in the list)
-        let monitor = monitors.into_iter().next()
-            .ok_or("Failed to get primary monitor")?;
+        println!("  Available monitors: {}", monitors.len());
+
+        // Get monitor by index, fallback to primary (0) if index out of bounds
+        let monitor = monitors.into_iter()
+            .nth(monitor_index)
+            .or_else(|| {
+                eprintln!("  WARNING: Monitor index {} not found, falling back to primary monitor (0)", monitor_index);
+                Monitor::all().ok()?.into_iter().next()
+            })
+            .ok_or("Failed to get monitor")?;
 
         // Get monitor dimensions and name (handle Result return types in xcap v0.7)
         let monitor_width = monitor.width().unwrap_or(0);
