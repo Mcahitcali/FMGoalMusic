@@ -44,6 +44,11 @@ eframe = "0.33.0"
 egui = "0.33.0"
 rfd = "0.14"  # Native file dialogs
 
+# Update checker
+ureq = { version = "2.10", features = ["json"] }  # HTTP client for update checking
+semver = "1.0"  # Semantic version parsing and comparison
+open = "5.0"  # Open URLs in default browser
+
 # Hotkey listener
 rdev = "0.5"
 

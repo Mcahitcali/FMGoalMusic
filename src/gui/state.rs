@@ -58,6 +58,10 @@ pub struct AppState {
     pub ambiance_enabled: bool,
     pub music_length_ms: u64,
     pub ambiance_length_ms: u64,
+
+    // Update checker fields
+    pub auto_check_updates: bool,
+    pub skipped_version: Option<String>,
 }
 
 impl Default for AppState {
@@ -79,6 +83,8 @@ impl Default for AppState {
             ambiance_enabled: true,
             music_length_ms: 20000, // 20 seconds
             ambiance_length_ms: 20000, // 20 seconds
+            auto_check_updates: true,
+            skipped_version: None,
         }
     }
 }

@@ -36,6 +36,14 @@ enum DetectionCommand {
     StopAudio,
 }
 
+/// Update modal display state
+struct UpdateModalState {
+    latest_version: String,
+    current_version: String,
+    release_notes: String,
+    download_url: String,
+}
+
 pub struct FMGoalMusicsApp {
     state: Arc<Mutex<AppState>>,
     detection_thread: Option<thread::JoinHandle<()>>,
@@ -55,6 +63,10 @@ pub struct FMGoalMusicsApp {
     selected_league: Option<String>,
     selected_team_key: Option<String>,
     active_tab: AppTab,
+
+    // Update checker fields
+    update_check_rx: Option<mpsc::Receiver<crate::update_checker::UpdateCheckResult>>,
+    update_modal_state: Option<UpdateModalState>,
 }
 
 impl FMGoalMusicsApp {
@@ -102,6 +114,8 @@ impl FMGoalMusicsApp {
             selected_league: None,
             selected_team_key: None,
             active_tab: AppTab::Library,
+            update_check_rx: None,
+            update_modal_state: None,
         };
 
         // Load config and restore music list
@@ -120,7 +134,31 @@ impl FMGoalMusicsApp {
                 state.ambiance_enabled = config.ambiance_enabled;
                 state.music_length_ms = config.music_length_ms;
                 state.ambiance_length_ms = config.ambiance_length_ms;
-                
+                state.auto_check_updates = config.auto_check_updates;
+                state.skipped_version = config.skipped_version.clone();
+
+                // Initialize update checker if enabled
+                if config.auto_check_updates {
+                    let skipped_version = config.skipped_version.clone();
+                    let (tx, rx) = mpsc::channel();
+                    app.update_check_rx = Some(rx);
+
+                    // Spawn background thread to check for updates
+                    thread::spawn(move || {
+                        match crate::update_checker::check_for_updates() {
+                            Ok(result) => {
+                                // Only send if update is available and not skipped
+                                if result.update_available && !crate::update_checker::should_skip_version(&result.latest_version, &skipped_version) {
+                                    let _ = tx.send(result);
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("[update-checker] Failed to check for updates: {}", e);
+                            }
+                        }
+                    });
+                }
+
                 // Initialize selected league and team from config
                 if let Some(ref team) = config.selected_team {
                     app.selected_league = Some(team.league.clone());
@@ -298,13 +336,39 @@ impl FMGoalMusicsApp {
             ambiance_enabled: state.ambiance_enabled,
             music_length_ms: state.music_length_ms,
             ambiance_length_ms: state.ambiance_length_ms,
+            auto_check_updates: state.auto_check_updates,
+            skipped_version: state.skipped_version.clone(),
         };
-        
+
         if let Err(e) = config.save() {
             println!("⚠ Failed to save config: {}", e);
         } else {
             println!("✓ Config saved");
         }
+    }
+
+    fn check_for_updates_manually(&mut self) {
+        log::info!("[update-checker] Manual update check requested");
+
+        let state = self.state.lock().expect("Failed to acquire state lock");
+        let skipped_version = state.skipped_version.clone();
+        drop(state);
+
+        let (tx, rx) = mpsc::channel();
+        self.update_check_rx = Some(rx);
+
+        // Spawn background thread to check for updates
+        thread::spawn(move || {
+            match crate::update_checker::check_for_updates() {
+                Ok(result) => {
+                    // For manual checks, always show result (even if skipped)
+                    let _ = tx.send(result);
+                }
+                Err(e) => {
+                    log::error!("[update-checker] Failed to check for updates: {}", e);
+                }
+            }
+        });
     }
 
     fn add_music_file(&mut self, path: PathBuf) {
@@ -687,6 +751,95 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
 
 impl eframe::App for FMGoalMusicsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Check for update results from background thread
+        if let Some(rx) = &self.update_check_rx {
+            if let Ok(result) = rx.try_recv() {
+                if result.update_available {
+                    // Store result and show modal
+                    self.update_modal_state = Some(UpdateModalState {
+                        latest_version: result.latest_version,
+                        current_version: result.current_version,
+                        release_notes: result.release_notes,
+                        download_url: result.download_url,
+                    });
+                } else {
+                    // For manual checks, show "up to date" message
+                    log::info!("[update-checker] App is up to date");
+                }
+            }
+        }
+
+        // Render update modal if update is available
+        if let Some(modal_state) = &self.update_modal_state {
+            let mut close_modal = false;
+            let mut skip_version = false;
+
+            egui::Window::new("🔄 Update Available")
+                .collapsible(false)
+                .resizable(false)
+                .default_width(500.0)
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .show(ctx, |ui| {
+                    ui.heading("A new version is available!");
+
+                    ui.separator();
+
+                    // Version comparison
+                    ui.horizontal(|ui| {
+                        ui.label("Current version:");
+                        ui.label(&modal_state.current_version);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Latest version:");
+                        ui.colored_label(egui::Color32::GREEN, &modal_state.latest_version);
+                    });
+
+                    ui.separator();
+
+                    // Changelog
+                    ui.heading("What's New:");
+                    egui::ScrollArea::vertical()
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            ui.label(&modal_state.release_notes);
+                        });
+
+                    ui.separator();
+
+                    // Action buttons
+                    ui.horizontal(|ui| {
+                        if ui.button("📥 Download Update").clicked() {
+                            // Open GitHub releases page
+                            if let Err(e) = open::that(&modal_state.download_url) {
+                                log::error!("[update-checker] Failed to open browser: {}", e);
+                            }
+                            close_modal = true;
+                        }
+
+                        if ui.button("⏭️ Skip This Version").clicked() {
+                            skip_version = true;
+                            close_modal = true;
+                        }
+
+                        if ui.button("⏰ Remind Me Later").clicked() {
+                            close_modal = true;
+                        }
+                    });
+                });
+
+            // Handle modal actions outside the closure
+            if skip_version {
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
+                state.skipped_version = Some(modal_state.latest_version.clone());
+                drop(state);
+                self.save_config();
+            }
+
+            if close_modal {
+                self.update_modal_state = None;
+            }
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             // Batch read state once per frame to minimize lock contention
             let (is_stopped, is_running, status_color, status_message, detection_count) = {
@@ -1179,6 +1332,24 @@ impl eframe::App for FMGoalMusicsApp {
                     self.save_config();
                 }
             });
+
+            ui.separator();
+
+            // Update Checker
+            ui.heading("🔄 Updates");
+
+            ui.horizontal(|ui| {
+                let mut state = self.state.lock().expect("Failed to acquire state lock");
+                if ui.checkbox(&mut state.auto_check_updates, "Check for updates on startup").changed() {
+                    drop(state);
+                    self.save_config();
+                }
+            });
+
+            if ui.button("🔍 Check for Updates Now").clicked() {
+                self.check_for_updates_manually();
+            }
+
             } // end Settings tab
 
             if self.active_tab == AppTab::Help {

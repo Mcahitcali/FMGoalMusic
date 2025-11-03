@@ -9,6 +9,7 @@ mod slug;
 mod utils;
 mod teams;
 mod team_matcher;
+mod update_checker;
 
 fn main() -> Result<(), eframe::Error> {
     // Initialize logging for production debugging
