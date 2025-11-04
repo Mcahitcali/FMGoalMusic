@@ -1,0 +1,18 @@
+{
+  "language": "Español",
+  "code": "es",
+  "detection": {
+    "goal_phrases": [
+      "¡GOL!",
+      "¡Gol!"
+    ],
+    "kickoff_phrases": [
+      "Saque Inicial",
+      "Inicio"
+    ],
+    "match_end_phrases": [
+      "Final",
+      "Tiempo Final"
+    ]
+  }
+}

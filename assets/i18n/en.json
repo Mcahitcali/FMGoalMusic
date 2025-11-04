@@ -1,0 +1,18 @@
+{
+  "language": "English",
+  "code": "en",
+  "detection": {
+    "goal_phrases": [
+      "GOAL!",
+      "Goal!"
+    ],
+    "kickoff_phrases": [
+      "Kick Off",
+      "Kick-Off"
+    ],
+    "match_end_phrases": [
+      "Full Time",
+      "FT"
+    ]
+  }
+}

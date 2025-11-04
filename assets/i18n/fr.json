@@ -1,0 +1,18 @@
+{
+  "language": "Français",
+  "code": "fr",
+  "detection": {
+    "goal_phrases": [
+      "BUT!",
+      "But!"
+    ],
+    "kickoff_phrases": [
+      "Coup d'envoi",
+      "Début"
+    ],
+    "match_end_phrases": [
+      "Fin du Match",
+      "Temps plein"
+    ]
+  }
+}

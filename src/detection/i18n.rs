@@ -62,8 +62,25 @@ pub struct I18nPhrases {
 }
 
 impl I18nPhrases {
-    /// Create phrases for a language
+    /// Create phrases for a language from embedded JSON assets
+    ///
+    /// This is the preferred method as it loads from externalized JSON files.
+    /// Falls back to hardcoded phrases if loading fails.
     pub fn new(language: Language) -> Self {
+        // Try to load from embedded JSON assets
+        if let Ok(phrases) = super::i18n_loader::load_phrases(language) {
+            return phrases;
+        }
+
+        // Fallback to hardcoded phrases
+        log::warn!("Failed to load i18n from JSON, using hardcoded fallback for {:?}", language);
+        Self::new_hardcoded(language)
+    }
+
+    /// Create phrases for a language (hardcoded fallback)
+    ///
+    /// This is kept as a fallback in case JSON loading fails.
+    pub fn new_hardcoded(language: Language) -> Self {
         let (goal_phrases, kickoff_phrases, match_end_phrases) = match language {
             Language::English => (
                 vec!["GOAL!".to_string(), "Goal!".to_string()],

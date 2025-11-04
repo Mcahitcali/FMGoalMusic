@@ -1,0 +1,18 @@
+{
+  "language": "Deutsch",
+  "code": "de",
+  "detection": {
+    "goal_phrases": [
+      "TOR!",
+      "Tor!"
+    ],
+    "kickoff_phrases": [
+      "Anstoß",
+      "Spielbeginn"
+    ],
+    "match_end_phrases": [
+      "Spielende",
+      "Abpfiff"
+    ]
+  }
+}

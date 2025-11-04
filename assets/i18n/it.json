@@ -1,0 +1,19 @@
+{
+  "language": "Italiano",
+  "code": "it",
+  "detection": {
+    "goal_phrases": [
+      "GOL!",
+      "Gol!",
+      "RETE!"
+    ],
+    "kickoff_phrases": [
+      "Calcio d'inizio",
+      "Inizio"
+    ],
+    "match_end_phrases": [
+      "Fine Partita",
+      "Finito"
+    ]
+  }
+}
