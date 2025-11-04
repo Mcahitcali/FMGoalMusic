@@ -27,7 +27,7 @@ function Ensure-Tool {
     if (-not $ok) {
         Write-Host "Installing $Name..."
         choco install $ChocoPkg -y --no-progress
-        & $Test  # re-check
+        # Do NOT trust machine PATH to refresh; caller can rehydrate session env below if needed.
     } else {
         Write-Host "  Found $Name"
     }
@@ -38,14 +38,34 @@ function Ensure-Tool {
 # ----------------------------- #
 Ensure-Choco
 
-# Visual C++ toolchain (msvc), CMake, pkg-config, Tesseract, NSIS
 Ensure-Tool -Name "MSVC Build Tools" -Test { cmd /c cl /? | Out-Null } -ChocoPkg "visualstudio2022buildtools"
 Ensure-Tool -Name "CMake"            -Test { cmake --version  | Out-Null } -ChocoPkg "cmake"
 Ensure-Tool -Name "pkg-config"       -Test { pkg-config --version | Out-Null } -ChocoPkg "pkgconfiglite"
 Ensure-Tool -Name "Tesseract OCR"    -Test { tesseract --version | Out-Null } -ChocoPkg "tesseract"
 Ensure-Tool -Name "NSIS"             -Test { makensis /VERSION  | Out-Null } -ChocoPkg "nsis"
 
-# Rust toolchain is installed by the workflow step; just verify
+# Rehydrate session env for Tesseract (Chocolatey updated machine PATH, but our process doesn't see it).
+$tessDir  = Join-Path ${env:ProgramFiles} "Tesseract-OCR"
+$tessExe  = Join-Path $tessDir "tesseract.exe"
+if (Test-Path $tessExe) {
+    # Prepend to current process PATH if missing
+    $pathParts = $env:Path -split ';'
+    if (-not ($pathParts -contains $tessDir)) {
+        $env:Path = "$tessDir;$env:Path"
+        Write-Host "Session PATH updated with: $tessDir"
+    }
+    if (-not $env:TESSDATA_PREFIX) {
+        $env:TESSDATA_PREFIX = $tessDir
+        Write-Host "Session TESSDATA_PREFIX set to: $env:TESSDATA_PREFIX"
+    }
+    # Re-check using the absolute path to avoid PATH races
+    & $tessExe --version | Out-Null
+    Write-Host "Tesseract OCR available in current session."
+} else {
+    Write-Warning "Tesseract-OCR install directory not found at: $tessDir"
+}
+
+# Verify Rust toolchain (installed by workflow)
 Write-Host "Checking Rust toolchain..."
 rustc --version
 cargo --version
@@ -80,7 +100,6 @@ Copy-Item $binaryPath -Destination $buildDir
 # ----------------------------- #
 Write-Host "[2/3] Staging runtime files..." -ForegroundColor Yellow
 
-# Optional project assets if they exist
 $maybeAssets = @("config", "assets", "README.md", "LICENSE")
 foreach ($item in $maybeAssets) {
     $src = Join-Path $repoRoot $item
@@ -91,12 +110,11 @@ foreach ($item in $maybeAssets) {
 }
 
 # Bundle Tesseract so app works on a clean machine
-$tessSrc = Join-Path ${env:ProgramFiles} "Tesseract-OCR"
-if (Test-Path $tessSrc) {
-    Copy-Item $tessSrc -Destination (Join-Path $buildDir "Tesseract-OCR") -Recurse -Force
+if (Test-Path $tessDir) {
+    Copy-Item $tessDir -Destination (Join-Path $buildDir "Tesseract-OCR") -Recurse -Force
     Write-Host "  Included: Tesseract-OCR"
 } else {
-    Write-Warning "Tesseract-OCR install not found. The installer will lack OCR runtime!"
+    Write-Warning "Tesseract-OCR not bundled; installer will lack OCR runtime!"
 }
 
 # ----------------------------- #

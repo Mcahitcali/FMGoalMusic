@@ -23,13 +23,13 @@ Section "Install"
   ; Add app dir to PATH (per-machine)
   ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
   StrCpy $1 "$INSTDIR"
-  StrCpy $2 "$INSTDIR\tessdata"
+  StrCpy $2 "$INSTDIR\Tesseract-OCR"
   ${IfThen} ${Errors} 0
   StrCpy $3 "$0;$1;$2"
   WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$3"
 
   ; Set TESSDATA_PREFIX to bundled tessdata
-  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX" "$INSTDIR\tessdata"
+  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX" "$INSTDIR\Tesseract-OCR"
 
   ; Broadcast environment change
   System::Call 'USER32::SendMessageTimeout(p 0xffff, i ${WM_SETTINGCHANGE}, i 0, t "Environment", i 0, i 5000, *i .r0)'
