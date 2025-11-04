@@ -1,154 +1,51 @@
-!include "MUI2.nsh"
-
-!define BASE "build\windows"  ; PowerShell script'inin oluşturduğu build klasörü
-
 !define APP_NAME "FM Goal Musics"
+!define COMPANY  "FM Goal Musics"
+!define VERSION  "1.0.0"
 
-!define APP_EXE "fm-goal-musics-gui.exe"
-
-!define INSTALL_DIR "$PROGRAMFILES\${APP_NAME}"
-
-!define STARTMENU_FOLDER "${APP_NAME}"
-
-!define LICENSE_FILE "LICENSE.txt"
-
-; ---- MOD SEÇ ----
-
-!define STRICT ; bu satır açık: strict mod. Yoruma al → relaxed moda geç.
-
-SetCompressor lzma
-
-Unicode true
-
-SetDatablockOptimize off
-
-Name "${APP_NAME}"
-
-OutFile "FMGoalMusicInstaller.exe"
-
-InstallDir "${INSTALL_DIR}"
-
+OutFile "build_scripts\FMGoalMusicInstaller.exe"
+InstallDir "$PROGRAMFILES\${APP_NAME}"
 RequestExecutionLevel admin
+SetCompress auto
 
-ShowInstDetails show
+Page directory
+Page instfiles
+UninstPage uninstConfirm
+UninstPage instfiles
 
-!insertmacro MUI_PAGE_WELCOME
+Section "Install"
+  SetShellVarContext all
+  SetOutPath "$INSTDIR"
+  File /r "build\windows\*.*"
 
-!insertmacro MUI_PAGE_LICENSE "${LICENSE_FILE}"
+  ; Ensure a writable config folder if you need one in ProgramData (optional)
+  ; CreateDirectory "$PROGRAMDATA\${APP_NAME}"
 
-!insertmacro MUI_PAGE_DIRECTORY
+  ; Add app dir to PATH (per-machine)
+  ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
+  StrCpy $1 "$INSTDIR"
+  StrCpy $2 "$INSTDIR\tessdata"
+  ${IfThen} ${Errors} 0
+  StrCpy $3 "$0;$1;$2"
+  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path" "$3"
 
-!insertmacro MUI_PAGE_INSTFILES
+  ; Set TESSDATA_PREFIX to bundled tessdata
+  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX" "$INSTDIR\tessdata"
 
-!insertmacro MUI_PAGE_FINISH
+  ; Broadcast environment change
+  System::Call 'USER32::SendMessageTimeout(p 0xffff, i ${WM_SETTINGCHANGE}, i 0, t "Environment", i 0, i 5000, *i .r0)'
 
-!insertmacro MUI_LANGUAGE "English"
-
-Section "Install ${APP_NAME}"
-
-DetailPrint "Installing to: ${INSTALL_DIR}"
-
-; EXE (zorunlu)
-
-SetOutPath "${INSTALL_DIR}"
-
-DetailPrint "Extract EXE"
-
-File "${BASE}\${APP_EXE}"
-
-; CONFIG
-
-SetOutPath "${INSTALL_DIR}\config"
-
-DetailPrint "Extract config"
-
-!ifdef STRICT
-
-File /r "${BASE}\config\*.*"
-
-!else
-
-File /nonfatal /r "${BASE}\config\*.*"
-
-!endif
-
-; ASSETS
-
-SetOutPath "${INSTALL_DIR}\assets"
-
-DetailPrint "Extract assets"
-
-!ifdef STRICT
-
-File /r "${BASE}\assets\*.*"
-
-!else
-
-File /nonfatal /r "${BASE}\assets\*.*"
-
-!endif
-
-; TESSDATA (bundle)
-
-SetOutPath "${INSTALL_DIR}\tessdata"
-
-DetailPrint "Extract tessdata (bundled)"
-
-!ifdef STRICT
-
-File /r "${BASE}\tessdata\*.*"
-
-!else
-
-File /nonfatal /r "${BASE}\tessdata\*.*"
-
-!endif
-
-; TESSDATA fallback (system)
-
-DetailPrint "Extract tessdata (system fallback)"
-
-!ifdef STRICT
-
-File /r "${BASE}\tessdata\*.*"
-
-!else
-
-File /nonfatal /r "${BASE}\tessdata\*.*"
-
-!endif
-
-WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX" "$INSTDIR\tessdata"
-
-CreateDirectory "$SMPROGRAMS\${STARTMENU_FOLDER}"
-
-CreateShortCut "$SMPROGRAMS\${STARTMENU_FOLDER}\${APP_NAME}.lnk" "${INSTALL_DIR}\${APP_EXE}" "" "${INSTALL_DIR}\${APP_EXE}" 0
-
-CreateShortCut "$DESKTOP\${APP_NAME}.lnk" "${INSTALL_DIR}\${APP_EXE}" "" "${INSTALL_DIR}\${APP_EXE}" 0
-
-WriteUninstaller "$INSTDIR\Uninstall.exe"
-
-WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_NAME}"
-
-WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "UninstallString" "$INSTDIR\Uninstall.exe"
-
-DetailPrint "Install finished."
-
+  ; Create shortcuts
+  CreateShortCut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
+  CreateShortCut "$DESKTOP\${APP_NAME}.lnk"     "$INSTDIR\fm-goal-musics-gui.exe"
 SectionEnd
 
 Section "Uninstall"
+  Delete "$SMPROGRAMS\${APP_NAME}.lnk"
+  Delete "$DESKTOP\${APP_NAME}.lnk"
+  RMDir /r "$INSTDIR"
 
-Delete "$DESKTOP\${APP_NAME}.lnk"
+  ; Remove env vars we added (simple approach: do not attempt to surgically edit PATH; leave as-is if you prefer)
+  ; WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX" ""
 
-Delete "$SMPROGRAMS\${STARTMENU_FOLDER}\${APP_NAME}.lnk"
-
-RMDir "$SMPROGRAMS\${STARTMENU_FOLDER}"
-
-DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
-
-DeleteRegValue HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX"
-
-RMDir /r "${INSTALL_DIR}"
-
+  System::Call 'USER32::SendMessageTimeout(p 0xffff, i ${WM_SETTINGCHANGE}, i 0, t "Environment", i 0, i 5000, *i .r0)'
 SectionEnd
-
