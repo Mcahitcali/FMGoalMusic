@@ -15,6 +15,12 @@ function Ensure-Choco {
     }
 }
 
+function Test-Msvc {
+    $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
+    $link = Get-Command link.exe -ErrorAction SilentlyContinue
+    if (-not $cl -or -not $link) { throw "MSVC (cl/link) not on PATH" }
+}
+
 function Ensure-Tool {
     param(
         [string]$Name,
@@ -27,6 +33,8 @@ function Ensure-Tool {
     if (-not $ok) {
         Write-Host "Installing $Name..."
         choco install $ChocoPkg -y --no-progress
+        & $Test
+        Write-Host "  Installed $Name"
     } else {
         Write-Host "  Found $Name"
     }
@@ -36,12 +44,12 @@ function Ensure-Tool {
 #  0. TOOLCHAIN & NATIVE DEPS
 # ----------------------------- #
 Ensure-Choco
-Ensure-Tool -Name "MSVC Build Tools" -Test { cmd /c cl /? | Out-Null }  -ChocoPkg "visualstudio2022buildtools"
-Ensure-Tool -Name "CMake"            -Test { cmake --version  | Out-Null } -ChocoPkg "cmake"
+Ensure-Tool -Name "MSVC Build Tools" -Test { Test-Msvc }                     -ChocoPkg "visualstudio2022buildtools"
+Ensure-Tool -Name "CMake"            -Test { cmake --version  | Out-Null }   -ChocoPkg "cmake"
 Ensure-Tool -Name "pkg-config"       -Test { pkg-config --version | Out-Null } -ChocoPkg "pkgconfiglite"
-Ensure-Tool -Name "NSIS"             -Test { makensis /VERSION  | Out-Null }   -ChocoPkg "nsis"
+Ensure-Tool -Name "NSIS"             -Test { makensis /VERSION  | Out-Null } -ChocoPkg "nsis"
 
-# Rust toolchain is installed by the workflow step
+# Rust toolchain is installed by the GitHub workflow
 Write-Host "Checking Rust toolchain..."
 rustc --version
 cargo --version
@@ -49,7 +57,7 @@ cargo --version
 # ----------------------------- #
 #  vcpkg (headers + libs for leptonica/tesseract)
 # ----------------------------- #
-$userHome  = $env:USERPROFILE  # <- renamed to avoid clobbering $HOME
+$userHome  = $env:USERPROFILE
 $vcpkgRoot = Join-Path $userHome "vcpkg"
 $vcpkgExe  = Join-Path $vcpkgRoot "vcpkg.exe"
 
@@ -59,30 +67,22 @@ if (-not (Test-Path $vcpkgExe)) {
     & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics | Out-Null
 }
 
-# Configure vcpkg for x64 Windows and dynamic linking
-$env:VCPKG_ROOT             = $vcpkgRoot
-$env:VCPKGRS_TRIPLET        = "x64-windows"
-$env:VCPKGRS_DYNAMIC        = "1"
-$env:VCPKG_DEFAULT_TRIPLET  = "x64-windows"
+# Configure vcpkg for fast, repeatable builds
+$env:VCPKG_ROOT                = $vcpkgRoot
+$env:VCPKG_DEFAULT_TRIPLET     = "x64-windows"
+$env:VCPKGRS_TRIPLET           = "x64-windows"
+$env:VCPKGRS_DYNAMIC           = "1"
+$env:VCPKG_FEATURE_FLAGS       = "manifests,binarycaching"
+$env:CMAKE_BUILD_PARALLEL_LEVEL = "2"
+$env:VCPKG_MAX_CONCURRENCY      = "2"
+
+# Binary cache under vcpkg so Actions can cache it
+$binaryCache = Join-Path $vcpkgRoot "binarycache"
+if (!(Test-Path $binaryCache)) { New-Item -ItemType Directory -Path $binaryCache | Out-Null }
+$env:VCPKG_DEFAULT_BINARY_CACHE = $binaryCache
 
 Write-Host "Installing vcpkg ports: leptonica:x64-windows, tesseract:x64-windows ..."
-& $vcpkgExe install leptonica:x64-windows tesseract:x64-windows --clean-after-build | Out-Null
-
-# Make Tesseract CLI visible in-session if present
-$tessDir  = Join-Path ${env:ProgramFiles} "Tesseract-OCR"
-$tessExe  = Join-Path $tessDir "tesseract.exe"
-if (Test-Path $tessExe) {
-    if (-not (($env:Path -split ';') -contains $tessDir)) {
-        $env:Path = "$tessDir;$env:Path"
-        Write-Host "Session PATH updated with: $tessDir"
-    }
-    if (-not $env:TESSDATA_PREFIX) {
-        $env:TESSDATA_PREFIX = $tessDir
-        Write-Host "Session TESSDATA_PREFIX set to: $env:TESSDATA_PREFIX"
-    }
-} else {
-    Write-Host "Chocolatey Tesseract not found; relying on vcpkg dev libs only (OK for build)."
-}
+& $vcpkgExe install leptonica:x64-windows tesseract:x64-windows --binarysource="clear;files=$binaryCache,readwrite" --clean-after-build | Out-Null
 
 # ----------------------------- #
 #  1. PATHS & CLEAN
@@ -114,6 +114,7 @@ Copy-Item $binaryPath -Destination $buildDir
 # ----------------------------- #
 Write-Host "[2/3] Staging runtime files..." -ForegroundColor Yellow
 
+# Project assets (optional)
 $maybeAssets = @("config", "assets", "README.md", "LICENSE")
 foreach ($item in $maybeAssets) {
     $src = Join-Path $repoRoot $item
@@ -123,19 +124,22 @@ foreach ($item in $maybeAssets) {
     }
 }
 
-# Bundle vcpkg-built runtime DLLs so the app runs on clean machines
+# vcpkg DLLs (leptonica, tesseract, dependencies)
 $vcpkgBin = Join-Path $vcpkgRoot "installed\x64-windows\bin"
 if (Test-Path $vcpkgBin) {
     Copy-Item (Join-Path $vcpkgBin "*.dll") -Destination $buildDir -Force -ErrorAction SilentlyContinue
     Write-Host "  Included: vcpkg runtime DLLs from $vcpkgBin"
 } else {
-    Write-Warning "vcpkg bin folder not found; dynamic DLLs may be missing at runtime."
+    Write-Warning "vcpkg bin folder not found; runtime DLLs may be missing."
 }
 
-# Bundle Chocolatey Tesseract runtime as well (handy for CLI use and tessdata)
-if (Test-Path $tessDir) {
-    Copy-Item $tessDir -Destination (Join-Path $buildDir "Tesseract-OCR") -Recurse -Force
-    Write-Host "  Included: Tesseract-OCR runtime"
+# Tessdata (so OCR works without external installs)
+$tessdataSrc = Join-Path $vcpkgRoot "installed\x64-windows\share\tesseract\tessdata"
+if (Test-Path $tessdataSrc) {
+    Copy-Item $tessdataSrc -Destination (Join-Path $buildDir "tessdata") -Recurse -Force
+    Write-Host "  Included: tessdata"
+} else {
+    Write-Warning "tessdata not found in vcpkg; OCR may miss language data."
 }
 
 # ----------------------------- #

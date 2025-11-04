@@ -36,13 +36,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Cache vcpkg installed binaries (optional)
+      - name: Cache vcpkg installed tree
         uses: actions/cache@v4
         with:
           path: C:\Users\runneradmin\vcpkg\installed
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('.github/workflows/release.yml') }}
+          key: ${{ runner.os }}-vcpkg-installed-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-
+            ${{ runner.os }}-vcpkg-installed-
+
+      - name: Cache vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: C:\Users\runneradmin\vcpkg\binarycache
+          key: ${{ runner.os }}-vcpkg-bincache-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-bincache-
 
       - name: Build & Stage (PowerShell)
         shell: pwsh
@@ -50,11 +58,20 @@ jobs:
           Set-ExecutionPolicy Bypass -Scope Process -Force
           ./build_scripts/build_for_windows.ps1
 
-      - name: Create NSIS Installer
-        uses: joncloud/makensis-action@v5.0
-        with:
-          script-file: build_scripts/FMGoalMusicInstaller.nsi
-          arguments: "/V3"
+      - name: Create NSIS Installer (verbose, manual)
+        shell: pwsh
+        run: |
+          makensis /V4 build_scripts/FMGoalMusicInstaller.nsi 2>&1 | Tee-Object -FilePath build_scripts\nsis.log
+          if ($LASTEXITCODE -ne 0) { Write-Error "makensis failed with code $LASTEXITCODE"; exit $LASTEXITCODE }
+
+      - name: Verify installer output
+        shell: pwsh
+        run: |
+          Get-ChildItem build_scripts -Recurse | Format-Table Length, LastWriteTime, FullName
+          if (-not (Test-Path "build_scripts/FMGoalMusicInstaller.exe")) {
+            Write-Error "FMGoalMusicInstaller.exe not found after makensis."
+            exit 1
+          }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -63,6 +80,13 @@ jobs:
           path: |
             build_scripts/FMGoalMusicInstaller.exe
             build/windows/fm-goal-musics-gui.exe
+
+      - name: Upload NSIS log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsis-log
+          path: build_scripts/nsis.log
 
   release:
     name: Publish Release
