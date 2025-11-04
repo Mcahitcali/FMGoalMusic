@@ -7,6 +7,7 @@ mod capture;
 mod config;
 mod error;
 mod gui;
+mod messaging;
 mod ocr;
 mod region_selector;
 mod slug;
