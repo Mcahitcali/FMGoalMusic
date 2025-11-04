@@ -27,8 +27,6 @@ function Import-BatchEnv {
     }
 
     $tmp = New-TemporaryFile
-
-    # Properly quote the batch path, append args, then '&& set' to dump env
     $cmdLine = "`"$BatchFile`" $Args && set"
     cmd.exe /c $cmdLine > $tmp 2>&1
     $exit = $LASTEXITCODE
@@ -38,15 +36,11 @@ function Import-BatchEnv {
         throw "Failed to import environment via:`n$cmdLine`n$out"
     }
 
-    # Apply each NAME=VALUE to current process env
     Get-Content $tmp | ForEach-Object {
         if ($_ -match '^(.*?)=(.*)$') {
             $name  = $matches[1]
             $value = $matches[2]
-
-            # Skip HOME (readonly on GH runners) and empty names
             if ($name -ieq 'HOME' -or [string]::IsNullOrWhiteSpace($name)) { return }
-
             try {
                 Set-Item -Path ("Env:{0}" -f $name) -Value $value -ErrorAction Stop
             } catch {
@@ -117,11 +111,39 @@ function Ensure-Tool {
         Write-Host "Installing $Name..."
         Ensure-Choco
         choco install $ChocoPkg -y --no-progress | Out-Null
-        & $Test
-        Write-Host "  Installed $Name"
+        # Re-test inside try/catch so missing PATH doesn't crash the build
+        try {
+            & $Test
+            Write-Host "  Installed $Name"
+        } catch {
+            Write-Warning "$Name installed but not yet on PATH; attempting path resolution."
+            return $false
+        }
     } else {
         Write-Host "  Found $Name"
     }
+    return $true
+}
+
+# Robust resolver for makensis after install (handles PATH not refreshed yet)
+function Resolve-Makensis {
+    $cmd = Get-Command makensis.exe -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Path }
+
+    $candidates = @(
+        "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+        "${env:ProgramFiles}\NSIS\makensis.exe"
+    )
+    foreach ($p in $candidates) {
+        if (Test-Path $p) {
+            $dir = Split-Path $p -Parent
+            if (-not (($env:Path -split ';') -contains $dir)) {
+                $env:Path = "$dir;$env:Path"
+            }
+            return $p
+        }
+    }
+    return $null
 }
 
 # ----------------------------- #
@@ -130,7 +152,16 @@ function Ensure-Tool {
 Ensure-Msvc-OnPath
 Ensure-Tool -Name "CMake"      -Test { cmake --version  | Out-Null }        -ChocoPkg "cmake"
 Ensure-Tool -Name "pkg-config" -Test { pkg-config --version | Out-Null }    -ChocoPkg "pkgconfiglite"
-Ensure-Tool -Name "NSIS"       -Test { makensis /VERSION  | Out-Null }      -ChocoPkg "nsis"
+
+# NSIS: install, then resolve absolute path, then verify
+$nsisOk = Ensure-Tool -Name "NSIS" -Test { makensis /VERSION | Out-Null } -ChocoPkg "nsis"
+$makensisPath = Resolve-Makensis
+if (-not $makensisPath) {
+    throw "NSIS makensis.exe not found after installation. Looked under Program Files\NSIS. Check Chocolatey logs."
+} else {
+    & $makensisPath /VERSION | Out-Null
+    Write-Host "NSIS available: $makensisPath"
+}
 
 Write-Host "Checking Rust toolchain (from workflow)..."
 rustc --version
