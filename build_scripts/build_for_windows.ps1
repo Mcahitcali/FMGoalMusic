@@ -15,27 +15,41 @@ function Ensure-Choco {
     }
 }
 
-# Import environment variables from a batch file into the current PowerShell session
+# Import environment variables from a batch file into the current PowerShell process
 function Import-BatchEnv {
     param([string]$BatchCmd)
-    # Run: cmd.exe /c "<batch> && set"
-    $cmd = "cmd.exe /c `"$BatchCmd`" && set"
-    $output = & cmd.exe /c $cmd 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Failed to import environment via: $BatchCmd`n$output" }
-    foreach ($line in $output) {
-        if ($line -match "^(.*?)=(.*)$") {
-            $name = $matches[1]; $value = $matches[2]
-            # Avoid breaking PowerShell's intrinsic HOME variable; it's readonly on hosted runners.
-            if ($name -ieq "HOME") { continue }
-            $env:$name = $value
+
+    $tmp = New-TemporaryFile
+    $cmd = "`"$BatchCmd`" && set"
+    cmd.exe /c $cmd > $tmp 2>&1
+    $exit = $LASTEXITCODE
+    $out = Get-Content $tmp -Raw
+    if ($exit -ne 0) {
+        Remove-Item $tmp -Force
+        throw "Failed to import environment via: $BatchCmd`n$out"
+    }
+
+    Get-Content $tmp | ForEach-Object {
+        if ($_ -match '^(.*?)=(.*)$') {
+            $name  = $matches[1]
+            $value = $matches[2]
+
+            if ($name -ieq 'HOME' -or [string]::IsNullOrWhiteSpace($name)) { return }
+
+            try {
+                Set-Item -Path ("Env:{0}" -f $name) -Value $value -ErrorAction Stop
+            } catch {
+                [System.Environment]::SetEnvironmentVariable($name, $value, 'Process')
+            }
         }
     }
+
+    Remove-Item $tmp -Force
 }
 
 function Find-VsDevCmd {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
     if (-not (Test-Path $vswhere)) {
-        # vswhere usually exists on Actions runners; if not, install it.
         Ensure-Choco
         choco install vswhere -y --no-progress | Out-Null
     }
@@ -51,12 +65,10 @@ function Find-VsDevCmd {
 }
 
 function Ensure-Msvc-OnPath {
-    # If cl/link already available, done.
     $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
     $link = Get-Command link.exe -ErrorAction SilentlyContinue
     if ($cl -and $link) { Write-Host "MSVC is available on PATH."; return }
 
-    # Try importing VS dev environment (amd64)
     $devCmd = Find-VsDevCmd
     if ($devCmd) {
         Write-Host "Importing VS developer environment..."
@@ -66,7 +78,6 @@ function Ensure-Msvc-OnPath {
         if ($cl -and $link) { Write-Host "MSVC imported successfully."; return }
     }
 
-    # If still missing, install Build Tools, then import again
     Write-Host "Installing Visual Studio 2022 Build Tools (C++ toolchain)..."
     Ensure-Choco
     choco install visualstudio2022buildtools -y --no-progress | Out-Null
@@ -103,7 +114,7 @@ function Ensure-Tool {
 }
 
 # ----------------------------- #
-#  0) TOOLCHAIN & PREREQS
+# 0) Toolchain & prerequisites
 # ----------------------------- #
 Ensure-Msvc-OnPath
 Ensure-Tool -Name "CMake"      -Test { cmake --version  | Out-Null }        -ChocoPkg "cmake"
@@ -115,7 +126,7 @@ rustc --version
 cargo --version
 
 # ----------------------------- #
-#  1) VCPKG (leptonica + tesseract)
+# 1) vcpkg (leptonica + tesseract)
 # ----------------------------- #
 $userHome  = $env:USERPROFILE
 $vcpkgRoot = Join-Path $userHome "vcpkg"
@@ -127,7 +138,6 @@ if (-not (Test-Path $vcpkgExe)) {
     & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics | Out-Null
 }
 
-# Cache-friendly, stable build config
 $env:VCPKG_ROOT                 = $vcpkgRoot
 $env:VCPKG_DEFAULT_TRIPLET      = "x64-windows"
 $env:VCPKGRS_TRIPLET            = "x64-windows"
@@ -141,10 +151,10 @@ if (!(Test-Path $binaryCache)) { New-Item -ItemType Directory -Path $binaryCache
 $env:VCPKG_DEFAULT_BINARY_CACHE = $binaryCache
 
 Write-Host "Installing vcpkg ports (leptonica, tesseract) with binary cache..."
-& $vcpkgExe install leptonica:x64-windows tesseract:x64-windows --binarysource="clear;files=$binaryCache,readwrite" --clean-after-build | Out-Null
+& $vcpkgExe install leptonica:x64-windows tesseract:x64-windows --binarysource=("clear;files={0},readwrite" -f $binaryCache) --clean-after-build | Out-Null
 
 # ----------------------------- #
-#  2) BUILD
+# 2) Build
 # ----------------------------- #
 $scriptPath = $MyInvocation.MyCommand.Definition
 $projectRoot = Split-Path -Parent $scriptPath
@@ -166,7 +176,7 @@ if (!(Test-Path $binaryPath)) {
 Copy-Item $binaryPath -Destination $buildDir
 
 # ----------------------------- #
-#  3) STAGE RUNTIME FILES
+# 3) Stage runtime files
 # ----------------------------- #
 Write-Host "[2/3] Staging runtime files..." -ForegroundColor Yellow
 
