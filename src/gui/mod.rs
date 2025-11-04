@@ -1,9 +1,12 @@
 // GUI module for FM Goal Musics
 //
 // This module contains the main GUI application logic.
-// State-related types are in the `state` submodule.
+// Transitioning to MVU (Model-View-Update) architecture.
 
 mod state;
+pub mod model;
+pub mod messages;
+pub mod update;
 
 // Re-export public types
 pub use state::{AppState, MusicEntry, ProcessState};
