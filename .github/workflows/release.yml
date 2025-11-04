@@ -15,11 +15,13 @@ jobs:
   build:
     name: Build Windows Release
     runs-on: windows-latest
-    timeout-minutes: 360
+    timeout-minutes: 180
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Install Rust (stable + MSVC target)
         uses: dtolnay/rust-toolchain@stable
@@ -43,27 +45,17 @@ jobs:
           Set-ExecutionPolicy Bypass -Scope Process -Force
           ./build_scripts/build_for_windows.ps1
 
-      - name: Upload vcpkg logs
-        if: always()
+      - name: Upload vcpkg logs on failure
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: vcpkg-logs
           path: C:\vcpkg-logs\*
 
-      - name: Create NSIS Installer (robust)
+      - name: Create NSIS Installer (verbose)
         shell: pwsh
         run: |
-          $mak = (Get-Command makensis -ErrorAction SilentlyContinue)?.Source
-          if (-not $mak) {
-            $candidates = @(
-              "$env:ProgramFiles(x86)\NSIS\makensis.exe",
-              "$env:ProgramFiles\NSIS\makensis.exe"
-            )
-            foreach ($p in $candidates) { if (Test-Path $p) { $mak = $p; break } }
-          }
-          if (-not $mak) { Write-Error "makensis not found on PATH or common locations"; exit 1 }
-          Write-Host "Using makensis: $mak"
-          & $mak /V4 build_scripts/FMGoalMusicInstaller.nsi 2>&1 | Tee-Object -FilePath build_scripts\nsis.log
+          makensis /V4 build_scripts/FMGoalMusicInstaller.nsi 2>&1 | Tee-Object -FilePath build_scripts\nsis.log
           if ($LASTEXITCODE -ne 0) { Write-Error "makensis failed with code $LASTEXITCODE"; exit $LASTEXITCODE }
 
       - name: Verify installer output
@@ -81,7 +73,7 @@ jobs:
           name: FMGoalMusic-Windows
           path: |
             build_scripts/FMGoalMusicInstaller.exe
-            build/windows/fm-goal-musics-gui.exe
+            build/windows/*
 
       - name: Upload NSIS log on failure
         if: failure()
@@ -95,7 +87,6 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
