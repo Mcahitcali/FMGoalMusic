@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Prepare Windows environment, build FM Goal Musics, and stage a self-contained payload for NSIS.
+  Prepare Windows environment (incl. vcpkg), build FM Goal Musics, and stage a self-contained payload for NSIS.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -27,7 +27,6 @@ function Ensure-Tool {
     if (-not $ok) {
         Write-Host "Installing $Name..."
         choco install $ChocoPkg -y --no-progress
-        # Do NOT trust machine PATH to refresh; caller can rehydrate session env below if needed.
     } else {
         Write-Host "  Found $Name"
     }
@@ -37,20 +36,43 @@ function Ensure-Tool {
 #  0. TOOLCHAIN & NATIVE DEPS
 # ----------------------------- #
 Ensure-Choco
-
-Ensure-Tool -Name "MSVC Build Tools" -Test { cmd /c cl /? | Out-Null } -ChocoPkg "visualstudio2022buildtools"
+Ensure-Tool -Name "MSVC Build Tools" -Test { cmd /c cl /? | Out-Null }  -ChocoPkg "visualstudio2022buildtools"
 Ensure-Tool -Name "CMake"            -Test { cmake --version  | Out-Null } -ChocoPkg "cmake"
 Ensure-Tool -Name "pkg-config"       -Test { pkg-config --version | Out-Null } -ChocoPkg "pkgconfiglite"
-Ensure-Tool -Name "Tesseract OCR"    -Test { tesseract --version | Out-Null } -ChocoPkg "tesseract"
-Ensure-Tool -Name "NSIS"             -Test { makensis /VERSION  | Out-Null } -ChocoPkg "nsis"
+Ensure-Tool -Name "NSIS"             -Test { makensis /VERSION  | Out-Null }   -ChocoPkg "nsis"
 
-# Rehydrate session env for Tesseract (Chocolatey updated machine PATH, but our process doesn't see it).
+# Rust toolchain is installed by the workflow step
+Write-Host "Checking Rust toolchain..."
+rustc --version
+cargo --version
+
+# ----------------------------- #
+#  vcpkg (headers + libs for leptonica/tesseract)
+# ----------------------------- #
+$home      = $env:USERPROFILE
+$vcpkgRoot = Join-Path $home "vcpkg"
+$vcpkgExe  = Join-Path $vcpkgRoot "vcpkg.exe"
+
+if (-not (Test-Path $vcpkgExe)) {
+    Write-Host "Installing vcpkg..."
+    git clone --depth=1 https://github.com/microsoft/vcpkg $vcpkgRoot | Out-Null
+    & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics | Out-Null
+}
+
+# Configure vcpkg for x64 Windows and dynamic linking (what most crates expect)
+$env:VCPKG_ROOT        = $vcpkgRoot
+$env:VCPKGRS_TRIPLET   = "x64-windows"
+$env:VCPKGRS_DYNAMIC   = "1"
+$env:VCPKG_DEFAULT_TRIPLET = "x64-windows"
+
+Write-Host "Installing vcpkg ports: leptonica:x64-windows, tesseract:x64-windows ..."
+& $vcpkgExe install leptonica:x64-windows tesseract:x64-windows --clean-after-build | Out-Null
+
+# Also make Tesseract runtime available in-session (in case build.rs calls the CLI)
 $tessDir  = Join-Path ${env:ProgramFiles} "Tesseract-OCR"
 $tessExe  = Join-Path $tessDir "tesseract.exe"
 if (Test-Path $tessExe) {
-    # Prepend to current process PATH if missing
-    $pathParts = $env:Path -split ';'
-    if (-not ($pathParts -contains $tessDir)) {
+    if (-not (($env:Path -split ';') -contains $tessDir)) {
         $env:Path = "$tessDir;$env:Path"
         Write-Host "Session PATH updated with: $tessDir"
     }
@@ -58,17 +80,9 @@ if (Test-Path $tessExe) {
         $env:TESSDATA_PREFIX = $tessDir
         Write-Host "Session TESSDATA_PREFIX set to: $env:TESSDATA_PREFIX"
     }
-    # Re-check using the absolute path to avoid PATH races
-    & $tessExe --version | Out-Null
-    Write-Host "Tesseract OCR available in current session."
 } else {
-    Write-Warning "Tesseract-OCR install directory not found at: $tessDir"
+    Write-Host "Chocolatey Tesseract not found; relying on vcpkg dev libs only (OK for build)."
 }
-
-# Verify Rust toolchain (installed by workflow)
-Write-Host "Checking Rust toolchain..."
-rustc --version
-cargo --version
 
 # ----------------------------- #
 #  1. PATHS & CLEAN
@@ -77,7 +91,7 @@ $scriptPath = $MyInvocation.MyCommand.Definition
 $projectRoot = Split-Path -Parent $scriptPath
 $repoRoot = Resolve-Path (Join-Path $projectRoot "..")
 $buildDir = Join-Path $repoRoot "build/windows"
-$exeName = "fm-goal-musics-gui.exe"
+$exeName  = "fm-goal-musics-gui.exe"
 
 if (Test-Path $buildDir) { Remove-Item -Recurse -Force $buildDir }
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
@@ -100,6 +114,7 @@ Copy-Item $binaryPath -Destination $buildDir
 # ----------------------------- #
 Write-Host "[2/3] Staging runtime files..." -ForegroundColor Yellow
 
+# Project assets (optional)
 $maybeAssets = @("config", "assets", "README.md", "LICENSE")
 foreach ($item in $maybeAssets) {
     $src = Join-Path $repoRoot $item
@@ -109,12 +124,19 @@ foreach ($item in $maybeAssets) {
     }
 }
 
-# Bundle Tesseract so app works on a clean machine
+# Bundle vcpkg-built runtime DLLs so the app runs on clean machines
+$vcpkgBin = Join-Path $vcpkgRoot "installed\x64-windows\bin"
+if (Test-Path $vcpkgBin) {
+    Copy-Item (Join-Path $vcpkgBin "*.dll") -Destination $buildDir -Force -ErrorAction SilentlyContinue
+    Write-Host "  Included: vcpkg runtime DLLs from $vcpkgBin"
+} else {
+    Write-Warning "vcpkg bin folder not found; dynamic DLLs may be missing at runtime."
+}
+
+# Bundle Chocolatey Tesseract runtime as well (handy for CLI use and tessdata)
 if (Test-Path $tessDir) {
     Copy-Item $tessDir -Destination (Join-Path $buildDir "Tesseract-OCR") -Recurse -Force
-    Write-Host "  Included: Tesseract-OCR"
-} else {
-    Write-Warning "Tesseract-OCR not bundled; installer will lack OCR runtime!"
+    Write-Host "  Included: Tesseract-OCR runtime"
 }
 
 # ----------------------------- #

@@ -36,6 +36,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Cache vcpkg installed binaries (optional)
+        uses: actions/cache@v4
+        with:
+          path: C:\Users\runneradmin\vcpkg\installed
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('.github/workflows/release.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
+
       - name: Build & Stage (PowerShell)
         shell: pwsh
         run: |
