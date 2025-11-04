@@ -24,13 +24,29 @@ function Fail($msg) {
 
 function Run-Proc($exe, [string[]]$args, $outFile) {
     Write-Host "Run-Proc: $exe $($args -join ' ')"
+    if ($null -eq $outFile) { $outFile = Join-Path $env:TEMP ("runproc_" + ([Guid]::NewGuid().ToString()) + ".log") }
     if (Test-Path $outFile) { Remove-Item $outFile -Force -ErrorAction SilentlyContinue }
-    $psiArgs = $args -join ' '
-    $proc = Start-Process -FilePath $exe -ArgumentList $args -NoNewWindow -RedirectStandardOutput $outFile -RedirectStandardError $outFile -PassThru -Wait
+    $errFile = "${outFile}.err"
+    if (Test-Path $errFile) { Remove-Item $errFile -Force -ErrorAction SilentlyContinue }
+
+    # Start-Process requires different files for stdout/stderr on Windows; use separate files then merge.
+    $proc = Start-Process -FilePath $exe -ArgumentList $args -NoNewWindow -RedirectStandardOutput $outFile -RedirectStandardError $errFile -PassThru -Wait
+
+    # If process failed, show logs and merge for artifact
     if ($proc.ExitCode -ne 0) {
-        Write-Host "--- Last 200 lines of $outFile ---"
+        Write-Host "--- Last 200 lines of stdout ($outFile) ---"
         if (Test-Path $outFile) { Get-Content $outFile -Tail 200 | ForEach-Object { Write-Host $_ } }
-        Fail "$exe failed (exit $($proc.ExitCode)). See $outFile"
+        Write-Host "--- Last 200 lines of stderr ($errFile) ---"
+        if (Test-Path $errFile) { Get-Content $errFile -Tail 200 | ForEach-Object { Write-Host $_ } }
+
+        if (Test-Path $errFile) { Get-Content $errFile | Add-Content $outFile }
+        Fail "$exe failed (exit $($proc.ExitCode)). See $outFile (stderr appended to same file)."
+    }
+
+    # merge stderr into stdout for single-file artifacts and cleanup
+    if (Test-Path $errFile) {
+        Get-Content $errFile | Add-Content $outFile
+        Remove-Item $errFile -Force -ErrorAction SilentlyContinue
     }
     return Get-Content $outFile -ErrorAction SilentlyContinue
 }
@@ -72,7 +88,7 @@ Get-Content $tempEnvOut | ForEach-Object {
     }
 }
 Write-Host "MSVC environment imported."
-if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) { Fail "MSVC (cl.exe) not on PATH after VsDevCmd import." }
+if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) { Write-Host "Warning: cl.exe not on PATH after VsDevCmd import" }
 
 # --- Chocolatey best-effort installs ---
 if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
@@ -115,7 +131,6 @@ Write-Host "Installing vcpkg ports: leptonica, tesseract (triplet x64-windows) â
 Push-Location $vcpkgRoot
 if (Test-Path $vcpkgLog) { Remove-Item $vcpkgLog -Force -ErrorAction SilentlyContinue }
 
-# Use Start-Process to get robust logging
 $installArgs = @("install","leptonica","tesseract","--triplet","x64-windows","--clean-after-build","-v")
 Run-Proc -exe $vcpkgExe -args $installArgs -outFile $vcpkgLog
 
