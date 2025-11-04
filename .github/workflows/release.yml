@@ -15,6 +15,7 @@ jobs:
   build:
     name: Build Windows Release
     runs-on: windows-latest
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repository
@@ -42,17 +43,27 @@ jobs:
           Set-ExecutionPolicy Bypass -Scope Process -Force
           ./build_scripts/build_for_windows.ps1
 
-      - name: Upload vcpkg logs on failure
-        if: failure()
+      - name: Upload vcpkg logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: vcpkg-logs
           path: C:\vcpkg-logs\*
 
-      - name: Create NSIS Installer (verbose, manual)
+      - name: Create NSIS Installer (robust)
         shell: pwsh
         run: |
-          makensis /V4 build_scripts/FMGoalMusicInstaller.nsi 2>&1 | Tee-Object -FilePath build_scripts\nsis.log
+          $mak = (Get-Command makensis -ErrorAction SilentlyContinue)?.Source
+          if (-not $mak) {
+            $candidates = @(
+              "$env:ProgramFiles(x86)\NSIS\makensis.exe",
+              "$env:ProgramFiles\NSIS\makensis.exe"
+            )
+            foreach ($p in $candidates) { if (Test-Path $p) { $mak = $p; break } }
+          }
+          if (-not $mak) { Write-Error "makensis not found on PATH or common locations"; exit 1 }
+          Write-Host "Using makensis: $mak"
+          & $mak /V4 build_scripts/FMGoalMusicInstaller.nsi 2>&1 | Tee-Object -FilePath build_scripts\nsis.log
           if ($LASTEXITCODE -ne 0) { Write-Error "makensis failed with code $LASTEXITCODE"; exit $LASTEXITCODE }
 
       - name: Verify installer output
