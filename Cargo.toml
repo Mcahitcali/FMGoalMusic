@@ -36,6 +36,9 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 # Parallel processing for performance-critical code
 rayon = "1.10"
 
+# Regular expressions for text parsing
+regex = "1.10"
+
 # Platform directories
 dirs = "5.0"
 

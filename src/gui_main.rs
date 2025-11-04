@@ -6,6 +6,7 @@ mod audio_converter;
 mod audio_system;
 mod capture;
 mod config;
+mod detection;
 mod error;
 mod gui;
 mod messaging;
