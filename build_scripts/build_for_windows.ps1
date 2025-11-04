@@ -1,300 +1,253 @@
 <#
-.SYNOPSIS
-  Prepare Windows environment (MSVC + vcpkg), build FM Goal Musics, and stage a self-contained payload for NSIS.
+build_for_windows.ps1
+Robust Windows build for GitHub Actions (x86_64-pc-windows-msvc target)
+- No emojis
+- Handles VS dev environment import correctly
+- Bootstraps vcpkg, integrates it, installs leptonica+tesseract for x64-windows
+- Builds with cargo for MSVC target
+- Creates NSIS installer
+- Produces logs for vcpkg and NSIS
 #>
 
-$ErrorActionPreference = "Stop"
-Write-Host "========== FM Goal Musics - Windows Setup & Build ==========" -ForegroundColor Cyan
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+function Write-Log {
+    param([string]$msg)
+    Write-Host $msg
+}
+
+# --- Basic paths
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = Resolve-Path "$scriptDir\.." | Select-Object -ExpandProperty Path
+$vcpkgRoot = Join-Path $env:USERPROFILE "vcpkg"   # will use this by default
+$tempEnvFile = Join-Path $env:TEMP "vsdevcmd_env.txt"
+$vcpkgLog = Join-Path $scriptDir "vcpkg_install.log"
+$nsisLog = Join-Path $scriptDir "nsis.log"
+
+# --- Helpers
+function Run-Proc {
+    param([string]$exe, [string[]]$args)
+    $cmdline = @($exe) + $args -join ' '
+    Write-Log ">>> Running: $cmdline"
+    $p = Start-Process -FilePath $exe -ArgumentList $args -NoNewWindow -PassThru -Wait -RedirectStandardOutput ([IO.File]::CreateText("$scriptDir\proc_stdout.log")) -RedirectStandardError ([IO.File]::CreateText("$scriptDir\proc_stderr.log"))
+    return $p.ExitCode
+}
 
 function Ensure-Choco {
     if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-        Write-Host "Installing Chocolatey..."
+        Write-Log "Chocolatey not found — installing minimal bootstrap..."
         Set-ExecutionPolicy Bypass -Scope Process -Force
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-    }
-}
-
-function Import-BatchEnv {
-    param(
-        [Parameter(Mandatory=$true)][string]$BatchFile,
-        [Parameter(Mandatory=$false)][string]$Args = ""
-    )
-
-    if (-not (Test-Path $BatchFile)) {
-        throw "Batch file not found: $BatchFile"
-    }
-
-    $tmp = New-TemporaryFile
-    $cmdLine = "`"$BatchFile`" $Args && set"
-    cmd.exe /c $cmdLine > $tmp 2>&1
-    $exit = $LASTEXITCODE
-    $out = Get-Content $tmp -Raw
-    if ($exit -ne 0) {
-        Remove-Item $tmp -Force
-        throw "Failed to import environment via:`n$cmdLine`n$out"
-    }
-
-    Get-Content $tmp | ForEach-Object {
-        if ($_ -match '^(.*?)=(.*)$') {
-            $name  = $matches[1]
-            $value = $matches[2]
-            if ($name -ieq 'HOME' -or [string]::IsNullOrWhiteSpace($name)) { return }
-            try {
-                Set-Item -Path ("Env:{0}" -f $name) -Value $value -ErrorAction Stop
-            } catch {
-                [System.Environment]::SetEnvironmentVariable($name, $value, 'Process')
-            }
-        }
-    }
-
-    Remove-Item $tmp -Force
-}
-
-function Find-VsDevCmd {
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    if (-not (Test-Path $vswhere)) {
-        Ensure-Choco
-        choco install vswhere -y --no-progress | Out-Null
-    }
-    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-    if (-not (Test-Path $vswhere)) { return $null }
-
-    $installationPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if (-not $installationPath) { return $null }
-
-    $devCmd = Join-Path $installationPath "Common7\Tools\VsDevCmd.bat"
-    if (Test-Path $devCmd) { return $devCmd }
-    return $null
-}
-
-function Ensure-Msvc-OnPath {
-    $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
-    $link = Get-Command link.exe -ErrorAction SilentlyContinue
-    if ($cl -and $link) { Write-Host "MSVC is available on PATH."; return }
-
-    $devCmd = Find-VsDevCmd
-    if ($devCmd) {
-        Write-Host "Importing VS developer environment..."
-        Import-BatchEnv -BatchFile $devCmd -Args "-host_arch=amd64 -arch=amd64"
-        $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
-        $link = Get-Command link.exe -ErrorAction SilentlyContinue
-        if ($cl -and $link) { Write-Host "MSVC imported successfully."; return }
-    }
-
-    Write-Host "Installing Visual Studio 2022 Build Tools (C++ toolchain)..."
-    Ensure-Choco
-    choco install visualstudio2022buildtools -y --no-progress | Out-Null
-
-    $devCmd = Find-VsDevCmd
-    if (-not $devCmd) { throw "VsDevCmd.bat not found even after installing Build Tools." }
-
-    Write-Host "Importing VS developer environment after installation..."
-    Import-BatchEnv -BatchFile $devCmd -Args "-host_arch=amd64 -arch=amd64"
-
-    $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
-    $link = Get-Command link.exe -ErrorAction SilentlyContinue
-    if (-not ($cl -and $link)) { throw "MSVC not available on PATH after VsDevCmd import." }
-}
-
-function Ensure-Tool {
-    param(
-        [string]$Name,
-        [scriptblock]$Test,
-        [string]$ChocoPkg
-    )
-    Write-Host "Checking $Name..."
-    $ok = $false
-    try { & $Test; $ok = $true } catch { $ok = $false }
-    if (-not $ok) {
-        Write-Host "Installing $Name..."
-        Ensure-Choco
-        choco install $ChocoPkg -y --no-progress | Out-Null
-        try {
-            & $Test
-            Write-Host "  Installed $Name"
-        } catch {
-            Write-Warning "$Name installed but not yet on PATH; attempting path resolution."
-            return $false
-        }
     } else {
-        Write-Host "  Found $Name"
+        Write-Log "Chocolatey present"
     }
-    return $true
 }
 
-function Resolve-Makensis {
-    $cmd = Get-Command makensis.exe -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Path }
+function Ensure-Tool-Choco {
+    param([string]$name, [string]$chocoPkg)
+    if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
+        Write-Log "$name not found on PATH; installing choco package: $chocoPkg"
+        choco install $chocoPkg -y --no-progress
+        Write-Log "Refreshing environment variables..."
+        refreshenv | Out-Null
+    } else {
+        Write-Log "$name found: $(Get-Command $name)."
+    }
+}
 
-    $candidates = @(
-        "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
-        "${env:ProgramFiles}\NSIS\makensis.exe"
-    )
-    foreach ($p in $candidates) {
-        if (Test-Path $p) {
-            $dir = Split-Path $p -Parent
-            if (-not (($env:Path -split ';') -contains $dir)) {
-                $env:Path = "$dir;$env:Path"
-            }
-            return $p
+# --- Import Visual Studio Developer Environment (robust)
+function Import-VsDevEnv {
+    Write-Log "Importing VS developer environment..."
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        Write-Log "vswhere not found at expected path: $vswhere"
+        throw "vswhere not found; cannot find Visual Studio installation."
+    }
+
+    $installationPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
+    if (-not $installationPath) {
+        # fallback to searching typical locations
+        $possible = @(
+            "C:\Program Files\Microsoft Visual Studio\2022\Enterprise",
+            "C:\Program Files\Microsoft Visual Studio\2022\BuildTools",
+            "C:\Program Files\Microsoft Visual Studio\2022\Professional",
+            "C:\Program Files\Microsoft Visual Studio\2022\Community"
+        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+        $installationPath = $possible
+    }
+
+    if (-not $installationPath) {
+        Write-Log "Visual Studio installation not found on runner. Ensure MSVC toolchain is present."
+        throw "Visual Studio (MSVC) not found."
+    }
+
+    $vsDevCmd = Join-Path $installationPath "Common7\Tools\VsDevCmd.bat"
+    if (-not (Test-Path $vsDevCmd)) {
+        Write-Log "VsDevCmd.bat not found at: $vsDevCmd"
+        throw "VsDevCmd not found"
+    }
+
+    # Run VsDevCmd.bat in cmd and then dump environment using 'set'
+    Write-Log "Running VsDevCmd.bat and capturing environment..."
+    $envLines = & cmd /c "`"$vsDevCmd`" -arch=amd64 -host_arch=amd64 1>nul 2>nul && set"
+    if (-not $envLines) {
+        throw "Failed to run VsDevCmd.bat or capture environment."
+    }
+
+    foreach ($line in $envLines) {
+        if ($line -match "^[^=]+=.*$") {
+            $parts = $line.Split("=",2)
+            $key = $parts[0]
+            $value = $parts[1]
+            # Import into current process (Process scope)
+            [System.Environment]::SetEnvironmentVariable($key, $value, 'Process')
         }
     }
-    return $null
-}
 
-# ----------------------------- #
-# 0) Toolchain & prerequisites
-# ----------------------------- #
-Ensure-Msvc-OnPath
-Ensure-Tool -Name "CMake"      -Test { cmake --version  | Out-Null }        -ChocoPkg "cmake"
-Ensure-Tool -Name "pkg-config" -Test { pkg-config --version | Out-Null }    -ChocoPkg "pkgconfiglite"
-
-# NSIS: install, then resolve absolute path, then verify
-$nsisOk = Ensure-Tool -Name "NSIS" -Test { makensis /VERSION | Out-Null } -ChocoPkg "nsis"
-$makensisPath = Resolve-Makensis
-if (-not $makensisPath) {
-    throw "NSIS makensis.exe not found after installation. Looked under Program Files\NSIS. Check Chocolatey logs."
-} else {
-    & $makensisPath /VERSION | Out-Null
-    Write-Host "NSIS available: $makensisPath"
-}
-
-Write-Host "Checking Rust toolchain (from workflow)..."
-rustc --version
-cargo --version
-
-# ----------------------------- #
-# 1) vcpkg (leptonica + tesseract)  <-- binarysource REMOVED for compatibility
-# ----------------------------- #
-$userHome  = $env:USERPROFILE
-$vcpkgRoot = Join-Path $userHome "vcpkg"
-$vcpkgExe  = Join-Path $vcpkgRoot "vcpkg.exe"
-
-if (-not (Test-Path $vcpkgExe)) {
-    Write-Host "Installing vcpkg..."
-    git clone --depth=1 https://github.com/microsoft/vcpkg $vcpkgRoot | Out-Null
-    & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics | Out-Null
-}
-
-# Base env for vcpkg + vcpkg-rs
-$env:VCPKG_ROOT                 = $vcpkgRoot
-$env:VCPKG_DEFAULT_TRIPLET      = "x64-windows"
-$env:VCPKGRS_TRIPLET            = "x64-windows"
-$env:VCPKGRS_DYNAMIC            = "1"
-$env:VCPKG_FEATURE_FLAGS        = "manifests,binarycaching"
-$env:CMAKE_BUILD_PARALLEL_LEVEL = "1"
-$env:VCPKG_MAX_CONCURRENCY      = "1"
-
-# Ensure installed tree isn't a broken cached snapshot (delete if inconsistent)
-$installedDir = Join-Path $vcpkgRoot "installed"
-$metaDir      = Join-Path $installedDir "vcpkg"
-$updatesDir   = Join-Path $metaDir "updates"
-$statusFile   = Join-Path $metaDir "status"
-
-$needReset = $false
-if (Test-Path $installedDir) {
-    if (-not (Test-Path $metaDir))     { $needReset = $true }
-    if (-not (Test-Path $updatesDir))  { $needReset = $true }
-    if (-not (Test-Path $statusFile))  { $needReset = $true }
-}
-
-if ($needReset) {
-    Write-Warning "vcpkg 'installed' state looks inconsistent. Resetting installed tree..."
-    Remove-Item $installedDir -Recurse -Force -ErrorAction SilentlyContinue
-}
-
-# Logging
-$logDir = "C:\vcpkg-logs"
-if (!(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
-$vcpkgLog = Join-Path $logDir "vcpkg_install.log"
-$vcpkgList = Join-Path $logDir "vcpkg_list.log"
-
-Write-Host "Installing vcpkg ports (leptonica, tesseract) — no binary cache (slower but compatible)..."
-
-# Use explicit triplet appended to package names
-$pkgs = @('leptonica:x64-windows','tesseract:x64-windows')
-
-# Run and capture output (no binarysource)
-& $vcpkgExe 'install' $pkgs[0] $pkgs[1] '--clean-after-build' '--triplet' 'x64-windows' '--debug' 2>&1 | Tee-Object -FilePath $vcpkgLog
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "vcpkg install exited with code $LASTEXITCODE. See $vcpkgLog"
-    throw "vcpkg install failed (exit $LASTEXITCODE)."
-}
-
-# capture list
-& $vcpkgExe list --triplet x64-windows 2>&1 | Tee-Object -FilePath $vcpkgList
-
-# Verify vcpkg installed ports for the requested triplet
-$leptOk = Select-String -Path $vcpkgList -Pattern '^\s*leptonica:.*x64-windows' -Quiet
-if (-not $leptOk) {
-    Write-Host "vcpkg list output (first 200 lines):"
-    Get-Content $vcpkgList | Select-Object -First 200 | ForEach-Object { Write-Host $_ }
-    throw "vcpkg did not install leptonica:x64-windows (see $vcpkgLog)."
-}
-$tessOk = Select-String -Path $vcpkgList -Pattern '^\s*tesseract:.*x64-windows' -Quiet
-if (-not $tessOk) {
-    Write-Host "vcpkg list output (first 200 lines):"
-    Get-Content $vcpkgList | Select-Object -First 200 | ForEach-Object { Write-Host $_ }
-    throw "vcpkg did not install tesseract:x64-windows (see $vcpkgLog)."
-}
-
-Write-Host "vcpkg: leptonica & tesseract installed OK."
-
-# ----------------------------- #
-# 2) Build
-# ----------------------------- #
-$scriptPath = $MyInvocation.MyCommand.Definition
-$projectRoot = Split-Path -Parent $scriptPath
-$repoRoot = Resolve-Path (Join-Path $projectRoot "..")
-$buildDir = Join-Path $repoRoot "build/windows"
-$exeName  = "fm-goal-musics-gui.exe"
-
-if (Test-Path $buildDir) { Remove-Item -Recurse -Force $buildDir }
-New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
-
-Write-Host "[1/3] Building Rust (release, MSVC)..." -ForegroundColor Yellow
-Set-Location $repoRoot
-cargo build --release --target x86_64-pc-windows-msvc
-
-$binaryPath = Join-Path $repoRoot "target/x86_64-pc-windows-msvc/release/$exeName"
-if (!(Test-Path $binaryPath)) {
-    throw "Build failed: $exeName not found: $binaryPath"
-}
-Copy-Item $binaryPath -Destination $buildDir
-
-# ----------------------------- #
-# 3) Stage runtime files
-# ----------------------------- #
-Write-Host "[2/3] Staging runtime files..." -ForegroundColor Yellow
-
-$maybeAssets = @("config", "assets", "README.md", "LICENSE")
-foreach ($item in $maybeAssets) {
-    $src = Join-Path $repoRoot $item
-    if (Test-Path $src) {
-        Copy-Item $src -Destination $buildDir -Recurse -Force
-        Write-Host "  Included: $item"
+    # quick verify cl.exe is reachable
+    if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
+        Write-Log "MSVC cl.exe is not on PATH after importing VS dev environment."
+        throw "MSVC (cl/link) not on PATH"
     }
+    Write-Log "MSVC imported successfully."
 }
 
-# vcpkg DLLs (leptonica, tesseract, deps)
-$vcpkgBin = Join-Path $vcpkgRoot "installed\x64-windows\bin"
-if (Test-Path $vcpkgBin) {
-    Copy-Item (Join-Path $vcpkgBin "*.dll") -Destination $buildDir -Force -ErrorAction SilentlyContinue
-    Write-Host "  Included: vcpkg runtime DLLs from $vcpkgBin"
-} else {
-    Write-Warning "vcpkg bin folder not found; runtime DLLs may be missing."
+# --- Bootstrap vcpkg & install ports
+function Ensure-Vcpkg {
+    param(
+        [string]$vcpkgRootParam = $vcpkgRoot,
+        [string]$triplet = "x64-windows"
+    )
+    $vcpkgRootParam = Resolve-Path $vcpkgRootParam -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path -ErrorAction SilentlyContinue
+    if (-not $vcpkgRootParam) {
+        $vcpkgRootParam = $vcpkgRoot
+    }
+    if (-not (Test-Path $vcpkgRootParam)) {
+        Write-Log "Cloning vcpkg to $vcpkgRootParam..."
+        git clone --depth 1 https://github.com/microsoft/vcpkg.git $vcpkgRootParam
+    } else {
+        Write-Log "vcpkg root exists at $vcpkgRootParam"
+    }
+
+    $vcpkgExe = Join-Path $vcpkgRootParam "vcpkg.exe"
+    if (-not (Test-Path $vcpkgExe)) {
+        Write-Log "Bootstrapping vcpkg..."
+        & "$vcpkgRootParam\bootstrap-vcpkg.bat" | Tee-Object -FilePath $vcpkgLog
+    } else {
+        Write-Log "vcpkg.exe already present"
+    }
+
+    # Ensure VCPKG_ROOT env var is set for cargo build scripts that look for it
+    [System.Environment]::SetEnvironmentVariable("VCPKG_ROOT", $vcpkgRootParam, 'Process')
+    [System.Environment]::SetEnvironmentVariable("VCPKG_DEFAULT_TRIPLET", $triplet, 'Process')
+
+    # Integrate vcpkg for MSBuild/CMake integration (makes find_package etc work)
+    & $vcpkgExe integrate install | Tee-Object -FilePath $vcpkgLog
+
+    # Install required ports (do NOT use broken custom binarysource flags)
+    Write-Log "Installing vcpkg ports: leptonica, tesseract ($triplet)... (this may take a while)"
+    $exit = & $vcpkgExe install leptonica tesseract --triplet $triplet --clean-after-build 2>&1 | Tee-Object -FilePath $vcpkgLog
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "vcpkg install output saved to $vcpkgLog"
+        throw "vcpkg install failed (exit $LASTEXITCODE)."
+    }
+
+    # sanity checks: ensure packages appear in vcpkg list for the triplet
+    $listOut = & $vcpkgExe list --triplet $triplet
+    if ($listOut -notmatch "leptonica:.*$triplet") {
+        throw "vcpkg did not install leptonica:$triplet (list not containing it). See $vcpkgLog"
+    }
+    if ($listOut -notmatch "tesseract:.*$triplet") {
+        throw "vcpkg did not install tesseract:$triplet (list not containing it). See $vcpkgLog"
+    }
+
+    Write-Log "vcpkg ports installed successfully."
 }
 
-# tessdata (OCR languages)
-$tessdataSrc = Join-Path $vcpkgRoot "installed\x64-windows\share\tesseract\tessdata"
-if (Test-Path $tessdataSrc) {
-    Copy-Item $tessdataSrc -Destination (Join-Path $buildDir "tessdata") -Recurse -Force
-    Write-Host "  Included: tessdata"
-} else {
-    Write-Warning "tessdata not found in vcpkg; OCR may miss language data."
+# --- Build the Rust project
+function Build-Rust {
+    param([string]$target="x86_64-pc-windows-msvc")
+    Write-Log "Checking Rust toolchain..."
+    $rustc = & rustc --version
+    $cargo = & cargo --version
+    Write-Log $rustc
+    Write-Log $cargo
+
+    Write-Log "Building cargo --release for target $target..."
+    Push-Location $repoRoot
+    $env:RUSTFLAGS = $env:RUSTFLAGS  # preserve if set
+    $buildExit = & cargo build --release --target $target 2>&1 | Tee-Object -FilePath (Join-Path $scriptDir "cargo_build.log")
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "Cargo build failed — see cargo_build.log"
+        Pop-Location
+        throw "Cargo build failed (exit $LASTEXITCODE)"
+    }
+    Pop-Location
+    Write-Log "Cargo build completed."
 }
 
-Write-Host "[3/3] Build staging complete." -ForegroundColor Green
-Write-Host "Payload: $buildDir"
-Write-Host "Binary:  $exeName"
+# --- Make NSIS installer
+function Create-Installer {
+    param([string]$nsiPath = (Join-Path $scriptDir "FMGoalMusicInstaller.nsi"))
+    Write-Log "Checking NSIS (makensis)..."
+    Ensure-Tool-Choco -name "makensis" -chocoPkg "nsis"
+    $makensisCmd = Get-Command makensis -ErrorAction SilentlyContinue
+    if (-not $makensisCmd) {
+        throw "makensis not found even after choco install. Check PATH."
+    }
+    Write-Log "Running makensis $nsiPath ..."
+    & makensis /V4 $nsiPath 2>&1 | Tee-Object -FilePath $nsisLog
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "makensis failed; nsis.log saved at $nsisLog"
+        throw "makensis failed with code $LASTEXITCODE"
+    }
+    Write-Log "NSIS installer created successfully."
+}
+
+# --- Script main
+Write-Log "========== FM Goal Musics - Windows Setup & Build =========="
+
+try {
+    # Don't overwrite read-only HOME; use a safe local name if needed
+    $userProfile = $env:USERPROFILE
+
+    Ensure-Choco
+
+    # Ensure helpful tools
+    Ensure-Tool-Choco -name "cmake" -chocoPkg "cmake"
+    Ensure-Tool-Choco -name "git" -chocoPkg "git"
+    Ensure-Tool-Choco -name "7z" -chocoPkg "7zip"
+    Ensure-Tool-Choco -name "pwsh" -chocoPkg "powershell-core"   # attempt to ensure pwsh available if needed
+
+    # Import Visual Studio dev env
+    Import-VsDevEnv
+
+    # Ensure NSIS (makensis) and Tesseract (exe) for runtime if you want
+    Ensure-Tool-Choco -name "makensis" -chocoPkg "nsis"
+    Ensure-Tool-Choco -name "tesseract" -chocoPkg "tesseract"
+
+    # Bootstrap and install vcpkg ports
+    Ensure-Vcpkg -vcpkgRootParam $vcpkgRoot -triplet "x64-windows"
+
+    # Build Rust
+    Build-Rust -target "x86_64-pc-windows-msvc"
+
+    # Create NSIS installer
+    $nsi = Join-Path $scriptDir "FMGoalMusicInstaller.nsi"
+    if (-not (Test-Path $nsi)) {
+        Write-Log "NSIS script not found at $nsi — skipping installer creation."
+    } else {
+        Create-Installer -nsiPath $nsi
+    }
+
+    Write-Log "Build script finished successfully."
+} catch {
+    Write-Error "Exception: $($_.Exception.Message)"
+    Write-Error $_.Exception.StackTrace
+    # upload logs / leave artifacts for inspection
+    Write-Log "vcpkg log saved to: $vcpkgLog"
+    Write-Log "nsis log saved to: $nsisLog"
+    Exit 1
+}
