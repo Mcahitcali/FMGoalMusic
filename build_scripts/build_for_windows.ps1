@@ -206,9 +206,6 @@ if ($needReset) {
     Remove-Item $installedDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Recreate required dirs/files
-New-Item -ItemType Directory -Force -Path $updatesDir | Out-Null
-if (-not (Test-Path $statusFile)) { New-Item -ItemType File -Path $statusFile | Out-Null }
 
 # Binary cache under vcpkg so Actions can cache it
 $binaryCache = Join-Path $vcpkgRoot "binarycache"
@@ -217,10 +214,21 @@ $env:VCPKG_DEFAULT_BINARY_CACHE = $binaryCache
 
 Write-Host "Installing vcpkg ports (leptonica, tesseract) with binary cache..."
 & $vcpkgExe install `
-    leptonica:x64-windows `
-    tesseract:x64-windows `
+    --triplet x64-windows `
+    leptonica `
+    tesseract `
     --binarysource=("clear;files={0},readwrite" -f $binaryCache) `
     --clean-after-build | Out-Null
+
+# Verify vcpkg installed ports for the requested triplet
+$leptOk = & $vcpkgExe list --triplet x64-windows | Select-String -Quiet '^[ ]*leptonica:[ ]*x64-windows'
+if (-not $leptOk) {
+    throw "vcpkg did not install leptonica:x64-windows (list is empty)."
+}
+$tessOk = & $vcpkgExe list --triplet x64-windows | Select-String -Quiet '^[ ]*tesseract:[ ]*x64-windows'
+if (-not $tessOk) {
+    throw "vcpkg did not install tesseract:x64-windows (list is empty)."
+}
 
 # ----------------------------- #
 # 2) Build
