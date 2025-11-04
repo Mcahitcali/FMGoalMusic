@@ -40,17 +40,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\Users\runneradmin\vcpkg\installed
-          key: ${{ runner.os }}-vcpkg-installed-fix1-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-vcpkg-installed-fix2-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-installed-fix1-
+            ${{ runner.os }}-vcpkg-installed-fix2-
 
       - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
           path: C:\Users\runneradmin\vcpkg\binarycache
-          key: ${{ runner.os }}-vcpkg-bincache-fix1-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-vcpkg-bincache-fix2-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-vcpkg-bincache-fix1-
+            ${{ runner.os }}-vcpkg-bincache-fix2-
 
       - name: Build & Stage (PowerShell)
         shell: pwsh

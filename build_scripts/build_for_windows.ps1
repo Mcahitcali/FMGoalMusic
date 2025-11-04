@@ -213,22 +213,38 @@ if (!(Test-Path $binaryCache)) { New-Item -ItemType Directory -Path $binaryCache
 $env:VCPKG_DEFAULT_BINARY_CACHE = $binaryCache
 
 Write-Host "Installing vcpkg ports (leptonica, tesseract) with binary cache..."
-& $vcpkgExe install `
-    --triplet x64-windows `
-    leptonica `
-    tesseract `
-    --binarysource=("clear;files={0},readwrite" -f $binaryCache) `
-    --clean-after-build | Out-Null
+$vcpkgLog = Join-Path $vcpkgRoot "vcpkg_install.log"
+
+# Use explicit triplet on each package (most reliable)
+$pkgs = @('leptonica:x64-windows','tesseract:x64-windows')
+$binaryArg = "--binarysource=clear;files=$binaryCache,readwrite"
+
+# Run and capture output (no silent Out-Null)
+& $vcpkgExe 'install' $pkgs[0] $pkgs[1] $binaryArg '--clean-after-build' 2>&1 | Tee-Object -FilePath $vcpkgLog
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "vcpkg install exited with code $LASTEXITCODE. See $vcpkgLog"
+    throw "vcpkg install failed (exit $LASTEXITCODE)."
+}
+
+Write-Host "vcpkg install finished, showing summary..."
+& $vcpkgExe list --triplet x64-windows 2>&1 | Tee-Object -FilePath (Join-Path $vcpkgRoot "vcpkg_list.log")
 
 # Verify vcpkg installed ports for the requested triplet
-$leptOk = & $vcpkgExe list --triplet x64-windows | Select-String -Quiet '^[ ]*leptonica:[ ]*x64-windows'
+$leptOk = Select-String -Path (Join-Path $vcpkgRoot "vcpkg_list.log") -Pattern '^\s*leptonica:.*x64-windows' -Quiet
 if (-not $leptOk) {
-    throw "vcpkg did not install leptonica:x64-windows (list is empty)."
+    Write-Host "vcpkg list output:"
+    Get-Content (Join-Path $vcpkgRoot "vcpkg_list.log") | Select-Object -First 200 | ForEach-Object { Write-Host $_ }
+    throw "vcpkg did not install leptonica:x64-windows (see vcpkg_install.log)."
 }
-$tessOk = & $vcpkgExe list --triplet x64-windows | Select-String -Quiet '^[ ]*tesseract:[ ]*x64-windows'
+$tessOk = Select-String -Path (Join-Path $vcpkgRoot "vcpkg_list.log") -Pattern '^\s*tesseract:.*x64-windows' -Quiet
 if (-not $tessOk) {
-    throw "vcpkg did not install tesseract:x64-windows (list is empty)."
+    Write-Host "vcpkg list output:"
+    Get-Content (Join-Path $vcpkgRoot "vcpkg_list.log") | Select-Object -First 200 | ForEach-Object { Write-Host $_ }
+    throw "vcpkg did not install tesseract:x64-windows (see vcpkg_install.log)."
 }
+
+Write-Host "vcpkg: leptonica & tesseract installed OK."
+
 
 # ----------------------------- #
 # 2) Build
