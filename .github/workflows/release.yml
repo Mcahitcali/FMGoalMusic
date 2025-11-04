@@ -36,27 +36,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Cache vcpkg installed tree
-        uses: actions/cache@v4
-        with:
-          path: C:\Users\runneradmin\vcpkg\installed
-          key: ${{ runner.os }}-vcpkg-installed-fix3-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-installed-fix3-
-
-      - name: Cache vcpkg binary cache
-        uses: actions/cache@v4
-        with:
-          path: C:\Users\runneradmin\vcpkg\binarycache
-          key: ${{ runner.os }}-vcpkg-bincache-fix3-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-bincache-fix3-
-
       - name: Build & Stage (PowerShell)
         shell: pwsh
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
           ./build_scripts/build_for_windows.ps1
+
+      - name: Upload vcpkg logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpkg-logs
+          path: C:\vcpkg-logs\*
 
       - name: Create NSIS Installer (verbose, manual)
         shell: pwsh
