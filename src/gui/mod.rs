@@ -7,6 +7,7 @@ mod state;
 pub mod model;
 pub mod messages;
 pub mod update;
+pub mod views;
 
 // Re-export public types
 pub use state::{AppState, MusicEntry, ProcessState};
