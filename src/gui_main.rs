@@ -3,6 +3,7 @@
 
 mod audio;
 mod audio_converter;
+mod audio_system;
 mod capture;
 mod config;
 mod error;
