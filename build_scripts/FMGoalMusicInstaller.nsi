@@ -1,36 +1,41 @@
-!define APP_NAME "FM Goal Musics"
-!define COMPANY  "FM Goal Musics"
-!define VERSION  "1.0.0"
-
-!verbose 4
-OutFile "build_scripts\FMGoalMusicInstaller.exe"
-InstallDir "$PROGRAMFILES\${APP_NAME}"
+; ==========================================
+; FM Goal Musics – Universal Installer (for GitHub Actions & local)
+; ==========================================
+OutFile "build\windows\FMGoalMusicInstaller.exe"
+InstallDir "$PROGRAMFILES\FM Goal Musics"
 RequestExecutionLevel admin
-SetCompress auto
+ShowInstDetails show
+ShowUninstDetails show
 
-Page directory
-Page instfiles
-UninstPage uninstConfirm
-UninstPage instfiles
+!include "MUI2.nsh"
 
-Section "Install"
-  SetShellVarContext all
+Name "FM Goal Musics"
+BrandingText "FM Goal Musics Installer"
+
+Var StartMenuFolder
+
+!define MUI_ABORTWARNING
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_UNPAGE_FINISH
+
+!insertmacro MUI_LANGUAGE "English"
+
+Section "MainSection" SEC01
   SetOutPath "$INSTDIR"
   File /r "build\windows\*.*"
-
-  ; Point Tesseract to $INSTDIR\tessdata (bundled by the build script)
-  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX" "$INSTDIR"
-  System::Call 'USER32::SendMessageTimeout(p 0xffff, i ${WM_SETTINGCHANGE}, i 0, t "Environment", i 0, i 5000, *i .r0)'
-
-  CreateShortCut "$SMPROGRAMS\${APP_NAME}.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
-  CreateShortCut "$DESKTOP\${APP_NAME}.lnk"     "$INSTDIR\fm-goal-musics-gui.exe"
+  CreateShortCut "$DESKTOP\FM Goal Musics.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
+  CreateShortCut "$SMPROGRAMS\FM Goal Musics\FM Goal Musics.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
 SectionEnd
 
 Section "Uninstall"
-  Delete "$SMPROGRAMS\${APP_NAME}.lnk"
-  Delete "$DESKTOP\${APP_NAME}.lnk"
+  Delete "$DESKTOP\FM Goal Musics.lnk"
+  Delete "$SMPROGRAMS\FM Goal Musics\FM Goal Musics.lnk"
   RMDir /r "$INSTDIR"
-  ; Optional: clear TESSDATA_PREFIX
-  ; WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX" ""
-  System::Call 'USER32::SendMessageTimeout(p 0xffff, i ${WM_SETTINGCHANGE}, i 0, t "Environment", i 0, i 5000, *i .r0)'
+  RMDir "$SMPROGRAMS\FM Goal Musics"
 SectionEnd
