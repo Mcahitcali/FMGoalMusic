@@ -111,7 +111,6 @@ function Ensure-Tool {
         Write-Host "Installing $Name..."
         Ensure-Choco
         choco install $ChocoPkg -y --no-progress | Out-Null
-        # Re-test inside try/catch so missing PATH doesn't crash the build
         try {
             & $Test
             Write-Host "  Installed $Name"
@@ -180,6 +179,7 @@ if (-not (Test-Path $vcpkgExe)) {
     & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics | Out-Null
 }
 
+# Base env for vcpkg + vcpkg-rs
 $env:VCPKG_ROOT                 = $vcpkgRoot
 $env:VCPKG_DEFAULT_TRIPLET      = "x64-windows"
 $env:VCPKGRS_TRIPLET            = "x64-windows"
@@ -188,12 +188,39 @@ $env:VCPKG_FEATURE_FLAGS        = "manifests,binarycaching"
 $env:CMAKE_BUILD_PARALLEL_LEVEL = "2"
 $env:VCPKG_MAX_CONCURRENCY      = "2"
 
+# Ensure metadata structure exists (protect against broken caches)
+$installedDir = Join-Path $vcpkgRoot "installed"
+$metaDir      = Join-Path $installedDir "vcpkg"
+$updatesDir   = Join-Path $metaDir "updates"
+$statusFile   = Join-Path $metaDir "status"
+
+$needReset = $false
+if (Test-Path $installedDir) {
+    if (-not (Test-Path $metaDir))     { $needReset = $true }
+    if (-not (Test-Path $updatesDir))  { $needReset = $true }
+    if (-not (Test-Path $statusFile))  { $needReset = $true }
+}
+
+if ($needReset) {
+    Write-Warning "vcpkg 'installed' state looks inconsistent. Resetting installed tree..."
+    Remove-Item $installedDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Recreate required dirs/files
+New-Item -ItemType Directory -Force -Path $updatesDir | Out-Null
+if (-not (Test-Path $statusFile)) { New-Item -ItemType File -Path $statusFile | Out-Null }
+
+# Binary cache under vcpkg so Actions can cache it
 $binaryCache = Join-Path $vcpkgRoot "binarycache"
 if (!(Test-Path $binaryCache)) { New-Item -ItemType Directory -Path $binaryCache | Out-Null }
 $env:VCPKG_DEFAULT_BINARY_CACHE = $binaryCache
 
 Write-Host "Installing vcpkg ports (leptonica, tesseract) with binary cache..."
-& $vcpkgExe install leptonica:x64-windows tesseract:x64-windows --binarysource=("clear;files={0},readwrite" -f $binaryCache) --clean-after-build | Out-Null
+& $vcpkgExe install `
+    leptonica:x64-windows `
+    tesseract:x64-windows `
+    --binarysource=("clear;files={0},readwrite" -f $binaryCache) `
+    --clean-after-build | Out-Null
 
 # ----------------------------- #
 # 2) Build

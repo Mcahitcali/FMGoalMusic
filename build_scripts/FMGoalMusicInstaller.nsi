@@ -18,7 +18,7 @@ Section "Install"
   SetOutPath "$INSTDIR"
   File /r "build\windows\*.*"
 
-  ; Point Tesseract to $INSTDIR\tessdata
+  ; Point Tesseract to $INSTDIR\tessdata (bundled by the build script)
   WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX" "$INSTDIR"
   System::Call 'USER32::SendMessageTimeout(p 0xffff, i ${WM_SETTINGCHANGE}, i 0, t "Environment", i 0, i 5000, *i .r0)'
 
@@ -30,7 +30,7 @@ Section "Uninstall"
   Delete "$SMPROGRAMS\${APP_NAME}.lnk"
   Delete "$DESKTOP\${APP_NAME}.lnk"
   RMDir /r "$INSTDIR"
-  ; Optionally clear TESSDATA_PREFIX
+  ; Optional: clear TESSDATA_PREFIX
   ; WriteRegStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "TESSDATA_PREFIX" ""
   System::Call 'USER32::SendMessageTimeout(p 0xffff, i ${WM_SETTINGCHANGE}, i 0, t "Environment", i 0, i 5000, *i .r0)'
 SectionEnd
