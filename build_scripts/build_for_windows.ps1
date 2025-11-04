@@ -49,8 +49,8 @@ cargo --version
 # ----------------------------- #
 #  vcpkg (headers + libs for leptonica/tesseract)
 # ----------------------------- #
-$home      = $env:USERPROFILE
-$vcpkgRoot = Join-Path $home "vcpkg"
+$userHome  = $env:USERPROFILE  # <- renamed to avoid clobbering $HOME
+$vcpkgRoot = Join-Path $userHome "vcpkg"
 $vcpkgExe  = Join-Path $vcpkgRoot "vcpkg.exe"
 
 if (-not (Test-Path $vcpkgExe)) {
@@ -59,16 +59,16 @@ if (-not (Test-Path $vcpkgExe)) {
     & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics | Out-Null
 }
 
-# Configure vcpkg for x64 Windows and dynamic linking (what most crates expect)
-$env:VCPKG_ROOT        = $vcpkgRoot
-$env:VCPKGRS_TRIPLET   = "x64-windows"
-$env:VCPKGRS_DYNAMIC   = "1"
-$env:VCPKG_DEFAULT_TRIPLET = "x64-windows"
+# Configure vcpkg for x64 Windows and dynamic linking
+$env:VCPKG_ROOT             = $vcpkgRoot
+$env:VCPKGRS_TRIPLET        = "x64-windows"
+$env:VCPKGRS_DYNAMIC        = "1"
+$env:VCPKG_DEFAULT_TRIPLET  = "x64-windows"
 
 Write-Host "Installing vcpkg ports: leptonica:x64-windows, tesseract:x64-windows ..."
 & $vcpkgExe install leptonica:x64-windows tesseract:x64-windows --clean-after-build | Out-Null
 
-# Also make Tesseract runtime available in-session (in case build.rs calls the CLI)
+# Make Tesseract CLI visible in-session if present
 $tessDir  = Join-Path ${env:ProgramFiles} "Tesseract-OCR"
 $tessExe  = Join-Path $tessDir "tesseract.exe"
 if (Test-Path $tessExe) {
@@ -114,7 +114,6 @@ Copy-Item $binaryPath -Destination $buildDir
 # ----------------------------- #
 Write-Host "[2/3] Staging runtime files..." -ForegroundColor Yellow
 
-# Project assets (optional)
 $maybeAssets = @("config", "assets", "README.md", "LICENSE")
 foreach ($item in $maybeAssets) {
     $src = Join-Path $repoRoot $item
