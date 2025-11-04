@@ -10,6 +10,7 @@ mod gui;
 mod ocr;
 mod region_selector;
 mod slug;
+mod state;
 mod utils;
 mod teams;
 mod team_matcher;

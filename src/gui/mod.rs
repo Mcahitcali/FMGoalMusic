@@ -517,7 +517,9 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 log::info!("  team_selection={} ({})", team.display_name, team.league);
             }
 
-            state.process_state = ProcessState::Running;
+            state.process_state = ProcessState::Running {
+                since: Instant::now(),
+            };
             state.status_message = format!("Starting detection with '{}'", entry.name);
             state.detection_count = 0;
 
@@ -667,11 +669,11 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
 
                 match process_state {
                     ProcessState::Stopped => break,
-                    ProcessState::Paused => {
+                    ProcessState::Starting | ProcessState::Stopping => {
                         thread::sleep(Duration::from_millis(120));
                         continue;
                     }
-                    ProcessState::Running => {}
+                    ProcessState::Running { .. } => {}
                 }
 
                 // Skip expensive capture/OCR during debounce cooldown
@@ -796,16 +798,16 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
         drop(state);
     }
 
-    fn pause_detection(&mut self) {
-        let mut state = self.state.lock();
-        if state.process_state == ProcessState::Running {
-            state.process_state = ProcessState::Paused;
-            state.status_message = "Paused".to_string();
-        } else if state.process_state == ProcessState::Paused {
-            state.process_state = ProcessState::Running;
-            state.status_message = "Resumed".to_string();
-        }
-    }
+//     fn pause_detection(&mut self) {
+//         let mut state = self.state.lock();
+//         if matches!(state.process_state, ProcessState::Running { .. }) {
+//             state.process_state = ProcessState::Paused;
+//             state.status_message = "Paused".to_string();
+//         } else if state.process_state == ProcessState::Paused {
+//             state.process_state = ProcessState::Running;
+//             state.status_message = "Resumed".to_string();
+//         }
+//     }
 
     fn stop_detection_audio(&mut self) {
         if let Some(tx) = &self.detection_cmd_tx {
@@ -978,11 +980,11 @@ impl eframe::App for FMGoalMusicsApp {
             let (is_stopped, is_running, status_color, status_message, detection_count) = {
                 let state = self.state.lock();
                 let is_stopped = state.process_state == ProcessState::Stopped;
-                let is_running = state.process_state == ProcessState::Running;
+                let is_running = matches!(state.process_state, ProcessState::Running { .. });
                 let status_color = match state.process_state {
-                    ProcessState::Running => egui::Color32::GREEN,
-                    ProcessState::Paused => egui::Color32::YELLOW,
+                    ProcessState::Running { .. } => egui::Color32::GREEN,
                     ProcessState::Stopped => egui::Color32::RED,
+                    ProcessState::Starting | ProcessState::Stopping => egui::Color32::YELLOW,
                 };
                 (is_stopped, is_running, status_color, state.status_message.clone(), state.detection_count)
             };

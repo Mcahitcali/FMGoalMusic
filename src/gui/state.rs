@@ -1,20 +1,18 @@
-/// State module for GUI application
+/// GUI-specific state module
 ///
-/// Contains all state-related structs and enums used by the GUI
+/// Contains GUI-only state types (preview, audio, tabs, etc.)
+/// Main application state is now in src/state/
 
 use eframe::egui;
 use std::path::PathBuf;
 
 use crate::audio::AudioManager;
 
-/// Music entry with file path and optional keyboard shortcut
-#[derive(Clone, Debug)]
-pub struct MusicEntry {
-    pub name: String,
-    #[allow(dead_code)]
-    pub path: PathBuf,
-    pub shortcut: Option<String>,
-}
+// Re-export main state types for compatibility
+pub use crate::state::{AppState, MusicEntry, ProcessState};
+
+// Re-export SelectedTeam from config for now (will migrate later)
+pub use crate::config::SelectedTeam;
 
 /// Preview audio manager with associated file path
 pub(super) struct PreviewAudio {
@@ -30,67 +28,6 @@ pub(super) struct CapturePreview {
     pub width: u32,
     pub height: u32,
     pub timestamp: Option<std::time::Instant>,
-}
-
-/// Detection process state
-#[derive(Clone, Copy, PartialEq)]
-pub enum ProcessState {
-    Stopped,
-    Running,
-    Paused,
-}
-
-/// Shared state between GUI and background detection thread
-pub struct AppState {
-    pub music_list: Vec<MusicEntry>,
-    pub selected_music_index: Option<usize>,
-    pub process_state: ProcessState,
-    pub capture_region: [u32; 4],
-    pub ocr_threshold: u8,
-    pub debounce_ms: u64,
-    pub enable_morph_open: bool,
-    pub status_message: String,
-    pub detection_count: usize,
-    pub selected_team: Option<crate::config::SelectedTeam>,
-    pub music_volume: f32,
-    pub ambiance_volume: f32,
-    pub goal_ambiance_path: Option<String>,
-    pub ambiance_enabled: bool,
-    pub music_length_ms: u64,
-    pub ambiance_length_ms: u64,
-
-    // Update checker fields
-    pub auto_check_updates: bool,
-    pub skipped_version: Option<String>,
-
-    // Multi-monitor support
-    pub selected_monitor_index: usize,
-}
-
-impl Default for AppState {
-    fn default() -> Self {
-        Self {
-            music_list: Vec::new(),
-            selected_music_index: None,
-            process_state: ProcessState::Stopped,
-            capture_region: [0, 0, 200, 100],
-            ocr_threshold: 0,
-            debounce_ms: 8000,
-            enable_morph_open: false,
-            status_message: "Ready".to_string(),
-            detection_count: 0,
-            selected_team: None,
-            music_volume: 1.0,
-            ambiance_volume: 0.6,
-            goal_ambiance_path: None,
-            ambiance_enabled: true,
-            music_length_ms: 20000, // 20 seconds
-            ambiance_length_ms: 20000, // 20 seconds
-            auto_check_updates: true,
-            skipped_version: None,
-            selected_monitor_index: 0, // Primary monitor
-        }
-    }
 }
 
 /// Application tab selection
@@ -121,7 +58,9 @@ impl AppTab {
 }
 
 /// Save a capture image to disk via file dialog
-pub(super) fn save_capture_image(image: &egui::ColorImage) -> Result<(), Box<dyn std::error::Error>> {
+pub(super) fn save_capture_image(
+    image: &egui::ColorImage,
+) -> Result<(), Box<dyn std::error::Error>> {
     let path = rfd::FileDialog::new()
         .add_filter("PNG Image", &["png"])
         .set_file_name("capture_preview.png")
