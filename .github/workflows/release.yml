@@ -33,47 +33,12 @@ jobs:
         with:
           targets: ${{ matrix.platform.target }}
 
-      - name: Install Tesseract OCR (Windows)
+      - name: Setup and Build using PowerShell Script
         if: matrix.platform.name == 'Windows'
+        shell: pwsh
         run: |
-          choco install tesseract --no-progress
-          echo "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Force static linking (skip vcpkg)
-        if: matrix.platform.name == 'Windows'
-        run: |
-          # Disable vcpkg and force static linking
-          echo "VCPKG_ROOT=" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "LEPTONICA_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "TESSERACT_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Cache dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build application
-        run: |
-          # Force static linking to avoid vcpkg issues
-          $env:LEPTONICA_STATIC = "1"
-          $env:TESSDATA_PREFIX = "tessdata"
-          cargo build --release --target ${{ matrix.platform.target }}
-
-      - name: Prepare Windows build for installer
-        if: matrix.platform.name == 'Windows'
-        run: |
-          mkdir -p target/release/config
-          mkdir -p target/release/assets
-          mkdir -p target/release/tessdata
-          # Copy required files for installer
-          cp -r config/* target/release/config/ || true
-          cp -r assets/* target/release/assets/ || true
-          cp -r tessdata/* target/release/tessdata/ || true
-          cp license.txt target/release/ || true
+          # Run the existing PowerShell script end-to-end (setup + build + distribution)
+          powershell -ExecutionPolicy Bypass -File build_scripts/build_for_windows.ps1
 
       - name: Create Windows Installer
         if: matrix.platform.name == 'Windows'
@@ -89,7 +54,7 @@ jobs:
           name: ${{ matrix.platform.artifact_name }}
           path: |
             FMGoalMusicInstaller.exe
-            target/${{ matrix.platform.target }}/release/${{ matrix.platform.binary_name }}
+            build/windows/${{ matrix.platform.binary_name }}
 
   release:
     needs: build

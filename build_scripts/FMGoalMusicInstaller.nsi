@@ -1,6 +1,6 @@
 !include "MUI2.nsh"
 
-!define BASE ".."  ; GitHub Actions'da bu script build_scripts klasöründe çalışacak
+!define BASE "build\windows"  ; PowerShell script'inin oluşturduğu build klasörü
 
 !define APP_NAME "FM Goal Musics"
 
@@ -54,7 +54,7 @@ SetOutPath "${INSTALL_DIR}"
 
 DetailPrint "Extract EXE"
 
-File "${BASE}\target\release\${APP_EXE}"
+File "${BASE}\${APP_EXE}"
 
 ; CONFIG
 
@@ -64,11 +64,11 @@ DetailPrint "Extract config"
 
 !ifdef STRICT
 
-File /r "${BASE}\target\release\config\*.*"
+File /r "${BASE}\config\*.*"
 
 !else
 
-File /nonfatal /r "${BASE}\target\release\config\*.*"
+File /nonfatal /r "${BASE}\config\*.*"
 
 !endif
 
@@ -80,11 +80,11 @@ DetailPrint "Extract assets"
 
 !ifdef STRICT
 
-File /r "${BASE}\target\release\assets\*.*"
+File /r "${BASE}\assets\*.*"
 
 !else
 
-File /nonfatal /r "${BASE}\target\release\assets\*.*"
+File /nonfatal /r "${BASE}\assets\*.*"
 
 !endif
 
@@ -96,11 +96,11 @@ DetailPrint "Extract tessdata (bundled)"
 
 !ifdef STRICT
 
-File /r "${BASE}\target\release\tessdata\*.*"
+File /r "${BASE}\tessdata\*.*"
 
 !else
 
-File /nonfatal /r "${BASE}\target\release\tessdata\*.*"
+File /nonfatal /r "${BASE}\tessdata\*.*"
 
 !endif
 

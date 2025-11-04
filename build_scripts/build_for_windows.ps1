@@ -12,6 +12,9 @@ param (
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Detect CI (GitHub Actions) environment
+$script:IsCI = $env:GITHUB_ACTIONS -eq "true"
+
 function Write-Heading {
     param(
         [string] $Title
@@ -38,6 +41,12 @@ function Ensure-Administrator { # only when we must install
         return
     }
 
+    # In CI runners we can't elevate; skip admin requirement and rely on preinstalled tools
+    if ($script:IsCI) {
+        Write-Host "CI detected: skipping administrator requirement" -ForegroundColor Yellow
+        return
+    }
+
     if (Test-IsAdministrator) {
         Write-Host "Running with administrator privileges" -ForegroundColor Green
         return
@@ -55,6 +64,11 @@ $script:VsDevCmd = $null
 
 function Ensure-VisualStudioBuildTools {
     Write-Heading "Step 1: Visual Studio Build Tools"
+
+    if ($script:IsCI) {
+        Write-Host "CI detected: Skipping Visual Studio Build Tools installation and using preinstalled toolchain" -ForegroundColor Yellow
+        return
+    }
 
     $installPaths = @(
         "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools",
@@ -92,6 +106,14 @@ function Ensure-VisualStudioBuildTools {
 
 function Ensure-RustToolchain {
     Write-Heading "Step 2: Rust Toolchain"
+
+    if ($script:IsCI) {
+        # Toolchain is installed by GitHub Actions (dtolnay/rust-toolchain). Just ensure cargo is callable.
+        $script:CargoPath = "cargo"
+        $version = & $script:CargoPath --version
+        Write-Host "Using Rust from CI: $version" -ForegroundColor Green
+        return
+    }
 
     $script:CargoPath = Join-Path $env:USERPROFILE ".cargo\\bin\\cargo.exe"
     if (Test-Path $script:CargoPath) {
@@ -137,6 +159,23 @@ function Ensure-TesseractRuntime {
     Write-Heading "Step 3: Tesseract OCR Runtime"
 
     $existing = Get-TesseractRoot
+    if ($script:IsCI) {
+        if (-not $existing) {
+            Write-Host "CI detected: Installing Tesseract via Chocolatey" -ForegroundColor Yellow
+            try {
+                choco install tesseract --no-progress | Out-Null
+            } catch {
+                Write-Host "Warning: Chocolatey install may have failed; continuing" -ForegroundColor Yellow
+            }
+            $existing = Get-TesseractRoot
+        }
+        if ($existing) {
+            Write-Host "Tesseract detected at $existing" -ForegroundColor Green
+        } else {
+            Write-Host "Warning: Tesseract not found after install attempt" -ForegroundColor Yellow
+        }
+        return $existing
+    }
     if ($existing) {
         Write-Host "Tesseract already installed at $existing" -ForegroundColor Green
         return $existing
@@ -193,8 +232,8 @@ function Ensure-NativeDevFiles {
     $script:UsingVcpkg = $true
 
     $defaultRoots = @(
-        "C:\\vcpkg",
-        (Join-Path $env:USERPROFILE "vcpkg")
+        (Join-Path $env:USERPROFILE "vcpkg"),
+        "C:\\vcpkg"
     )
 
     foreach ($candidate in $defaultRoots) {
@@ -245,7 +284,11 @@ function Configure-VisualStudioEnvironment {
         "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools\\VsDevCmd.bat",
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools\\VsDevCmd.bat",
         "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\VsDevCmd.bat",
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\VsDevCmd.bat"
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\VsDevCmd.bat",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\Common7\\Tools\\VsDevCmd.bat",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Enterprise\\Common7\\Tools\\VsDevCmd.bat",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\Common7\\Tools\\VsDevCmd.bat",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Professional\\Common7\\Tools\\VsDevCmd.bat"
     )
 
     foreach ($candidate in $vsCmdCandidates) {
@@ -309,11 +352,13 @@ function Ensure-LibClang {
     $candidateDirs = @(
         "C:\\Program Files\\LLVM\\bin",
         "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\Llvm\\x64\\bin",
-        "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\Llvm\\bin"
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\Llvm\\bin",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Tools\\Llvm\\x64\\bin",
+        "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\VC\\Tools\\Llvm\\x64\\bin"
     )
 
     foreach ($dir in $candidateDirs) {
-        if (Test-LibClangPath $dir)) {
+        if (Test-LibClangPath $dir) {
             $env:LIBCLANG_PATH = $dir
             Write-Host "Configured LIBCLANG_PATH=$dir" -ForegroundColor Green
             return
@@ -437,7 +482,8 @@ try {
         Ensure-NativeDevFiles -TesseractRoot $tesseractRoot
     } else {
         $script:CargoPath = Join-Path $env:USERPROFILE ".cargo\\bin\\cargo.exe"
-        $tesseractRoot = ("C:\\Program Files\\Tesseract-OCR", "C:\\Program Files (x86)\\Tesseract-OCR" | Where-Object { Test-Path (Join-Path $_ "tesseract.exe") })[0]
+        # Reuse detection function to reliably find system Tesseract
+        $tesseractRoot = Get-TesseractRoot
     }
 
     if (-not $tesseractRoot) {
