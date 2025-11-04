@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Prepare Windows environment (incl. vcpkg), build FM Goal Musics, and stage a self-contained payload for NSIS.
+  Prepare Windows environment (MSVC + vcpkg), build FM Goal Musics, and stage a self-contained payload for NSIS.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -15,10 +15,71 @@ function Ensure-Choco {
     }
 }
 
-function Test-Msvc {
+# Import environment variables from a batch file into the current PowerShell session
+function Import-BatchEnv {
+    param([string]$BatchCmd)
+    # Run: cmd.exe /c "<batch> && set"
+    $cmd = "cmd.exe /c `"$BatchCmd`" && set"
+    $output = & cmd.exe /c $cmd 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Failed to import environment via: $BatchCmd`n$output" }
+    foreach ($line in $output) {
+        if ($line -match "^(.*?)=(.*)$") {
+            $name = $matches[1]; $value = $matches[2]
+            # Avoid breaking PowerShell's intrinsic HOME variable; it's readonly on hosted runners.
+            if ($name -ieq "HOME") { continue }
+            $env:$name = $value
+        }
+    }
+}
+
+function Find-VsDevCmd {
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) {
+        # vswhere usually exists on Actions runners; if not, install it.
+        Ensure-Choco
+        choco install vswhere -y --no-progress | Out-Null
+    }
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (-not (Test-Path $vswhere)) { return $null }
+
+    $installationPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+    if (-not $installationPath) { return $null }
+
+    $devCmd = Join-Path $installationPath "Common7\Tools\VsDevCmd.bat"
+    if (Test-Path $devCmd) { return $devCmd }
+    return $null
+}
+
+function Ensure-Msvc-OnPath {
+    # If cl/link already available, done.
     $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
     $link = Get-Command link.exe -ErrorAction SilentlyContinue
-    if (-not $cl -or -not $link) { throw "MSVC (cl/link) not on PATH" }
+    if ($cl -and $link) { Write-Host "MSVC is available on PATH."; return }
+
+    # Try importing VS dev environment (amd64)
+    $devCmd = Find-VsDevCmd
+    if ($devCmd) {
+        Write-Host "Importing VS developer environment..."
+        Import-BatchEnv "`"$devCmd`" -host_arch=amd64 -arch=amd64"
+        $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
+        $link = Get-Command link.exe -ErrorAction SilentlyContinue
+        if ($cl -and $link) { Write-Host "MSVC imported successfully."; return }
+    }
+
+    # If still missing, install Build Tools, then import again
+    Write-Host "Installing Visual Studio 2022 Build Tools (C++ toolchain)..."
+    Ensure-Choco
+    choco install visualstudio2022buildtools -y --no-progress | Out-Null
+
+    $devCmd = Find-VsDevCmd
+    if (-not $devCmd) { throw "VsDevCmd.bat not found even after installing Build Tools." }
+
+    Write-Host "Importing VS developer environment after installation..."
+    Import-BatchEnv "`"$devCmd`" -host_arch=amd64 -arch=amd64"
+
+    $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
+    $link = Get-Command link.exe -ErrorAction SilentlyContinue
+    if (-not ($cl -and $link)) { throw "MSVC not available on PATH after VsDevCmd import." }
 }
 
 function Ensure-Tool {
@@ -32,7 +93,8 @@ function Ensure-Tool {
     try { & $Test; $ok = $true } catch { $ok = $false }
     if (-not $ok) {
         Write-Host "Installing $Name..."
-        choco install $ChocoPkg -y --no-progress
+        Ensure-Choco
+        choco install $ChocoPkg -y --no-progress | Out-Null
         & $Test
         Write-Host "  Installed $Name"
     } else {
@@ -41,21 +103,19 @@ function Ensure-Tool {
 }
 
 # ----------------------------- #
-#  0. TOOLCHAIN & NATIVE DEPS
+#  0) TOOLCHAIN & PREREQS
 # ----------------------------- #
-Ensure-Choco
-Ensure-Tool -Name "MSVC Build Tools" -Test { Test-Msvc }                     -ChocoPkg "visualstudio2022buildtools"
-Ensure-Tool -Name "CMake"            -Test { cmake --version  | Out-Null }   -ChocoPkg "cmake"
-Ensure-Tool -Name "pkg-config"       -Test { pkg-config --version | Out-Null } -ChocoPkg "pkgconfiglite"
-Ensure-Tool -Name "NSIS"             -Test { makensis /VERSION  | Out-Null } -ChocoPkg "nsis"
+Ensure-Msvc-OnPath
+Ensure-Tool -Name "CMake"      -Test { cmake --version  | Out-Null }        -ChocoPkg "cmake"
+Ensure-Tool -Name "pkg-config" -Test { pkg-config --version | Out-Null }    -ChocoPkg "pkgconfiglite"
+Ensure-Tool -Name "NSIS"       -Test { makensis /VERSION  | Out-Null }      -ChocoPkg "nsis"
 
-# Rust toolchain is installed by the GitHub workflow
-Write-Host "Checking Rust toolchain..."
+Write-Host "Checking Rust toolchain (from workflow)..."
 rustc --version
 cargo --version
 
 # ----------------------------- #
-#  vcpkg (headers + libs for leptonica/tesseract)
+#  1) VCPKG (leptonica + tesseract)
 # ----------------------------- #
 $userHome  = $env:USERPROFILE
 $vcpkgRoot = Join-Path $userHome "vcpkg"
@@ -67,25 +127,24 @@ if (-not (Test-Path $vcpkgExe)) {
     & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics | Out-Null
 }
 
-# Configure vcpkg for fast, repeatable builds
-$env:VCPKG_ROOT                = $vcpkgRoot
-$env:VCPKG_DEFAULT_TRIPLET     = "x64-windows"
-$env:VCPKGRS_TRIPLET           = "x64-windows"
-$env:VCPKGRS_DYNAMIC           = "1"
-$env:VCPKG_FEATURE_FLAGS       = "manifests,binarycaching"
+# Cache-friendly, stable build config
+$env:VCPKG_ROOT                 = $vcpkgRoot
+$env:VCPKG_DEFAULT_TRIPLET      = "x64-windows"
+$env:VCPKGRS_TRIPLET            = "x64-windows"
+$env:VCPKGRS_DYNAMIC            = "1"
+$env:VCPKG_FEATURE_FLAGS        = "manifests,binarycaching"
 $env:CMAKE_BUILD_PARALLEL_LEVEL = "2"
 $env:VCPKG_MAX_CONCURRENCY      = "2"
 
-# Binary cache under vcpkg so Actions can cache it
 $binaryCache = Join-Path $vcpkgRoot "binarycache"
 if (!(Test-Path $binaryCache)) { New-Item -ItemType Directory -Path $binaryCache | Out-Null }
 $env:VCPKG_DEFAULT_BINARY_CACHE = $binaryCache
 
-Write-Host "Installing vcpkg ports: leptonica:x64-windows, tesseract:x64-windows ..."
+Write-Host "Installing vcpkg ports (leptonica, tesseract) with binary cache..."
 & $vcpkgExe install leptonica:x64-windows tesseract:x64-windows --binarysource="clear;files=$binaryCache,readwrite" --clean-after-build | Out-Null
 
 # ----------------------------- #
-#  1. PATHS & CLEAN
+#  2) BUILD
 # ----------------------------- #
 $scriptPath = $MyInvocation.MyCommand.Definition
 $projectRoot = Split-Path -Parent $scriptPath
@@ -96,10 +155,7 @@ $exeName  = "fm-goal-musics-gui.exe"
 if (Test-Path $buildDir) { Remove-Item -Recurse -Force $buildDir }
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
-# ----------------------------- #
-#  2. BUILD
-# ----------------------------- #
-Write-Host "[1/3] Building Rust (release, msvc)..." -ForegroundColor Yellow
+Write-Host "[1/3] Building Rust (release, MSVC)..." -ForegroundColor Yellow
 Set-Location $repoRoot
 cargo build --release --target x86_64-pc-windows-msvc
 
@@ -110,11 +166,10 @@ if (!(Test-Path $binaryPath)) {
 Copy-Item $binaryPath -Destination $buildDir
 
 # ----------------------------- #
-#  3. PACKAGE RUNTIME FILES
+#  3) STAGE RUNTIME FILES
 # ----------------------------- #
 Write-Host "[2/3] Staging runtime files..." -ForegroundColor Yellow
 
-# Project assets (optional)
 $maybeAssets = @("config", "assets", "README.md", "LICENSE")
 foreach ($item in $maybeAssets) {
     $src = Join-Path $repoRoot $item
@@ -124,7 +179,7 @@ foreach ($item in $maybeAssets) {
     }
 }
 
-# vcpkg DLLs (leptonica, tesseract, dependencies)
+# vcpkg DLLs (leptonica, tesseract, deps)
 $vcpkgBin = Join-Path $vcpkgRoot "installed\x64-windows\bin"
 if (Test-Path $vcpkgBin) {
     Copy-Item (Join-Path $vcpkgBin "*.dll") -Destination $buildDir -Force -ErrorAction SilentlyContinue
@@ -133,7 +188,7 @@ if (Test-Path $vcpkgBin) {
     Write-Warning "vcpkg bin folder not found; runtime DLLs may be missing."
 }
 
-# Tessdata (so OCR works without external installs)
+# tessdata (OCR languages)
 $tessdataSrc = Join-Path $vcpkgRoot "installed\x64-windows\share\tesseract\tessdata"
 if (Test-Path $tessdataSrc) {
     Copy-Item $tessdataSrc -Destination (Join-Path $buildDir "tessdata") -Recurse -Force
@@ -142,9 +197,6 @@ if (Test-Path $tessdataSrc) {
     Write-Warning "tessdata not found in vcpkg; OCR may miss language data."
 }
 
-# ----------------------------- #
-#  4. DONE
-# ----------------------------- #
 Write-Host "[3/3] Build staging complete." -ForegroundColor Green
 Write-Host "Payload: $buildDir"
 Write-Host "Binary:  $exeName"

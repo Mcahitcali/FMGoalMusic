@@ -67,9 +67,9 @@ jobs:
       - name: Verify installer output
         shell: pwsh
         run: |
-          Get-ChildItem build_scripts -Recurse | Format-Table Length, LastWriteTime, FullName
           if (-not (Test-Path "build_scripts/FMGoalMusicInstaller.exe")) {
             Write-Error "FMGoalMusicInstaller.exe not found after makensis."
+            Get-ChildItem build_scripts -Recurse | Format-Table Length, LastWriteTime, FullName
             exit 1
           }
 
