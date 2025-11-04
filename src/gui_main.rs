@@ -5,6 +5,7 @@ mod audio;
 mod audio_converter;
 mod capture;
 mod config;
+mod error;
 mod gui;
 mod ocr;
 mod region_selector;

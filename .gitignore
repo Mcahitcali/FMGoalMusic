@@ -23,8 +23,8 @@ config/
 .idea/
 .windsurf/
 .claude/
-Doc/
-*.md
+# Doc/
+# *.md
 *.swp
 *.swo
 *~
