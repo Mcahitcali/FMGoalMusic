@@ -18,6 +18,7 @@ mod utils;
 mod teams;
 mod team_matcher;
 mod update_checker;
+mod wizard;
 
 use display_info::DisplayInfo;
 use sysinfo::System;
