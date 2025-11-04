@@ -15,25 +15,36 @@ function Ensure-Choco {
     }
 }
 
-# Import environment variables from a batch file into the current PowerShell process
+# Import environment variables from a batch file into the current PowerShell process (robust quoting)
 function Import-BatchEnv {
-    param([string]$BatchCmd)
+    param(
+        [Parameter(Mandatory=$true)][string]$BatchFile,
+        [Parameter(Mandatory=$false)][string]$Args = ""
+    )
+
+    if (-not (Test-Path $BatchFile)) {
+        throw "Batch file not found: $BatchFile"
+    }
 
     $tmp = New-TemporaryFile
-    $cmd = "`"$BatchCmd`" && set"
-    cmd.exe /c $cmd > $tmp 2>&1
+
+    # Properly quote the batch path, append args, then '&& set' to dump env
+    $cmdLine = "`"$BatchFile`" $Args && set"
+    cmd.exe /c $cmdLine > $tmp 2>&1
     $exit = $LASTEXITCODE
     $out = Get-Content $tmp -Raw
     if ($exit -ne 0) {
         Remove-Item $tmp -Force
-        throw "Failed to import environment via: $BatchCmd`n$out"
+        throw "Failed to import environment via:`n$cmdLine`n$out"
     }
 
+    # Apply each NAME=VALUE to current process env
     Get-Content $tmp | ForEach-Object {
         if ($_ -match '^(.*?)=(.*)$') {
             $name  = $matches[1]
             $value = $matches[2]
 
+            # Skip HOME (readonly on GH runners) and empty names
             if ($name -ieq 'HOME' -or [string]::IsNullOrWhiteSpace($name)) { return }
 
             try {
@@ -72,7 +83,7 @@ function Ensure-Msvc-OnPath {
     $devCmd = Find-VsDevCmd
     if ($devCmd) {
         Write-Host "Importing VS developer environment..."
-        Import-BatchEnv "`"$devCmd`" -host_arch=amd64 -arch=amd64"
+        Import-BatchEnv -BatchFile $devCmd -Args "-host_arch=amd64 -arch=amd64"
         $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
         $link = Get-Command link.exe -ErrorAction SilentlyContinue
         if ($cl -and $link) { Write-Host "MSVC imported successfully."; return }
@@ -86,7 +97,7 @@ function Ensure-Msvc-OnPath {
     if (-not $devCmd) { throw "VsDevCmd.bat not found even after installing Build Tools." }
 
     Write-Host "Importing VS developer environment after installation..."
-    Import-BatchEnv "`"$devCmd`" -host_arch=amd64 -arch=amd64"
+    Import-BatchEnv -BatchFile $devCmd -Args "-host_arch=amd64 -arch=amd64"
 
     $cl = Get-Command cl.exe -ErrorAction SilentlyContinue
     $link = Get-Command link.exe -ErrorAction SilentlyContinue
