@@ -25,7 +25,7 @@ Write-Host "  VCPKG_DEFAULT_TRIPLET = $($env:VCPKG_DEFAULT_TRIPLET)"
 Write-Host "  LIBCLANG_PATH       = $($env:LIBCLANG_PATH)"
 Write-Host ""
 
-# --- Ensure common tools are visible in PATH (best-effort) ---
+# --- Ensure common tools are visible in PATH ---
 $possiblePaths = @(
     'C:\Program Files\Git\usr\bin',
     'C:\Program Files\Git\bin',
@@ -43,19 +43,6 @@ foreach ($p in $possiblePaths) {
     }
 }
 
-# helper to run external progs via Start-Process and return exit code + stream output
-function Run-Proc {
-    param(
-        [Parameter(Mandatory=$true)] [string] $File,
-        [Parameter(Mandatory=$false)] [string[]] $Args = @()
-    )
-    $argList = $Args
-    Write-Host "`nRunning: $File $($argList -join ' ')"
-    $proc = Start-Process -FilePath $File -ArgumentList $argList -NoNewWindow -PassThru -Wait -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) -RedirectStandardError ([System.IO.Path]::GetTempFileName())
-    # Note: Start-Process -Redirect* requires full .NET support; on GH runners it's OK.
-    return $proc.ExitCode
-}
-
 # --- vcpkg checks ---
 $vcpkgExe = Join-Path $env:VCPKG_ROOT 'vcpkg.exe'
 if (-not (Test-Path $vcpkgExe)) {
@@ -65,8 +52,8 @@ if (-not (Test-Path $vcpkgExe)) {
 Write-Host "`nvcpkg present at: $vcpkgExe"
 
 $triplet = $env:VCPKG_DEFAULT_TRIPLET
-# packages we expect; adjust if your project needs others
-$packages = @('leptonica','tesseract','zlib','libpng','libtiff','libjpeg-turbo') | ForEach-Object { "$_:$triplet" }
+# ✅ FIXED LINE: use $() to safely interpolate variable with colon
+$packages = @('leptonica','tesseract','zlib','libpng','libtiff','libjpeg-turbo') | ForEach-Object { "$($_):$triplet" }
 
 # print vcpkg list (filtered)
 Write-Host "`n== vcpkg list (filtered) =="
@@ -76,7 +63,7 @@ Write-Host "`n== vcpkg list (filtered) =="
 foreach ($pkg in $packages) {
     Write-Host "`nChecking $pkg ..."
     $listed = (& $vcpkgExe list) -join "`n"
-    if ($listed -notmatch [regex]::Escape($pkg.Split(':')[0] + ':')) {
+    if ($listed -notmatch [regex]::Escape(($pkg.Split(':')[0] + ':'))) {
         Write-Host "$pkg not clearly present in vcpkg list — attempting install (may be slow)..."
         $rc = Start-Process -FilePath $vcpkgExe -ArgumentList @('install', $pkg) -NoNewWindow -Wait -PassThru
         if ($rc.ExitCode -ne 0) {
@@ -97,7 +84,7 @@ try {
     Write-Host "vcpkg integrate failed or already integrated: $_"
 }
 
-# --- Clean target (safe) ---
+# --- Clean target ---
 Write-Host "`nCleaning previous build artifacts..."
 if (Test-Path '.\target') {
     Remove-Item -Recurse -Force .\target
@@ -108,8 +95,6 @@ if (Test-Path '.\target') {
 
 # --- Cargo build (release) ---
 Write-Host "`nStarting cargo build --release ..."
-
-# Use Start-Process to avoid parsing quirks
 $cargo = 'cargo'
 $cargoArgs = @('build','--release','--jobs',$env:CARGO_BUILD_JOBS)
 $proc = Start-Process -FilePath $cargo -ArgumentList $cargoArgs -NoNewWindow -Wait -PassThru
@@ -124,7 +109,7 @@ $repoRoot = Get-Location
 $stageDir = Join-Path $repoRoot 'build\windows'
 if (-not (Test-Path $stageDir)) { New-Item -ItemType Directory -Path $stageDir | Out-Null }
 
-# find the largest exe in target/release (exclude small build-script exes)
+# find the largest exe in target/release
 $exeFiles = Get-ChildItem -Path (Join-Path $repoRoot 'target\release') -Filter *.exe -Recurse -ErrorAction SilentlyContinue |
            Where-Object { $_.FullName -notmatch '\\build\\' } |
            Sort-Object Length -Descending
@@ -137,27 +122,23 @@ Write-Host "Selected exe to stage: $mainExe"
 Copy-Item -Path $mainExe -Destination $stageDir -Force
 Write-Host "Copied exe -> $stageDir"
 
-# Copy vcpkg runtime DLLs (bin or lib path)
+# Copy vcpkg runtime DLLs
 $vcpkgBin = Join-Path $env:VCPKG_ROOT "installed\$triplet\bin"
 $vcpkgLib = Join-Path $env:VCPKG_ROOT "installed\$triplet\lib"
-$copiedDll = $false
 if (Test-Path $vcpkgBin) {
     Get-ChildItem -Path $vcpkgBin -Filter *.dll -File -ErrorAction SilentlyContinue | ForEach-Object {
         Copy-Item $_.FullName -Destination $stageDir -Force
     }
-    $copiedDll = $true
     Write-Host "Copied DLLs from $vcpkgBin"
 } elseif (Test-Path $vcpkgLib) {
     Get-ChildItem -Path $vcpkgLib -Filter *.dll -File -ErrorAction SilentlyContinue | ForEach-Object {
         Copy-Item $_.FullName -Destination $stageDir -Force
     }
-    $copiedDll = $true
     Write-Host "Copied DLLs from $vcpkgLib"
 } else {
-    Write-Warning "No vcpkg bin/lib directory found for triplet $triplet. Installer may miss runtime DLLs."
+    Write-Warning "No vcpkg bin/lib directory found for triplet $triplet."
 }
 
-# copy other common assets if exist
 foreach ($res in @('app.ico','icon.icns')) {
     $src = Join-Path $repoRoot "build\windows\$res"
     if (Test-Path $src) { Copy-Item $src -Destination $stageDir -Force }
