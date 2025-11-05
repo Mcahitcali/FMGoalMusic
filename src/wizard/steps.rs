@@ -49,21 +49,40 @@ impl WizardStep {
         }
     }
 
-    /// Get step number (1-indexed)
+    /// Get step number (1-indexed, skips RegionSetup)
     pub fn number(&self) -> usize {
         match self {
             WizardStep::Welcome => 1,
-            WizardStep::Permissions => 2,
-            WizardStep::RegionSetup => 3,
-            WizardStep::TeamSelection => 4,
-            WizardStep::AudioSetup => 5,
-            WizardStep::Complete => 6,
+            WizardStep::Permissions => 2, // macOS only
+            WizardStep::RegionSetup => 3, // Skipped (legacy)
+            WizardStep::TeamSelection => {
+                #[cfg(target_os = "macos")]
+                return 3;
+                #[cfg(not(target_os = "macos"))]
+                return 2;
+            }
+            WizardStep::AudioSetup => {
+                #[cfg(target_os = "macos")]
+                return 4;
+                #[cfg(not(target_os = "macos"))]
+                return 3;
+            }
+            WizardStep::Complete => {
+                #[cfg(target_os = "macos")]
+                return 5;
+                #[cfg(not(target_os = "macos"))]
+                return 4;
+            }
         }
     }
 
-    /// Get total number of steps
+    /// Get total number of steps (platform dependent)
     pub fn total_steps() -> usize {
-        6
+        #[cfg(target_os = "macos")]
+        return 5; // Welcome, Permissions, Team, Audio, Complete
+
+        #[cfg(not(target_os = "macos"))]
+        return 4; // Welcome, Team, Audio, Complete (no permissions)
     }
 
     /// Check if this is the first step
@@ -76,25 +95,39 @@ impl WizardStep {
         matches!(self, WizardStep::Complete)
     }
 
-    /// Get next step
+    /// Get next step (skips RegionSetup - default settings are fine)
     pub fn next(&self) -> Option<WizardStep> {
         match self {
-            WizardStep::Welcome => Some(WizardStep::Permissions),
-            WizardStep::Permissions => Some(WizardStep::RegionSetup),
-            WizardStep::RegionSetup => Some(WizardStep::TeamSelection),
+            WizardStep::Welcome => {
+                // Skip permissions on non-macOS platforms
+                #[cfg(target_os = "macos")]
+                return Some(WizardStep::Permissions);
+
+                #[cfg(not(target_os = "macos"))]
+                return Some(WizardStep::TeamSelection);
+            }
+            WizardStep::Permissions => Some(WizardStep::TeamSelection), // Skip RegionSetup
+            WizardStep::RegionSetup => Some(WizardStep::TeamSelection), // Legacy, shouldn't be used
             WizardStep::TeamSelection => Some(WizardStep::AudioSetup),
             WizardStep::AudioSetup => Some(WizardStep::Complete),
             WizardStep::Complete => None,
         }
     }
 
-    /// Get previous step
+    /// Get previous step (skips RegionSetup - default settings are fine)
     pub fn previous(&self) -> Option<WizardStep> {
         match self {
             WizardStep::Welcome => None,
             WizardStep::Permissions => Some(WizardStep::Welcome),
-            WizardStep::RegionSetup => Some(WizardStep::Permissions),
-            WizardStep::TeamSelection => Some(WizardStep::RegionSetup),
+            WizardStep::RegionSetup => Some(WizardStep::Welcome), // Legacy
+            WizardStep::TeamSelection => {
+                // Skip permissions on non-macOS platforms
+                #[cfg(target_os = "macos")]
+                return Some(WizardStep::Permissions);
+
+                #[cfg(not(target_os = "macos"))]
+                return Some(WizardStep::Welcome);
+            }
             WizardStep::AudioSetup => Some(WizardStep::TeamSelection),
             WizardStep::Complete => Some(WizardStep::AudioSetup),
         }
@@ -147,8 +180,13 @@ mod tests {
         assert!(step.is_first());
         assert!(!step.is_last());
 
+        // Platform-dependent navigation
         let next = step.next().unwrap();
+        #[cfg(target_os = "macos")]
         assert_eq!(next, WizardStep::Permissions);
+
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(next, WizardStep::TeamSelection); // Skip permissions on non-macOS
 
         let complete = WizardStep::Complete;
         assert!(complete.is_last());
@@ -158,8 +196,19 @@ mod tests {
     #[test]
     fn test_step_numbers() {
         assert_eq!(WizardStep::Welcome.number(), 1);
-        assert_eq!(WizardStep::Complete.number(), 6);
-        assert_eq!(WizardStep::total_steps(), 6);
+
+        // Platform-dependent total steps and Complete number
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(WizardStep::Complete.number(), 5); // Welcome, Permissions, Team, Audio, Complete
+            assert_eq!(WizardStep::total_steps(), 5);
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert_eq!(WizardStep::Complete.number(), 4); // Welcome, Team, Audio, Complete (no Permissions)
+            assert_eq!(WizardStep::total_steps(), 4);
+        }
     }
 
     #[test]

@@ -902,6 +902,257 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             }
         }
     }
+
+    /// Render the wizard modal with multi-step pages
+    fn render_wizard(&mut self, ctx: &egui::Context, wizard: &mut WizardFlow) {
+        use crate::wizard::steps::WizardStep;
+
+        let mut close_wizard = false;
+        let current_step = wizard.current_step();
+
+        egui::Window::new(format!("🎉 {}", current_step.title()))
+            .collapsible(false)
+            .resizable(false)
+            .default_width(700.0)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                // Progress indicator
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Step {} of {}",
+                        current_step.number(),
+                        WizardStep::total_steps()
+                    ));
+                });
+                ui.separator();
+                ui.add_space(10.0);
+
+                // Render current step content
+                match current_step {
+                    WizardStep::Welcome => {
+                        self.render_wizard_welcome(ui);
+                    }
+                    WizardStep::Permissions => {
+                        self.render_wizard_permissions(ui);
+                    }
+                    WizardStep::TeamSelection => {
+                        self.render_wizard_team_selection(ui);
+                    }
+                    WizardStep::AudioSetup => {
+                        self.render_wizard_audio_setup(ui);
+                    }
+                    WizardStep::Complete => {
+                        self.render_wizard_complete(ui);
+                    }
+                    WizardStep::RegionSetup => {
+                        // Skipped - should not be reached
+                        ui.label("This step is skipped (default settings work great!)");
+                    }
+                }
+
+                ui.add_space(20.0);
+                ui.separator();
+
+                // Navigation buttons
+                ui.horizontal(|ui| {
+                    // Back button
+                    if wizard.can_go_back() {
+                        if ui.button("⬅ Back").clicked() {
+                            wizard.back();
+                        }
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Next/Finish button
+                        if current_step == WizardStep::Complete {
+                            if ui.button("✅ Finish").clicked() {
+                                wizard.complete();
+                                if let Err(e) = WizardPersistence::save(wizard.state()) {
+                                    tracing::error!("Failed to save wizard state: {}", e);
+                                }
+                                close_wizard = true;
+                            }
+                        } else {
+                            if ui.button("Next ➜").clicked() {
+                                wizard.next();
+                                if let Err(e) = WizardPersistence::save(wizard.state()) {
+                                    tracing::error!("Failed to save wizard state: {}", e);
+                                }
+                            }
+                        }
+
+                        // Skip button for skippable steps
+                        if wizard.can_skip() {
+                            if ui.button("Skip").clicked() {
+                                wizard.skip();
+                            }
+                        }
+                    });
+                });
+            });
+
+        if close_wizard {
+            self.wizard_flow = None;
+        }
+    }
+
+    fn render_wizard_welcome(&self, ui: &mut egui::Ui) {
+        ui.heading("Welcome to FM Goal Musics! 🎵⚽");
+        ui.add_space(10.0);
+
+        ui.label("Transform your Football Manager experience with automatic goal music!");
+        ui.add_space(10.0);
+
+        ui.label("✨ Features:");
+        ui.label("  • Automatic goal detection");
+        ui.label("  • Custom music for your team's goals");
+        ui.label("  • Crowd cheer effects");
+        ui.label("  • Multi-language support");
+        ui.add_space(10.0);
+
+        ui.label("This quick setup wizard will help you get started in just a few steps.");
+    }
+
+    fn render_wizard_permissions(&self, ui: &mut egui::Ui) {
+        #[cfg(target_os = "macos")]
+        {
+            ui.heading("Screen Recording Permission 📸");
+            ui.add_space(10.0);
+
+            ui.label("FM Goal Musics needs permission to capture your screen to detect goals.");
+            ui.add_space(10.0);
+
+            ui.colored_label(egui::Color32::from_rgb(255, 165, 0), "⚠ Important:");
+            ui.label("1. macOS will show a permission dialog");
+            ui.label("2. Grant 'Screen Recording' permission");
+            ui.label("3. You may need to restart the app after granting permission");
+            ui.add_space(10.0);
+
+            ui.label("💡 This permission allows the app to monitor the Football Manager");
+            ui.label("   window for goal notifications. Your privacy is protected - the app");
+            ui.label("   only captures the small region where goal text appears.");
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            ui.label("No permissions needed on your platform!");
+        }
+    }
+
+    fn render_wizard_team_selection(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Select Your Team (Optional) ⚽");
+        ui.add_space(10.0);
+
+        ui.label("Choose your favorite team to play music only when they score.");
+        ui.label("You can skip this and set it up later, or leave it unselected to");
+        ui.label("play music for all goals.");
+        ui.add_space(10.0);
+
+        if let Some(ref db) = self.team_database {
+            // Simple league/team selection
+            let leagues = db.get_leagues();
+
+            ui.horizontal(|ui| {
+                ui.label("League:");
+                egui::ComboBox::from_label("")
+                    .selected_text(self.selected_league.as_deref().unwrap_or("-- Select League --"))
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(self.selected_league.is_none(), "-- None --").clicked() {
+                            self.selected_league = None;
+                            self.selected_team_key = None;
+                        }
+                        for league in &leagues {
+                            if ui.selectable_label(self.selected_league.as_ref() == Some(league), league).clicked() {
+                                self.selected_league = Some(league.clone());
+                                self.selected_team_key = None;
+                            }
+                        }
+                    });
+            });
+
+            if let Some(ref league) = self.selected_league {
+                if let Some(teams) = db.get_teams(league) {
+                    ui.horizontal(|ui| {
+                        ui.label("Team:");
+                        egui::ComboBox::from_label(" ")
+                            .selected_text(
+                                self.selected_team_key.as_ref()
+                                    .and_then(|key| teams.iter().find(|(k, _)| k == key))
+                                    .map(|(_, team)| team.display_name.as_str())
+                                    .unwrap_or("-- Select Team --")
+                            )
+                            .show_ui(ui, |ui| {
+                                for (key, team) in &teams {
+                                    if ui.selectable_label(self.selected_team_key.as_ref() == Some(key), &team.display_name).clicked() {
+                                        self.selected_team_key = Some(key.clone());
+                                    }
+                                }
+                            });
+                    });
+                }
+            }
+
+            ui.add_space(5.0);
+            if let (Some(league), Some(team_key)) = (&self.selected_league, &self.selected_team_key) {
+                if let Some(team) = db.find_team(league, team_key) {
+                    ui.colored_label(egui::Color32::GREEN, format!("✓ Selected: {} ({})", team.display_name, league));
+                }
+            }
+        } else {
+            ui.colored_label(egui::Color32::RED, "⚠ Team database not available");
+        }
+    }
+
+    fn render_wizard_audio_setup(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Add Your Music 🎵");
+        ui.add_space(10.0);
+
+        ui.label("Add at least one music file to celebrate goals!");
+        ui.label("Supported formats: MP3, WAV, OGG");
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            if ui.button("➕ Add Music File").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Audio", &["mp3", "wav", "ogg"])
+                    .pick_file()
+                {
+                    self.add_music_file(path);
+                }
+            }
+        });
+
+        ui.add_space(10.0);
+
+        // Show current music list
+        let state = self.state.lock();
+        if state.music_list.is_empty() {
+            ui.colored_label(egui::Color32::from_rgb(255, 165, 0), "No music files added yet");
+        } else {
+            ui.label(format!("✓ {} music file(s) added", state.music_list.len()));
+            for entry in &state.music_list {
+                ui.label(format!("  • {}", entry.name));
+            }
+        }
+    }
+
+    fn render_wizard_complete(&self, ui: &mut egui::Ui) {
+        ui.heading("You're All Set! 🎉");
+        ui.add_space(10.0);
+
+        ui.label("FM Goal Musics is ready to make your Football Manager");
+        ui.label("experience more exciting!");
+        ui.add_space(15.0);
+
+        ui.label("📋 Quick Start:");
+        ui.label("  1. Add music files in the Library tab (if you haven't already)");
+        ui.label("  2. Configure capture region in Settings tab");
+        ui.label("  3. Click '▶️ Start Detection' button");
+        ui.label("  4. Play Football Manager and enjoy!");
+        ui.add_space(15.0);
+
+        ui.label("💡 Need help? Check the Help tab for detailed instructions.");
+    }
 }
 
 impl eframe::App for FMGoalMusicsApp {
@@ -943,46 +1194,11 @@ impl eframe::App for FMGoalMusicsApp {
         }
 
         // Render first-run wizard if needed
-        if let Some(wizard) = &mut self.wizard_flow {
-            let mut close_wizard = false;
-
-            egui::Window::new("👋 Welcome to FM Goal Musics!")
-                .collapsible(false)
-                .resizable(false)
-                .default_width(600.0)
-                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-                .show(ctx, |ui| {
-                    ui.heading(format!("Setup Wizard - Step {:?}", wizard.current_step()));
-                    ui.add_space(10.0);
-
-                    ui.label("Welcome! This wizard will help you get started with FM Goal Musics.");
-                    ui.add_space(5.0);
-                    ui.label("Click 'Start Using' to begin, or 'Skip' to close this wizard.");
-                    ui.add_space(20.0);
-
-                    ui.horizontal(|ui| {
-                        if ui.button("Skip Wizard").clicked() {
-                            wizard.state_mut().mark_completed();
-                            if let Err(e) = WizardPersistence::save(wizard.state()) {
-                                tracing::error!("Failed to save wizard state: {}", e);
-                            }
-                            close_wizard = true;
-                        }
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Start Using ➜").clicked() {
-                                wizard.state_mut().mark_completed();
-                                if let Err(e) = WizardPersistence::save(wizard.state()) {
-                                    tracing::error!("Failed to save wizard state: {}", e);
-                                }
-                                close_wizard = true;
-                            }
-                        });
-                    });
-                });
-
-            if close_wizard {
-                self.wizard_flow = None;
+        if let Some(mut wizard) = self.wizard_flow.take() {
+            self.render_wizard(ctx, &mut wizard);
+            // Put it back unless completed
+            if !wizard.is_completed() {
+                self.wizard_flow = Some(wizard);
             }
         }
 
