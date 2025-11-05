@@ -13,7 +13,11 @@ use super::super::FMGoalMusicsApp;
 
 /// Render the library tab
 pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
+    // ========================================
+    // Music Files Section
+    // ========================================
     ui.heading("🎵 Music Files");
+    ui.add_space(5.0);
 
     ui.horizontal(|ui| {
         if ui.button("➕ Add Music File").clicked() {
@@ -25,18 +29,7 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
             }
         }
 
-        if ui.button("🗑️ Remove Selected").clicked() {
-            let mut state = app.state.lock();
-            if let Some(idx) = state.selected_music_index {
-                state.music_list.remove(idx);
-                state.selected_music_index = None;
-            }
-            drop(state);
-            app.stop_preview();
-            app.save_config();
-        }
-
-        // Preview button
+        // Preview button (moved before Remove for better UX flow: Add → Preview → Remove)
         let preview_active = app.preview_playing;
         let preview_label = if preview_active {
             "🔇 Stop Preview"
@@ -111,6 +104,17 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
                 }
             }
         }
+
+        if ui.button("🗑️ Remove Selected").clicked() {
+            let mut state = app.state.lock();
+            if let Some(idx) = state.selected_music_index {
+                state.music_list.remove(idx);
+                state.selected_music_index = None;
+            }
+            drop(state);
+            app.stop_preview();
+            app.save_config();
+        }
     });
 
     ui.separator();
@@ -149,8 +153,11 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
 
     ui.separator();
 
-    // Ambiance Sounds section
+    // ========================================
+    // Ambiance Sounds Section
+    // ========================================
     ui.heading("🎺 Ambiance Sounds");
+    ui.add_space(5.0);
 
     ui.horizontal(|ui| {
         let mut state = app.state.lock();
@@ -173,10 +180,85 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
             }
         }
 
+        // Preview ambiance button
+        let ambiance_preview_active = app.ambiance_preview_playing;
+        let ambiance_preview_label = if ambiance_preview_active {
+            "🔇 Stop Preview"
+        } else {
+            "▶️ Preview"
+        };
+
+        if ui.button(ambiance_preview_label).clicked() {
+            if ambiance_preview_active {
+                app.stop_ambiance_preview();
+            } else {
+                let ambiance_path = {
+                    let state = app.state.lock();
+                    state.goal_ambiance_path.clone()
+                };
+
+                match ambiance_path {
+                    Some(path) => {
+                        let path_buf = PathBuf::from(&path);
+                        let audio_data = match app.get_or_load_audio_data(&path_buf) {
+                            Ok(data) => data,
+                            Err(err) => {
+                                let mut st = app.state.lock();
+                                st.status_message = err;
+                                return;
+                            }
+                        };
+
+                        let needs_reload = app
+                            .ambiance_preview_audio
+                            .as_ref()
+                            .map_or(true, |p| p.path.as_path() != path_buf.as_path());
+
+                        if needs_reload {
+                            app.stop_ambiance_preview();
+                            match AudioManager::from_preloaded(Arc::clone(&audio_data)) {
+                                Ok(manager) => {
+                                    app.ambiance_preview_audio = Some(PreviewAudio {
+                                        manager,
+                                        path: path_buf.clone(),
+                                    });
+                                }
+                                Err(e) => {
+                                    let mut st = app.state.lock();
+                                    st.status_message = format!("Ambiance preview init failed: {}", e);
+                                    return;
+                                }
+                            }
+                        }
+
+                        if let Some(preview) = app.ambiance_preview_audio.as_ref() {
+                            preview.manager.stop();
+                            match preview.manager.play_sound() {
+                                Ok(()) => {
+                                    app.ambiance_preview_playing = true;
+                                    let mut st = app.state.lock();
+                                    st.status_message = "Ambiance preview playing...".to_string();
+                                }
+                                Err(e) => {
+                                    let mut st = app.state.lock();
+                                    st.status_message = format!("Ambiance preview failed: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        let mut st = app.state.lock();
+                        st.status_message = "Add a goal cheer sound first to preview.".to_string();
+                    }
+                }
+            }
+        }
+
         if ui.button("🗑️ Remove Cheer Sound").clicked() {
             let mut state = app.state.lock();
             state.goal_ambiance_path = None;
             drop(state);
+            app.stop_ambiance_preview();
             app.save_config();
         }
     });

@@ -68,6 +68,8 @@ pub struct FMGoalMusicsApp {
     capture_delay_frames: u8,
     preview_audio: Option<PreviewAudio>,
     preview_playing: bool,
+    ambiance_preview_audio: Option<PreviewAudio>,
+    ambiance_preview_playing: bool,
     screen_resolution: Option<(u32, u32)>,
     capture_preview: CapturePreview,
     latest_capture: Arc<Mutex<Option<(ImageBuffer<image::Rgba<u8>, Vec<u8>>, std::time::Instant)>>>,
@@ -159,6 +161,8 @@ impl FMGoalMusicsApp {
             capture_delay_frames: 0,
             preview_audio: None,
             preview_playing: false,
+            ambiance_preview_audio: None,
+            ambiance_preview_playing: false,
             screen_resolution,
             capture_preview: CapturePreview::default(),
             latest_capture: Arc::new(Mutex::new(None)),
@@ -311,6 +315,14 @@ impl FMGoalMusicsApp {
         }
         self.preview_audio = None;
         self.preview_playing = false;
+    }
+
+    fn stop_ambiance_preview(&mut self) {
+        if let Some(audio) = &self.ambiance_preview_audio {
+            audio.manager.stop();
+        }
+        self.ambiance_preview_audio = None;
+        self.ambiance_preview_playing = false;
     }
 
     fn get_or_load_audio_data(&mut self, path: &Path) -> Result<Arc<Vec<u8>>, String> {
