@@ -571,6 +571,21 @@ cargo build --release --target x86_64-pc-windows-msvc
 - Windows subsystem
 - No console window (GUI version)
 
+### Continuous Integration & Delivery
+
+**Platform:** GitHub Actions (self-hosted Windows runner for build, GitHub-hosted Ubuntu runner for release)
+
+**Workflow Highlights:**
+- Triggered via semver tag push (`vX.Y.Z`) or manual dispatch (`workflow_dispatch`).
+- Build job compiles Windows artifacts and uploads them as `FMGoalMusic-Windows` artifact bundle.
+- Release job attaches artifacts to a GitHub Release via `softprops/action-gh-release`.
+
+**Recent Optimizations (2025-11-05):**
+1. Automatically detect optimal `CARGO_BUILD_JOBS` based on runner CPU cores while allowing overrides.
+2. Retain incremental Cargo `target/` cache by default; optional clean enabled through `FMGOALMUSIC_CLEAN_BUILD` env flag.
+3. Cache `vcpkg list` output per run, refreshing only after installs to eliminate redundant invocations.
+4. Removed forced `codegen-units=1` so Rust compiler can leverage parallel code generation.
+
 #### Linux Binary
 ```bash
 cargo build --release --target x86_64-unknown-linux-gnu

@@ -9,15 +9,22 @@ $ErrorActionPreference = 'Stop'
 Write-Host "=== build_for_windows.ps1 starting ==="
 
 # --- ENV defaults (mirror release.yml) ---
-if (-not $env:CARGO_BUILD_JOBS -or $env:CARGO_BUILD_JOBS -eq '') { $env:CARGO_BUILD_JOBS = '1' }
-if (-not $env:RUSTFLAGS -or $env:RUSTFLAGS -eq '') { $env:RUSTFLAGS = '-C codegen-units=1' }
+$autoDetectedJobs = $false
+if (-not $env:CARGO_BUILD_JOBS -or $env:CARGO_BUILD_JOBS -eq '') {
+    $env:CARGO_BUILD_JOBS = [Environment]::ProcessorCount.ToString()
+    $autoDetectedJobs = $true
+}
 if (-not $env:RUST_BACKTRACE -or $env:RUST_BACKTRACE -eq '') { $env:RUST_BACKTRACE = '1' }
 if (-not $env:VCPKG_ROOT -or $env:VCPKG_ROOT -eq '') { $env:VCPKG_ROOT = 'C:\vcpkg' }
 if (-not $env:LIBCLANG_PATH -or $env:LIBCLANG_PATH -eq '') { $env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin' }
 if (-not $env:VCPKG_DEFAULT_TRIPLET -or $env:VCPKG_DEFAULT_TRIPLET -eq '') { $env:VCPKG_DEFAULT_TRIPLET = 'x64-windows-static' }
 
 Write-Host "Env summary:"
-Write-Host "  CARGO_BUILD_JOBS    = $($env:CARGO_BUILD_JOBS)"
+if ($autoDetectedJobs) {
+    Write-Host "  CARGO_BUILD_JOBS    = $($env:CARGO_BUILD_JOBS) (auto-detected from CPU cores)"
+} else {
+    Write-Host "  CARGO_BUILD_JOBS    = $($env:CARGO_BUILD_JOBS)"
+}
 Write-Host "  RUSTFLAGS           = $($env:RUSTFLAGS)"
 Write-Host "  RUST_BACKTRACE      = $($env:RUST_BACKTRACE)"
 Write-Host "  VCPKG_ROOT          = $($env:VCPKG_ROOT)"
@@ -55,21 +62,25 @@ $triplet = $env:VCPKG_DEFAULT_TRIPLET
 # ✅ FIXED LINE: use $() to safely interpolate variable with colon
 $packages = @('leptonica','tesseract','zlib','libpng','libtiff','libjpeg-turbo') | ForEach-Object { "$($_):$triplet" }
 
+# capture vcpkg list once (refresh if installs occur)
+$vcpkgListOutput = (& $vcpkgExe list)
+
 # print vcpkg list (filtered)
 Write-Host "`n== vcpkg list (filtered) =="
-& $vcpkgExe list | Select-String -Pattern 'leptonica|tesseract|zlib|libpng|libtiff|jpeg' -SimpleMatch | ForEach-Object { Write-Host $_.ToString() }
+$vcpkgListOutput | Select-String -Pattern 'leptonica|tesseract|zlib|libpng|libtiff|jpeg' -SimpleMatch | ForEach-Object { Write-Host $_.ToString() }
 
 # Attempt install if any package missing (best-effort)
 foreach ($pkg in $packages) {
     Write-Host "`nChecking $pkg ..."
-    $listed = (& $vcpkgExe list) -join "`n"
-    if ($listed -notmatch [regex]::Escape(($pkg.Split(':')[0] + ':'))) {
+    $pkgCheck = [regex]::Escape(($pkg.Split(':')[0] + ':'))
+    if ((($vcpkgListOutput -join "`n") -notmatch $pkgCheck)) {
         Write-Host "$pkg not clearly present in vcpkg list — attempting install (may be slow)..."
         $rc = Start-Process -FilePath $vcpkgExe -ArgumentList @('install', $pkg) -NoNewWindow -Wait -PassThru
         if ($rc.ExitCode -ne 0) {
             Write-Warning "vcpkg install $pkg failed with exit code $($rc.ExitCode). Continue but cargo may fail later."
         } else {
             Write-Host "Installed $pkg via vcpkg."
+            $vcpkgListOutput = (& $vcpkgExe list)
         }
     } else {
         Write-Host "$pkg already appears installed (skipping)."
@@ -84,19 +95,30 @@ try {
     Write-Host "vcpkg integrate failed or already integrated: $_"
 }
 
-# --- Clean target ---
-Write-Host "`nCleaning previous build artifacts..."
-if (Test-Path '.\target') {
-    Remove-Item -Recurse -Force .\target
-    Write-Host "Removed ./target"
+# --- Clean target (optional) ---
+$cleanRequested = $false
+if ($env:FMGOALMUSIC_CLEAN_BUILD) {
+    $cleanRequested = $env:FMGOALMUSIC_CLEAN_BUILD.ToLower() -in @('1','true','yes')
+}
+if ($cleanRequested) {
+    Write-Host "`nCleaning previous build artifacts (FMGOALMUSIC_CLEAN_BUILD enabled)..."
+    if (Test-Path '.\target') {
+        Remove-Item -Recurse -Force .\target
+        Write-Host "Removed ./target"
+    } else {
+        Write-Host "No ./target to remove"
+    }
 } else {
-    Write-Host "No ./target to remove"
+    Write-Host "`nSkipping cargo clean to reuse incremental build cache. Set FMGOALMUSIC_CLEAN_BUILD=1 to force clean."
 }
 
 # --- Cargo build (release) ---
 Write-Host "`nStarting cargo build --release ..."
 $cargo = 'cargo'
-$cargoArgs = @('build','--release','--jobs',$env:CARGO_BUILD_JOBS)
+$cargoArgs = @('build','--release')
+if ($env:CARGO_BUILD_JOBS -and $env:CARGO_BUILD_JOBS -ne '') {
+    $cargoArgs += @('--jobs',$env:CARGO_BUILD_JOBS)
+}
 $proc = Start-Process -FilePath $cargo -ArgumentList $cargoArgs -NoNewWindow -Wait -PassThru
 if ($proc.ExitCode -ne 0) {
     Write-Error "cargo build failed with exit code $($proc.ExitCode)"
