@@ -5,7 +5,8 @@ if (-Not (Test-Path "build/windows")) { New-Item -ItemType Directory -Force -Pat
 
 # Run cargo build
 Write-Host "🚀 Running Cargo build..."
-cargo build --release
+$env:RUSTFLAGS = "-C codegen-units=1"
+& cargo build --release --jobs 1
 
 # Copy executable
 Copy-Item "target\release\fm-goal-musics-gui.exe" "build\windows\fm-goal-musics-gui.exe" -Force
