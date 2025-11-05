@@ -109,6 +109,13 @@ pub fn render_team_selection(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: 
             drop(state);
             app.save_config();
         }
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(5.0);
+
+        // Add New Team section
+        app.render_add_team_ui(ui);
     } else {
         ui.label("⚠ Team database not available");
     }

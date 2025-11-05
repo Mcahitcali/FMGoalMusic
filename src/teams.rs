@@ -130,6 +130,45 @@ impl TeamDatabase {
 
         results
     }
+
+    /// Add a new league to the database
+    pub fn add_league(&mut self, league_name: String) -> Result<(), String> {
+        if self.leagues.contains_key(&league_name) {
+            return Err(format!("League '{}' already exists", league_name));
+        }
+
+        self.leagues.insert(league_name.clone(), HashMap::new());
+        tracing::info!("[teams] Added new league: {}", league_name);
+        Ok(())
+    }
+
+    /// Add a new team to an existing league
+    pub fn add_team(&mut self, league_name: String, team_key: String, team: Team) -> Result<(), String> {
+        // Get or create league
+        let teams = self.leagues.entry(league_name.clone()).or_insert_with(HashMap::new);
+
+        // Check if team already exists
+        if teams.contains_key(&team_key) {
+            return Err(format!("Team '{}' already exists in league '{}'", team_key, league_name));
+        }
+
+        teams.insert(team_key.clone(), team.clone());
+        tracing::info!("[teams] Added new team: {} to league: {}", team.display_name, league_name);
+        Ok(())
+    }
+
+    /// Check if a league exists
+    pub fn has_league(&self, league_name: &str) -> bool {
+        self.leagues.contains_key(league_name)
+    }
+
+    /// Check if a team exists in a league
+    pub fn has_team(&self, league_name: &str, team_key: &str) -> bool {
+        self.leagues
+            .get(league_name)
+            .map(|teams| teams.contains_key(team_key))
+            .unwrap_or(false)
+    }
 }
 
 #[cfg(test)]

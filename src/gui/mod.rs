@@ -89,6 +89,13 @@ pub struct FMGoalMusicsApp {
     // Update checker fields
     update_check_rx: Option<Receiver<crate::update_checker::UpdateCheckResult>>,
     update_modal_state: Option<UpdateModalState>,
+
+    // Add team UI state
+    add_team_ui_open: bool,
+    new_team_name: String,
+    new_team_league: String,
+    use_existing_league: bool,
+    new_team_error: Option<String>,
 }
 
 impl FMGoalMusicsApp {
@@ -166,6 +173,11 @@ impl FMGoalMusicsApp {
             wizard_flow,
             update_check_rx: None,
             update_modal_state: None,
+            add_team_ui_open: false,
+            new_team_name: String::new(),
+            new_team_league: String::new(),
+            use_existing_league: true,
+            new_team_error: None,
         };
 
         // Load config and restore music list
@@ -1109,7 +1121,8 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
         ui.label("play music for all goals.");
         ui.add_space(10.0);
 
-        if let Some(ref db) = self.team_database {
+        if self.team_database.is_some() {
+            let db = self.team_database.as_ref().unwrap();
             // Simple league/team selection
             let leagues = db.get_leagues();
 
@@ -1159,6 +1172,13 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     ui.colored_label(egui::Color32::GREEN, format!("✓ Selected: {} ({})", team.display_name, league));
                 }
             }
+
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(5.0);
+
+            // Add New Team section
+            self.render_add_team_ui(ui);
         } else {
             ui.colored_label(egui::Color32::RED, "⚠ Team database not available");
         }
@@ -1213,6 +1233,138 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
         ui.add_space(15.0);
 
         ui.label("💡 Need help? Check the Help tab for detailed instructions.");
+    }
+
+    fn render_add_team_ui(&mut self, ui: &mut egui::Ui) {
+        ui.collapsing("➕ Add New Team", |ui| {
+            ui.add_space(5.0);
+
+            if let Some(ref db) = self.team_database {
+                // League selection/input
+                ui.horizontal(|ui| {
+                    ui.label("League:");
+                    if ui.radio(self.use_existing_league, "Existing").clicked() {
+                        self.use_existing_league = true;
+                        self.new_team_error = None;
+                    }
+                    if ui.radio(!self.use_existing_league, "New").clicked() {
+                        self.use_existing_league = false;
+                        self.new_team_error = None;
+                    }
+                });
+
+                if self.use_existing_league {
+                    // Select from existing leagues
+                    let leagues = db.get_leagues();
+                    egui::ComboBox::from_label("Select League")
+                        .selected_text(if self.new_team_league.is_empty() {
+                            "-- Select League --"
+                        } else {
+                            &self.new_team_league
+                        })
+                        .show_ui(ui, |ui| {
+                            for league in &leagues {
+                                if ui.selectable_label(&self.new_team_league == league, league).clicked() {
+                                    self.new_team_league = league.clone();
+                                    self.new_team_error = None;
+                                }
+                            }
+                        });
+                } else {
+                    // Input new league name
+                    ui.horizontal(|ui| {
+                        ui.label("New League Name:");
+                        if ui.text_edit_singleline(&mut self.new_team_league).changed() {
+                            self.new_team_error = None;
+                        }
+                    });
+                }
+
+                ui.add_space(5.0);
+
+                // Team name input
+                ui.horizontal(|ui| {
+                    ui.label("Team Name:");
+                    if ui.text_edit_singleline(&mut self.new_team_name).changed() {
+                        self.new_team_error = None;
+                    }
+                });
+
+                ui.add_space(5.0);
+
+                // Show error if any
+                if let Some(ref error) = self.new_team_error {
+                    ui.colored_label(egui::Color32::RED, format!("⚠ {}", error));
+                    ui.add_space(5.0);
+                }
+
+                // Add button
+                ui.horizontal(|ui| {
+                    if ui.button("➕ Add Team").clicked() {
+                        self.handle_add_team();
+                    }
+
+                    if ui.button("🔄 Clear").clicked() {
+                        self.new_team_name.clear();
+                        self.new_team_league.clear();
+                        self.use_existing_league = true;
+                        self.new_team_error = None;
+                    }
+                });
+            } else {
+                ui.colored_label(egui::Color32::RED, "⚠ Team database not available");
+            }
+        });
+    }
+
+    fn handle_add_team(&mut self) {
+        // Validate inputs
+        if self.new_team_name.trim().is_empty() {
+            self.new_team_error = Some("Team name cannot be empty".to_string());
+            return;
+        }
+
+        if self.new_team_league.trim().is_empty() {
+            self.new_team_error = Some("League must be selected or entered".to_string());
+            return;
+        }
+
+        if let Some(ref mut db) = self.team_database {
+            let team_key = crate::slug::slugify(&self.new_team_name);
+            let league_name = self.new_team_league.trim().to_string();
+
+            // Create the new team
+            let team = crate::teams::Team {
+                display_name: self.new_team_name.trim().to_string(),
+                variations: vec![self.new_team_name.trim().to_string()],
+            };
+
+            // Add the team
+            match db.add_team(league_name.clone(), team_key.clone(), team) {
+                Ok(()) => {
+                    // Save the database
+                    if let Err(e) = db.save() {
+                        self.new_team_error = Some(format!("Failed to save: {}", e));
+                        tracing::error!("[teams] Failed to save team database: {}", e);
+                        return;
+                    }
+
+                    // Select the newly added team
+                    self.selected_league = Some(league_name);
+                    self.selected_team_key = Some(team_key);
+
+                    // Clear the form
+                    self.new_team_name.clear();
+                    self.new_team_league.clear();
+                    self.new_team_error = None;
+
+                    tracing::info!("[teams] Successfully added team and saved database");
+                }
+                Err(e) => {
+                    self.new_team_error = Some(e);
+                }
+            }
+        }
     }
 }
 
