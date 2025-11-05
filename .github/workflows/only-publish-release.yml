@@ -1,51 +1,44 @@
-name: Publish Local Release
+name: Quick Test Release (manual ZIP upload)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., v0.2.6)'
+        description: 'Release version (e.g., v0.2.7-test)'
         required: true
-        default: 'v0.2.6'
+        default: 'v0.2.7-test'
+      artifact_zip:
+        description: 'Upload your FMGoalMusic-Windows.zip file here'
+        required: true
+        type: file
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Publish from Local Runner Files
-    runs-on: self-hosted
+    name: Publish from Uploaded ZIP
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
-      - name: Verify local build files (absolute path fix)
-        shell: pwsh
+      - name: Download and extract uploaded ZIP
         run: |
-          $repoRoot = Get-Location
-          Write-Host "📂 Current working directory: $repoRoot"
+          mkdir -p artifacts/FMGoalMusic-Windows
+          unzip "${{ github.event.inputs.artifact_zip }}" -d artifacts/FMGoalMusic-Windows
+          echo "✅ Extracted files:"
+          ls -lh artifacts/FMGoalMusic-Windows
 
-          $installer = Join-Path $repoRoot "build/windows/FMGoalMusicInstaller.exe"
-          $binary = Join-Path $repoRoot "build/windows/fm-goal-musics-gui.exe"
-
-          Write-Host "🔍 Checking for local build files..."
-          Write-Host "  Installer path: $installer"
-          Write-Host "  Binary path: $binary"
-
-          if (-not (Test-Path $installer)) {
-            Write-Error "❌ Missing installer: $installer"
+      - name: Verify required files exist
+        run: |
+          if [ ! -f "artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe" ]; then
+            echo "❌ Missing FMGoalMusicInstaller.exe inside uploaded zip."
             exit 1
-          }
-          if (-not (Test-Path $binary)) {
-            Write-Error "❌ Missing main binary: $binary"
+          fi
+          if [ ! -f "artifacts/FMGoalMusic-Windows/fm-goal-musics-gui.exe" ]; then
+            echo "❌ Missing fm-goal-musics-gui.exe inside uploaded zip."
             exit 1
-          }
-
-          Write-Host "✅ Found both build files successfully!"
-          Get-ChildItem (Join-Path $repoRoot "build/windows") | Format-Table Name, Length, LastWriteTime
+          fi
+          echo "✅ All required files found."
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -53,10 +46,10 @@ jobs:
           tag_name: ${{ inputs.version }}
           name: "FM Goal Musics ${{ inputs.version }}"
           files: |
-            build/windows/FMGoalMusicInstaller.exe
-            build/windows/fm-goal-musics-gui.exe
+            artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe
+            artifacts/FMGoalMusic-Windows/fm-goal-musics-gui.exe
           draft: false
-          prerelease: false
+          prerelease: true
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
