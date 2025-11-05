@@ -33,6 +33,7 @@ use crate::config::Config;
 use crate::messaging::{Event, EventBus};
 use crate::ocr::OcrManager;
 use crate::utils::Debouncer;
+use crate::wizard::{WizardFlow, WizardPersistence};
 
 // Region selector is implemented inline to avoid creating nested native
 // windows that can crash on some platforms when called from UI callbacks.
@@ -82,6 +83,9 @@ pub struct FMGoalMusicsApp {
     event_bus: EventBus,
     event_rx: Option<Receiver<Event>>,
 
+    // Wizard state
+    wizard_flow: Option<WizardFlow>,
+
     // Update checker fields
     update_check_rx: Option<Receiver<crate::update_checker::UpdateCheckResult>>,
     update_modal_state: Option<UpdateModalState>,
@@ -120,6 +124,24 @@ impl FMGoalMusicsApp {
         let event_bus = EventBus::new();
         let (event_rx, _event_sub_id) = event_bus.subscribe();
 
+        // Load wizard state (show on first run, hide if previously completed)
+        let wizard_flow = match WizardPersistence::load() {
+            Ok(state) => {
+                if state.should_show() {
+                    tracing::info!("First run detected - wizard will be shown");
+                    Some(WizardFlow::from_state(state))
+                } else {
+                    tracing::debug!("Wizard previously completed");
+                    None
+                }
+            }
+            Err(_) => {
+                // No saved state = first run
+                tracing::info!("No wizard state found - first run detected");
+                Some(WizardFlow::new())
+            }
+        };
+
         let mut app = Self {
             state: Arc::new(Mutex::new(AppState::default())),
             detection_thread: None,
@@ -141,6 +163,7 @@ impl FMGoalMusicsApp {
             active_tab: AppTab::Library,
             event_bus,
             event_rx: Some(event_rx),
+            wizard_flow,
             update_check_rx: None,
             update_modal_state: None,
         };
@@ -916,6 +939,50 @@ impl eframe::App for FMGoalMusicsApp {
                         UpdateModalState::Error { message }
                     }
                 });
+            }
+        }
+
+        // Render first-run wizard if needed
+        if let Some(wizard) = &mut self.wizard_flow {
+            let mut close_wizard = false;
+
+            egui::Window::new("👋 Welcome to FM Goal Musics!")
+                .collapsible(false)
+                .resizable(false)
+                .default_width(600.0)
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .show(ctx, |ui| {
+                    ui.heading(format!("Setup Wizard - Step {:?}", wizard.current_step()));
+                    ui.add_space(10.0);
+
+                    ui.label("Welcome! This wizard will help you get started with FM Goal Musics.");
+                    ui.add_space(5.0);
+                    ui.label("Click 'Start Using' to begin, or 'Skip' to close this wizard.");
+                    ui.add_space(20.0);
+
+                    ui.horizontal(|ui| {
+                        if ui.button("Skip Wizard").clicked() {
+                            wizard.state_mut().mark_completed();
+                            if let Err(e) = WizardPersistence::save(wizard.state()) {
+                                tracing::error!("Failed to save wizard state: {}", e);
+                            }
+                            close_wizard = true;
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("Start Using ➜").clicked() {
+                                wizard.state_mut().mark_completed();
+                                if let Err(e) = WizardPersistence::save(wizard.state()) {
+                                    tracing::error!("Failed to save wizard state: {}", e);
+                                }
+                                close_wizard = true;
+                            }
+                        });
+                    });
+                });
+
+            if close_wizard {
+                self.wizard_flow = None;
             }
         }
 
