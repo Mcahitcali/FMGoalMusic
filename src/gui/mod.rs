@@ -1250,7 +1250,9 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
     }
 
     fn render_add_team_ui(&mut self, ui: &mut egui::Ui) {
-        ui.collapsing("➕ Add New Team", |ui| {
+        egui::CollapsingHeader::new("➕ Add New Team")
+            .default_open(false)
+            .show(ui, |ui| {
             ui.add_space(5.0);
 
             if let Some(ref db) = self.team_database {
