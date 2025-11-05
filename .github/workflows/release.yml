@@ -151,7 +151,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ inputs.version || github.ref_name }}
+          tag_name: ${{ inputs.version || github.ref_name }}
           name: "FM Goal Musics v${{ inputs.version || github.ref_name }}"
           files: |
             artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe
