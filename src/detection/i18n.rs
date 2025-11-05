@@ -73,7 +73,7 @@ impl I18nPhrases {
         }
 
         // Fallback to hardcoded phrases
-        log::warn!("Failed to load i18n from JSON, using hardcoded fallback for {:?}", language);
+        tracing::warn!("Failed to load i18n from JSON, using hardcoded fallback for {:?}", language);
         Self::new_hardcoded(language)
     }
 

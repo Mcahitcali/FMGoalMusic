@@ -24,7 +24,7 @@ impl TeamDatabase {
 
         if !db_path.exists() {
             // First run: copy embedded database to user config directory
-            log::info!("[teams] teams.json not found in user config directory, creating from embedded default");
+            tracing::info!("[teams] teams.json not found in user config directory, creating from embedded default");
             let database = Self::load_embedded()?;
             database.save()?;
             return Ok(database);
@@ -55,7 +55,7 @@ impl TeamDatabase {
         let json = serde_json::to_string_pretty(self)?;
         fs::write(&db_path, json)?;
 
-        log::info!("[teams] Saved teams database to: {}", db_path.display());
+        tracing::info!("[teams] Saved teams database to: {}", db_path.display());
         Ok(())
     }
 

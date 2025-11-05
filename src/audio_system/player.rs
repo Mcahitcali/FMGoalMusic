@@ -35,7 +35,7 @@ impl AudioPlayer {
         let decoder = Decoder::new(cursor)?;
         let _ = decoder.count(); // Warm up decoder
 
-        log::debug!(
+        tracing::debug!(
             "Created audio player for {} with effects: fade_in={:?}ms, fade_out={:?}ms, volume={}, limit={:?}ms",
             source_type,
             effects.fade_in_ms,
@@ -56,7 +56,7 @@ impl AudioPlayer {
 
     /// Play the audio with configured effects
     pub fn play(&self) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!("Playing audio: {}", self.source_type);
+        tracing::info!("Playing audio: {}", self.source_type);
 
         // Create decoder from preloaded data
         let cursor = std::io::Cursor::new((*self.audio_data).clone());
@@ -95,7 +95,7 @@ impl AudioPlayer {
         // Note: rodio doesn't have built-in fade-out, so we'd need to implement this
         // For now, just log it
         if let Some(fade_out_ms) = self.effects.fade_out_ms {
-            log::debug!("Fade out of {}ms will be applied near end", fade_out_ms);
+            tracing::debug!("Fade out of {}ms will be applied near end", fade_out_ms);
             // TODO: Implement fade-out scheduling
         }
 
@@ -104,7 +104,7 @@ impl AudioPlayer {
 
     /// Stop playback
     pub fn stop(&self) {
-        log::debug!("Stopping audio: {}", self.source_type);
+        tracing::debug!("Stopping audio: {}", self.source_type);
         self.sink.stop();
     }
 

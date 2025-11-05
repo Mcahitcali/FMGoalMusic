@@ -57,7 +57,7 @@ impl WizardPersistence {
         let json = serde_json::to_string_pretty(&persistence)?;
         std::fs::write(&path, json)?;
 
-        log::debug!("Saved wizard state to: {}", path.display());
+        tracing::debug!("Saved wizard state to: {}", path.display());
         Ok(())
     }
 
@@ -67,18 +67,18 @@ impl WizardPersistence {
             .ok_or("Failed to get config directory")?;
 
         if !path.exists() {
-            log::debug!("No wizard state found, starting fresh");
+            tracing::debug!("No wizard state found, starting fresh");
             return Ok(WizardState::new());
         }
 
         let json = std::fs::read_to_string(&path)?;
         let persistence: WizardPersistence = serde_json::from_str(&json)?;
 
-        log::debug!("Loaded wizard state from: {}", path.display());
+        tracing::debug!("Loaded wizard state from: {}", path.display());
 
         // Check version for future migrations
         if persistence.version != Self::VERSION {
-            log::warn!(
+            tracing::warn!(
                 "Wizard config version mismatch: expected {}, found {}",
                 Self::VERSION,
                 persistence.version
@@ -105,7 +105,7 @@ impl WizardPersistence {
         if let Some(path) = Self::config_file_path() {
             if path.exists() {
                 std::fs::remove_file(&path)?;
-                log::debug!("Deleted wizard state file: {}", path.display());
+                tracing::debug!("Deleted wizard state file: {}", path.display());
             }
         }
         Ok(())

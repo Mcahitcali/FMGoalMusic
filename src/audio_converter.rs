@@ -47,7 +47,7 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::
     if let Some(ext) = input_path.extension() {
         if ext.eq_ignore_ascii_case("wav") {
             fs::copy(input_path, &output_path)?;
-            log::info!(
+            tracing::info!(
                 "✓ Copied existing WAV to managed location: {}",
                 output_path.display()
             );
@@ -55,7 +55,7 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::
         }
     }
 
-    log::info!("Converting {} to WAV format...", input_path.display());
+    tracing::info!("Converting {} to WAV format...", input_path.display());
 
     // Open the media source
     let src = File::open(input_path)?;
@@ -164,7 +164,7 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::
     // Finalize the WAV file
     writer.finalize()?;
 
-    log::info!("✓ Converted to WAV: {}", output_path.display());
+    tracing::info!("✓ Converted to WAV: {}", output_path.display());
     Ok(output_path)
 }
 

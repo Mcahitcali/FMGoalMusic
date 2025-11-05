@@ -142,14 +142,14 @@ impl LatencyStats {
     /// Print comprehensive benchmark report
     pub fn print_report(&self) {
         if self.timings.is_empty() {
-            log::info!("No timing data collected");
+            tracing::info!("No timing data collected");
             return;
         }
         
-        log::info!("\n╔═══════════════════════════════════════════════════════════════╗");
-        log::info!("║           FM Goal Musics - Latency Benchmark Report          ║");
-        log::info!("╚═══════════════════════════════════════════════════════════════╝");
-        log::info!("\nSample Size: {} iterations\n", self.timings.len());
+        tracing::info!("\n╔═══════════════════════════════════════════════════════════════╗");
+        tracing::info!("║           FM Goal Musics - Latency Benchmark Report          ║");
+        tracing::info!("╚═══════════════════════════════════════════════════════════════╝");
+        tracing::info!("\nSample Size: {} iterations\n", self.timings.len());
         
         // Calculate stats for each stage
         let capture_stats = self.stage_stats(|t| t.capture_us);
@@ -159,33 +159,33 @@ impl LatencyStats {
         let total_stats = self.stage_stats(|t| t.total_us);
         
         // Print table header
-        log::info!("┌─────────────────┬──────────┬──────────┬──────────┬──────────┐");
-        log::info!("│ Stage           │   Mean   │   p50    │   p95    │   p99    │");
-        log::info!("├─────────────────┼──────────┼──────────┼──────────┼──────────┤");
+        tracing::info!("┌─────────────────┬──────────┬──────────┬──────────┬──────────┐");
+        tracing::info!("│ Stage           │   Mean   │   p50    │   p95    │   p99    │");
+        tracing::info!("├─────────────────┼──────────┼──────────┼──────────┼──────────┤");
         
         // Print each stage (in microseconds)
         Self::print_row("Capture", capture_stats);
         Self::print_row("Preprocess", preprocess_stats);
         Self::print_row("OCR", ocr_stats);
         Self::print_row("Audio Trigger", audio_stats);
-        log::info!("├─────────────────┼──────────┼──────────┼──────────┼──────────┤");
+        tracing::info!("├─────────────────┼──────────┼──────────┼──────────┼──────────┤");
         Self::print_row("TOTAL", total_stats);
-        log::info!("└─────────────────┴──────────┴──────────┴──────────┴──────────┘");
+        tracing::info!("└─────────────────┴──────────┴──────────┴──────────┴──────────┘");
         
         // Convert to milliseconds for summary
         let total_p95_ms = total_stats.2 / 1000.0;
         let total_p99_ms = total_stats.3 / 1000.0;
         
-        log::info!("\n📊 Summary:");
-        log::info!("  • Total p95 latency: {:.2} ms", total_p95_ms);
-        log::info!("  • Total p99 latency: {:.2} ms", total_p99_ms);
+        tracing::info!("\n📊 Summary:");
+        tracing::info!("  • Total p95 latency: {:.2} ms", total_p95_ms);
+        tracing::info!("  • Total p99 latency: {:.2} ms", total_p99_ms);
         
         // Performance verdict
         if total_p95_ms < 100.0 {
-            log::info!("  ✅ Performance target MET (p95 < 100ms)");
+            tracing::info!("  ✅ Performance target MET (p95 < 100ms)");
         } else {
-            log::info!("  ❌ Performance target MISSED (p95 >= 100ms)");
-            log::info!("     Target: < 100ms, Actual: {:.2}ms", total_p95_ms);
+            tracing::info!("  ❌ Performance target MISSED (p95 >= 100ms)");
+            tracing::info!("     Target: < 100ms, Actual: {:.2}ms", total_p95_ms);
         }
         
         // Identify bottleneck
@@ -197,12 +197,12 @@ impl LatencyStats {
         ];
         
         let bottleneck = stages.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap();
-        log::info!("\n🔍 Bottleneck: {} ({:.0} µs p95)", bottleneck.0, bottleneck.1);
-        log::info!("");
+        tracing::info!("\n🔍 Bottleneck: {} ({:.0} µs p95)", bottleneck.0, bottleneck.1);
+        tracing::info!("");
     }
     
     fn print_row(name: &str, stats: (f64, f64, f64, f64)) {
-        log::info!(
+        tracing::info!(
             "│ {:<15} │ {:>6.0} µs │ {:>6.0} µs │ {:>6.0} µs │ {:>6.0} µs │",
             name, stats.0, stats.1, stats.2, stats.3
         );

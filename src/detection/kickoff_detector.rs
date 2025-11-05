@@ -55,7 +55,7 @@ impl Detector for KickoffDetector {
         // Calculate confidence
         let confidence = self.calculate_confidence(&context.text);
 
-        log::debug!(
+        tracing::debug!(
             "Kickoff detected (confidence: {:.2}): text='{}'",
             confidence,
             context.text

@@ -41,7 +41,7 @@ impl AudioSystemManager {
 
         // Read audio data into memory
         let audio_data = std::fs::read(audio_path)?;
-        log::info!(
+        tracing::info!(
             "Loaded audio for {}: {} ({} bytes)",
             source_type,
             audio_path.display(),
@@ -65,7 +65,7 @@ impl AudioSystemManager {
         let mut players = self.players.lock();
         players.insert(source_type, player);
 
-        log::debug!("Audio player ready for {}", source_type);
+        tracing::debug!("Audio player ready for {}", source_type);
         Ok(())
     }
 
@@ -106,7 +106,7 @@ impl AudioSystemManager {
         for player in players.values() {
             player.stop();
         }
-        log::debug!("Stopped all audio sources");
+        tracing::debug!("Stopped all audio sources");
     }
 
     /// Pause audio from a specific source
@@ -151,7 +151,7 @@ impl AudioSystemManager {
     pub fn unload(&self, source_type: AudioSourceType) {
         let mut players = self.players.lock();
         if players.remove(&source_type).is_some() {
-            log::debug!("Unloaded audio for {}", source_type);
+            tracing::debug!("Unloaded audio for {}", source_type);
         }
     }
 
@@ -159,7 +159,7 @@ impl AudioSystemManager {
     pub fn unload_all(&self) {
         let mut players = self.players.lock();
         players.clear();
-        log::debug!("Unloaded all audio sources");
+        tracing::debug!("Unloaded all audio sources");
     }
 }
 

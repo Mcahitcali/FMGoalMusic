@@ -60,11 +60,9 @@ anyhow = "1.0"      # Application errors with context
 thiserror = "1.0"   # Library errors with derives
 
 # Logging for production debugging
-log = "0.4"
-flexi_logger = "0.28"  # File logging with rotation (will migrate to tracing)
-tracing = "0.1"     # Structured logging (migration in progress)
+tracing = "0.1"     # Structured logging with spans
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-tracing-appender = "0.2"  # File appender with rotation
+tracing-appender = "0.2"  # File appender with daily rotation
 sysinfo = "0.30"
 
 # Concurrency primitives (better than std)

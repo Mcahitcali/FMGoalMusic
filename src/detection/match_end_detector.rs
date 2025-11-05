@@ -85,7 +85,7 @@ impl Detector for MatchEndDetector {
         let has_score = home_score > 0 || away_score > 0;
         let confidence = self.calculate_confidence(&context.text, has_score);
 
-        log::debug!(
+        tracing::debug!(
             "Match end detected (confidence: {:.2}): score={}-{}, text='{}'",
             confidence,
             home_score,

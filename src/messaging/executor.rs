@@ -35,7 +35,7 @@ impl CommandExecutor {
 
     /// Execute a command immediately (blocking)
     pub fn execute_sync(&self, command: Command) -> CommandResult {
-        log::info!("Executing command: {}", command.description());
+        tracing::info!("Executing command: {}", command.description());
 
         // This is a placeholder - actual execution will be implemented
         // in the respective modules (audio, detection, config, etc.)
@@ -59,7 +59,7 @@ impl CommandExecutor {
             }
             _ => {
                 // Other commands will be implemented in future phases
-                log::warn!("Command not yet implemented: {}", command.description());
+                tracing::warn!("Command not yet implemented: {}", command.description());
                 CommandResult::SuccessWithValue(
                     "Command queued but not yet implemented".to_string()
                 )
@@ -82,12 +82,12 @@ impl CommandExecutor {
         };
 
         thread::spawn(move || {
-            log::info!("Command executor thread started");
+            tracing::info!("Command executor thread started");
 
             while let Ok(command) = rx.recv() {
                 match &command {
                     Command::Quit => {
-                        log::info!("Quit command received, stopping executor");
+                        tracing::info!("Quit command received, stopping executor");
                         executor.execute_sync(command);
                         break;
                     }
@@ -97,7 +97,7 @@ impl CommandExecutor {
                 }
             }
 
-            log::info!("Command executor thread stopped");
+            tracing::info!("Command executor thread stopped");
         });
     }
 }

@@ -93,7 +93,7 @@ impl Detector for GoalDetector {
         // Calculate confidence
         let confidence = self.calculate_confidence(&context.text);
 
-        log::debug!(
+        tracing::debug!(
             "Goal detected (confidence: {:.2}): team={:?}, text='{}'",
             confidence,
             team,

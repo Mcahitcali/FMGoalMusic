@@ -9,7 +9,7 @@ use super::model::Model;
 ///
 /// Returns a vector of messages to process next (for chaining actions)
 pub fn update(model: &mut Model, message: Message) -> Vec<Message> {
-    log::debug!("Handling message: {}", message.description());
+    tracing::debug!("Handling message: {}", message.description());
 
     match message {
         Message::TabChanged(tab) => {
@@ -21,7 +21,7 @@ pub fn update(model: &mut Model, message: Message) -> Vec<Message> {
 
         // Placeholder for other messages - will be implemented as we extract views
         _ => {
-            log::warn!("Message not yet handled in new MVU architecture: {}", message.description());
+            tracing::warn!("Message not yet handled in new MVU architecture: {}", message.description());
             vec![]
         }
     }

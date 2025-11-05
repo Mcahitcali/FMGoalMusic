@@ -57,9 +57,9 @@ impl CaptureManager {
     /// * `region` - Screen region to capture
     /// * `monitor_index` - Monitor index (0 = primary, 1 = second, etc.)
     pub fn new(region: CaptureRegion, monitor_index: usize) -> Result<Self, Box<dyn std::error::Error>> {
-        log::info!("Initializing screen capturer...");
-        log::info!("  Region: x={}, y={}, w={}, h={}", region.x, region.y, region.width, region.height);
-        log::info!("  Monitor index: {}", monitor_index);
+        tracing::info!("Initializing screen capturer...");
+        tracing::info!("  Region: x={}, y={}, w={}, h={}", region.x, region.y, region.width, region.height);
+        tracing::info!("  Monitor index: {}", monitor_index);
 
         // Get all available monitors
         let monitors = Monitor::all()
@@ -69,13 +69,13 @@ impl CaptureManager {
             return Err("No monitors found".into());
         }
 
-        log::info!("  Available monitors: {}", monitors.len());
+        tracing::info!("  Available monitors: {}", monitors.len());
 
         // Get monitor by index, fallback to primary (0) if index out of bounds
         let monitor = monitors.into_iter()
             .nth(monitor_index)
             .or_else(|| {
-                log::warn!("  WARNING: Monitor index {} not found, falling back to primary monitor (0)", monitor_index);
+                tracing::warn!("  WARNING: Monitor index {} not found, falling back to primary monitor (0)", monitor_index);
                 Monitor::all().ok()?.into_iter().next()
             })
             .ok_or("Failed to get monitor")?;
@@ -85,8 +85,8 @@ impl CaptureManager {
         let monitor_height = monitor.height().unwrap_or(0);
         let monitor_name = monitor.name().unwrap_or_else(|_| "Unknown".to_string());
 
-        log::info!("✓ Screen capturer initialized");
-        log::info!("  Monitor: {}x{} ({})", monitor_width, monitor_height, monitor_name);
+        tracing::info!("✓ Screen capturer initialized");
+        tracing::info!("  Monitor: {}x{} ({})", monitor_width, monitor_height, monitor_name);
 
         // Validate region is within monitor bounds
         if monitor_width == 0 || monitor_height == 0 {
@@ -119,7 +119,7 @@ impl CaptureManager {
             ).into());
         }
 
-        log::info!("  ✓ Region validated: within bounds");
+        tracing::info!("  ✓ Region validated: within bounds");
 
         Ok(Self {
             monitor,

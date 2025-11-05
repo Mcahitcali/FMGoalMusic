@@ -220,7 +220,7 @@ impl eframe::App for RegionSelectorApp {
                             *result = Some(region);
                         }
                         
-                        log::info!("✓ Region selected: {:?}", region);
+                        tracing::info!("✓ Region selected: {:?}", region);
                         
                         // Close window by requesting close
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
