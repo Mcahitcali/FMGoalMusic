@@ -13,74 +13,11 @@ use super::super::FMGoalMusicsApp;
 pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.separator();
 
-    // Configuration section
-    ui.heading("⚙️ Configuration");
-
-    // Capture region controls
-    {
-        let mut state = app.state.lock();
-        ui.horizontal(|ui| {
-            ui.label("Capture Region:");
-            ui.add(egui::DragValue::new(&mut state.capture_region[0]).prefix("X: "));
-            ui.add(egui::DragValue::new(&mut state.capture_region[1]).prefix("Y: "));
-            ui.add(egui::DragValue::new(&mut state.capture_region[2]).prefix("W: "));
-            ui.add(egui::DragValue::new(&mut state.capture_region[3]).prefix("H: "));
-        });
-    }
-
-    // Visual selector button (separate scope to avoid borrow issues)
-    ui.horizontal(|ui| {
-        if ui.button("🎯 Select Region Visually").clicked() {
-            app.start_region_selection();
-        }
-        if ui.button("🔄 Reset Region").clicked() {
-            if let Some((screen_w, screen_h)) = app.screen_resolution {
-                let mut state = app.state.lock();
-                let capture_height = (screen_h / 4).max(1);
-                let capture_y = screen_h.saturating_sub(capture_height);
-                state.capture_region = [0, capture_y, screen_w, capture_height];
-            }
-        }
-    });
-    ui.label("💡 Recommended: Use visual selector for accurate coordinates on HiDPI/Retina displays");
-
-    // Capture preview
-    app.refresh_capture_preview(ctx);
-    if let Some(texture) = &app.capture_preview.texture {
-        ui.group(|ui| {
-            ui.heading("📷 Capture Preview");
-            let aspect = texture.size()[0] as f32 / texture.size()[1] as f32;
-            let max_width = ui.available_width().min(400.0);
-            let desired_size = egui::Vec2::new(max_width, max_width / aspect);
-            ui.image(egui::load::SizedTexture::new(texture.id(), desired_size));
-
-            ui.horizontal(|ui| {
-                ui.label(format!(
-                    "Resolution: {}x{}",
-                    app.capture_preview.width, app.capture_preview.height
-                ));
-
-                if let Some(ts) = app.capture_preview.timestamp {
-                    let age = Instant::now().saturating_duration_since(ts);
-                    ui.label(format!("Age: {:.1}s", age.as_secs_f32()));
-                }
-
-                if ui.button("Save frame...").clicked() {
-                    if let Some(img) = &app.capture_preview.last_image {
-                        if let Err(e) = save_capture_image(img) {
-                            let mut st = app.state.lock();
-                            st.status_message = format!("Failed to save capture: {}", e);
-                        } else {
-                            let mut st = app.state.lock();
-                            st.status_message = "Saved capture preview to disk".to_string();
-                        }
-                    }
-                }
-            });
-        });
-    }
-
-    ui.add_space(10.0);
+    // ========================================
+    // GROUP 1: Display & Capture
+    // ========================================
+    ui.heading("🖥️ Display & Capture");
+    ui.add_space(5.0);
 
     // Monitor selection (multi-monitor support)
     ui.horizontal(|ui| {
@@ -113,9 +50,84 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui:
             app.save_config();
         }
     });
-    ui.label("💡 Select which monitor to capture from (0 = primary display)");
+    ui.label("💡 Select which monitor to capture from");
 
-    // Other configuration options
+    ui.add_space(5.0);
+
+    // Capture region controls
+    {
+        let mut state = app.state.lock();
+        ui.horizontal(|ui| {
+            ui.label("Capture Region:");
+            ui.add(egui::DragValue::new(&mut state.capture_region[0]).prefix("X: "));
+            ui.add(egui::DragValue::new(&mut state.capture_region[1]).prefix("Y: "));
+            ui.add(egui::DragValue::new(&mut state.capture_region[2]).prefix("W: "));
+            ui.add(egui::DragValue::new(&mut state.capture_region[3]).prefix("H: "));
+        });
+    }
+
+    // Visual selector button (separate scope to avoid borrow issues)
+    ui.horizontal(|ui| {
+        if ui.button("🎯 Select Region Visually").clicked() {
+            app.start_region_selection();
+        }
+        if ui.button("🔄 Reset Region").clicked() {
+            if let Some((screen_w, screen_h)) = app.screen_resolution {
+                let mut state = app.state.lock();
+                let capture_height = (screen_h / 4).max(1);
+                let capture_y = screen_h.saturating_sub(capture_height);
+                state.capture_region = [0, capture_y, screen_w, capture_height];
+            }
+        }
+    });
+    ui.label("💡 Use visual selector for accurate coordinates on HiDPI/Retina displays");
+
+    ui.add_space(5.0);
+
+    // Capture preview
+    app.refresh_capture_preview(ctx);
+    if let Some(texture) = &app.capture_preview.texture {
+        ui.group(|ui| {
+            ui.label("📷 Capture Preview");
+            let aspect = texture.size()[0] as f32 / texture.size()[1] as f32;
+            let max_width = ui.available_width().min(400.0);
+            let desired_size = egui::Vec2::new(max_width, max_width / aspect);
+            ui.image(egui::load::SizedTexture::new(texture.id(), desired_size));
+
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Resolution: {}x{}",
+                    app.capture_preview.width, app.capture_preview.height
+                ));
+
+                if let Some(ts) = app.capture_preview.timestamp {
+                    let age = Instant::now().saturating_duration_since(ts);
+                    ui.label(format!("Age: {:.1}s", age.as_secs_f32()));
+                }
+
+                if ui.button("Save frame...").clicked() {
+                    if let Some(img) = &app.capture_preview.last_image {
+                        if let Err(e) = save_capture_image(img) {
+                            let mut st = app.state.lock();
+                            st.status_message = format!("Failed to save capture: {}", e);
+                        } else {
+                            let mut st = app.state.lock();
+                            st.status_message = "Saved capture preview to disk".to_string();
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    ui.separator();
+
+    // ========================================
+    // GROUP 2: Detection Settings
+    // ========================================
+    ui.heading("🔍 Detection Settings");
+    ui.add_space(5.0);
+
     {
         let mut state = app.state.lock();
 
@@ -134,11 +146,16 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui:
 
     ui.separator();
 
-    // Volume Controls
-    ui.heading("🔊 Volume Controls");
+    // ========================================
+    // GROUP 3: Audio Settings
+    // ========================================
+    ui.heading("🔊 Audio Settings");
+    ui.add_space(5.0);
 
+    // Volume Controls
+    ui.label("Volume:");
     ui.horizontal(|ui| {
-        ui.label("🎵 Music:");
+        ui.label("  🎵 Music:");
         let mut state = app.state.lock();
         let mut music_vol_percent = (state.music_volume * 100.0) as i32;
         if ui.add(egui::Slider::new(&mut music_vol_percent, 0..=100).suffix("%")).changed() {
@@ -149,7 +166,7 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui:
     });
 
     ui.horizontal(|ui| {
-        ui.label("🔉 Ambiance:");
+        ui.label("  🔉 Ambiance:");
         let mut state = app.state.lock();
         let mut ambiance_vol_percent = (state.ambiance_volume * 100.0) as i32;
         if ui.add(egui::Slider::new(&mut ambiance_vol_percent, 0..=100).suffix("%")).changed() {
@@ -159,13 +176,12 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui:
         }
     });
 
-    ui.separator();
+    ui.add_space(5.0);
 
     // Sound Length Controls
-    ui.heading("⏱️ Sound Length Controls");
-
+    ui.label("Playback Duration:");
     ui.horizontal(|ui| {
-        ui.label("🎵 Music Length:");
+        ui.label("  🎵 Music:");
         let mut state = app.state.lock();
         let mut music_length_seconds = (state.music_length_ms as f32) / 1000.0;
         if ui.add(egui::Slider::new(&mut music_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
@@ -176,7 +192,7 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui:
     });
 
     ui.horizontal(|ui| {
-        ui.label("🔉 Ambiance Length:");
+        ui.label("  🔉 Ambiance:");
         let mut state = app.state.lock();
         let mut ambiance_length_seconds = (state.ambiance_length_ms as f32) / 1000.0;
         if ui.add(egui::Slider::new(&mut ambiance_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
@@ -188,8 +204,11 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui:
 
     ui.separator();
 
-    // Update Checker
+    // ========================================
+    // GROUP 4: Updates
+    // ========================================
     ui.heading("🔄 Updates");
+    ui.add_space(5.0);
 
     ui.horizontal(|ui| {
         let mut state = app.state.lock();
