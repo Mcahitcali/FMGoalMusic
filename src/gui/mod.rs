@@ -94,6 +94,7 @@ pub struct FMGoalMusicsApp {
     add_team_ui_open: bool,
     new_team_name: String,
     new_team_league: String,
+    new_team_variations: String,
     use_existing_league: bool,
     new_team_error: Option<String>,
 }
@@ -176,6 +177,7 @@ impl FMGoalMusicsApp {
             add_team_ui_open: false,
             new_team_name: String::new(),
             new_team_league: String::new(),
+            new_team_variations: String::new(),
             use_existing_league: true,
             new_team_error: None,
         };
@@ -1292,6 +1294,20 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
 
                 ui.add_space(5.0);
 
+                // Variations input
+                ui.label("Variations (one per line, optional):");
+                ui.label("💡 Add alternative names/spellings for better detection");
+                let variations_response = egui::TextEdit::multiline(&mut self.new_team_variations)
+                    .desired_rows(3)
+                    .desired_width(ui.available_width())
+                    .hint_text("e.g.\nMan Utd\nMan United\nMUFC")
+                    .show(ui);
+                if variations_response.response.changed() {
+                    self.new_team_error = None;
+                }
+
+                ui.add_space(5.0);
+
                 // Show error if any
                 if let Some(ref error) = self.new_team_error {
                     ui.colored_label(egui::Color32::RED, format!("⚠ {}", error));
@@ -1307,6 +1323,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     if ui.button("🔄 Clear").clicked() {
                         self.new_team_name.clear();
                         self.new_team_league.clear();
+                        self.new_team_variations.clear();
                         self.use_existing_league = true;
                         self.new_team_error = None;
                     }
@@ -1333,10 +1350,29 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             let team_key = crate::slug::slugify(&self.new_team_name);
             let league_name = self.new_team_league.trim().to_string();
 
+            // Parse variations from text area (one per line)
+            let mut variations: Vec<String> = self.new_team_variations
+                .lines()
+                .map(|line| line.trim())
+                .filter(|line| !line.is_empty())
+                .map(|line| line.to_string())
+                .collect();
+
+            // Always include the team name itself as a variation
+            let team_name = self.new_team_name.trim().to_string();
+            if !variations.contains(&team_name) {
+                variations.insert(0, team_name.clone());
+            }
+
+            // If no variations were provided, use team name as the only variation
+            if variations.is_empty() {
+                variations.push(team_name.clone());
+            }
+
             // Create the new team
             let team = crate::teams::Team {
-                display_name: self.new_team_name.trim().to_string(),
-                variations: vec![self.new_team_name.trim().to_string()],
+                display_name: team_name,
+                variations,
             };
 
             // Add the team
@@ -1356,6 +1392,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     // Clear the form
                     self.new_team_name.clear();
                     self.new_team_league.clear();
+                    self.new_team_variations.clear();
                     self.new_team_error = None;
 
                     tracing::info!("[teams] Successfully added team and saved database");
