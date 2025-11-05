@@ -1,7 +1,7 @@
 ; ==========================================
 ; FM Goal Musics – Universal Installer (for GitHub Actions & local)
 ; ==========================================
-OutFile "build\windows\FMGoalMusicInstaller.exe"
+OutFile "..\build\windows\FMGoalMusicInstaller.exe"
 InstallDir "$PROGRAMFILES\FM Goal Musics"
 RequestExecutionLevel admin
 ShowInstDetails show
@@ -28,7 +28,7 @@ Var StartMenuFolder
 
 Section "MainSection" SEC01
   SetOutPath "$INSTDIR"
-  File /r "build\windows\*.*"
+  File /r "..\build\windows\*.*"
   CreateShortCut "$DESKTOP\FM Goal Musics.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
   CreateShortCut "$SMPROGRAMS\FM Goal Musics\FM Goal Musics.lnk" "$INSTDIR\fm-goal-musics-gui.exe"
 SectionEnd
