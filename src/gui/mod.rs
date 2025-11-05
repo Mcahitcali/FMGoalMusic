@@ -1616,53 +1616,51 @@ impl eframe::App for FMGoalMusicsApp {
             };
 
             // Header with title and Start/Stop button
-            ui.horizontal(|ui| {
-                // Start/Stop Detection button on the left
-                let button_text = if is_running { "⏹️ Stop Detection" } else { "▶️ Start Detection" };
-                let button_color = if is_running { egui::Color32::from_rgb(244, 67, 54) } else { egui::Color32::from_rgb(76, 175, 80) };
-
-                if ui.add(egui::Button::new(button_text).fill(button_color)).clicked() {
-                    if is_running {
-                        self.stop_detection();
-                    } else if is_stopped {
-                        self.start_detection();
-                    }
-                }
-
-                ui.separator();
-                ui.heading("⚽ FM Goal Musics");
-            });
-            ui.separator();
-
-            // Status bar (simplified with visual indicators)
-            {
+            theme::card_frame().show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    // Status indicator dot
-                    let dot_color = if detection_count > 0 || status_message.contains("Running") || status_message.contains("Detecting") {
-                        egui::Color32::from_rgb(76, 175, 80) // Green
+                    // Start/Stop Detection button with themed styling
+                    let button_text = if is_running { "⏹️ Stop Detection" } else { "▶️ Start Detection" };
+
+                    let clicked = if is_running {
+                        theme::styled_danger_button(ui, button_text).clicked()
                     } else {
-                        egui::Color32::from_rgb(158, 158, 158) // Gray
+                        theme::styled_primary_button(ui, button_text).clicked()
                     };
 
-                    let painter = ui.painter();
-                    let dot_pos = ui.cursor().left_top() + egui::vec2(8.0, 8.0);
-                    painter.circle_filled(dot_pos, 6.0, dot_color);
+                    if clicked {
+                        if is_running {
+                            self.stop_detection();
+                        } else if is_stopped {
+                            self.start_detection();
+                        }
+                    }
 
-                    ui.add_space(20.0);
+                    ui.separator();
+                    theme::styled_heading(ui, "⚽ FM Goal Musics");
+                });
+            });
+            theme::add_space_small(ui);
+
+            // Status bar (simplified with visual indicators)
+            theme::section_frame().show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // Status indicator dot using theme function
+                    let is_active = detection_count > 0 || status_message.contains("Running") || status_message.contains("Detecting");
+                    theme::status_dot(ui, is_active);
 
                     // Status message
                     ui.colored_label(status_color, &status_message);
 
                     ui.separator();
 
-                    // Detection count
-                    ui.label(format!("🎯 Detections: {}", detection_count));
+                    // Detection count with themed styling
+                    ui.label(egui::RichText::new(format!("🎯 Detections: {}", detection_count)).color(theme::GOAL_GOLD));
 
                     // Technical info in tooltip
                     ui.separator();
-                    let tech_label = ui.label("ℹ️");
+                    let tech_label = ui.label(egui::RichText::new("ℹ️").color(theme::INFO));
                     tech_label.on_hover_ui(|ui| {
-                        ui.label("Technical Information:");
+                        theme::styled_subheading(ui, "Technical Information");
                         ui.separator();
                         let window_rect = ctx.input(|i| i.viewport_rect());
                         let window_width = window_rect.width().round() as i32;
@@ -1673,7 +1671,7 @@ impl eframe::App for FMGoalMusicsApp {
                         ui.label(format!("Window: {}x{}", window_width, window_height));
                     });
                 });
-            }
+            });
 
             ui.separator();
             ui.horizontal_wrapped(|ui| {
