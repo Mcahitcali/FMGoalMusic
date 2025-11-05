@@ -935,6 +935,9 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     WizardStep::Permissions => {
                         self.render_wizard_permissions(ui);
                     }
+                    WizardStep::DisplaySelection => {
+                        self.render_wizard_display_selection(ui);
+                    }
                     WizardStep::TeamSelection => {
                         self.render_wizard_team_selection(ui);
                     }
@@ -1036,6 +1039,64 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
         #[cfg(not(target_os = "macos"))]
         {
             ui.label("No permissions needed on your platform!");
+        }
+    }
+
+    fn render_wizard_display_selection(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Select Display Monitor 🖥️");
+        ui.add_space(10.0);
+
+        // Get available monitors
+        let monitor_count = xcap::Monitor::all()
+            .map(|monitors| monitors.len())
+            .unwrap_or(1);
+
+        if monitor_count <= 1 {
+            ui.label("✅ Only one monitor detected - using primary display.");
+            ui.add_space(10.0);
+            ui.label("💡 You can skip this step and continue to the next one.");
+        } else {
+            ui.label(format!("Detected {} monitors on your system.", monitor_count));
+            ui.add_space(10.0);
+
+            ui.label("Which monitor is running Football Manager?");
+            ui.add_space(10.0);
+
+            let mut state = self.state.lock();
+            let prev_index = state.selected_monitor_index;
+
+            // Show monitor selection with visual cards
+            ui.horizontal(|ui| {
+                for i in 0..monitor_count {
+                    let is_selected = state.selected_monitor_index == i;
+                    let label = if i == 0 {
+                        format!("Monitor {} (Primary)", i + 1)
+                    } else {
+                        format!("Monitor {}", i + 1)
+                    };
+
+                    // Create a selectable button-like card
+                    let response = ui.selectable_label(is_selected, &label);
+                    if response.clicked() {
+                        state.selected_monitor_index = i;
+                    }
+                }
+            });
+
+            ui.add_space(10.0);
+            ui.label(format!("Currently selected: Monitor {} ({})",
+                state.selected_monitor_index + 1,
+                if state.selected_monitor_index == 0 { "Primary" } else { "Secondary" }));
+
+            // Save config if changed
+            if state.selected_monitor_index != prev_index {
+                drop(state);
+                self.save_config();
+            }
+
+            ui.add_space(10.0);
+            ui.label("💡 The app will capture goal notifications from this monitor.");
+            ui.label("   You can always change this later in Settings.");
         }
     }
 

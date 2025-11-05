@@ -150,7 +150,7 @@ mod tests {
         let state = WizardState::completed();
         assert!(state.is_completed());
         assert!(!state.should_show());
-        assert_eq!(state.completed_count(), 6);
+        assert_eq!(state.completed_count(), 7); // Now includes DisplaySelection
         assert_eq!(state.progress(), 1.0);
     }
 
@@ -185,7 +185,7 @@ mod tests {
         assert!(state.is_completed());
         assert!(!state.should_show());
         assert_eq!(state.current_step(), WizardStep::Complete);
-        assert_eq!(state.completed_count(), 6);
+        assert_eq!(state.completed_count(), 7); // Now includes DisplaySelection
     }
 
     #[test]
@@ -208,7 +208,7 @@ mod tests {
         state.mark_completed();
 
         assert!(state.is_completed());
-        assert_eq!(state.completed_count(), 6);
+        assert_eq!(state.completed_count(), 7); // Now includes DisplaySelection
 
         state.reset();
         assert!(!state.is_completed());
