@@ -30,6 +30,7 @@ use crate::audio::AudioManager;
 use crate::audio_converter;
 use crate::capture::{CaptureManager, CaptureRegion};
 use crate::config::Config;
+use crate::messaging::{Event, EventBus};
 use crate::ocr::OcrManager;
 use crate::utils::Debouncer;
 
@@ -77,6 +78,10 @@ pub struct FMGoalMusicsApp {
     selected_team_key: Option<String>,
     active_tab: AppTab,
 
+    // Event system
+    event_bus: EventBus,
+    event_rx: Option<Receiver<Event>>,
+
     // Update checker fields
     update_check_rx: Option<Receiver<crate::update_checker::UpdateCheckResult>>,
     update_modal_state: Option<UpdateModalState>,
@@ -111,6 +116,10 @@ impl FMGoalMusicsApp {
             }
         };
 
+        // Initialize event bus for pub/sub messaging
+        let event_bus = EventBus::new();
+        let (event_rx, _event_sub_id) = event_bus.subscribe();
+
         let mut app = Self {
             state: Arc::new(Mutex::new(AppState::default())),
             detection_thread: None,
@@ -130,6 +139,8 @@ impl FMGoalMusicsApp {
             selected_league: None,
             selected_team_key: None,
             active_tab: AppTab::Library,
+            event_bus,
+            event_rx: Some(event_rx),
             update_check_rx: None,
             update_modal_state: None,
         };
@@ -521,11 +532,19 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 tracing::info!("  team_selection={} ({})", team.display_name, team.league);
             }
 
-            state.process_state = ProcessState::Running {
+            let old_state = state.process_state;
+            let new_state = ProcessState::Running {
                 since: Instant::now(),
             };
+            state.process_state = new_state;
             state.status_message = format!("Starting detection with '{}'", entry.name);
             state.detection_count = 0;
+
+            // Publish ProcessStateChanged event
+            self.event_bus.publish(Event::ProcessStateChanged {
+                old_state,
+                new_state,
+            });
 
 (entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms, selected_monitor_index)
         };
@@ -563,6 +582,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
         let state_clone = Arc::clone(&self.state);
         let latest_capture = Arc::clone(&self.latest_capture);
         let capture_dirty = Arc::clone(&self.capture_dirty);
+        let event_bus = self.event_bus.clone();
         let (cmd_tx, cmd_rx) = unbounded();
         self.detection_cmd_tx = Some(cmd_tx);
 
@@ -707,31 +727,31 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 }
 
                 // Perform OCR - use team detection if team matcher is available
-                let should_play_sound = if let Some(ref matcher) = team_matcher {
+                let (should_play_sound, detected_team_opt) = if let Some(ref matcher) = team_matcher {
                     // Team selection enabled - extract and match team name
                     match ocr_manager.detect_goal_with_team(&image) {
                         Ok(Some(detected_team)) => {
                             if matcher.matches(&detected_team) {
                                 tracing::info!("[fm-goal-musics] 🎯 GOAL FOR SELECTED TEAM: {}", detected_team);
-                                true
+                                (true, selected_team.clone())
                             } else {
                                 tracing::info!("[fm-goal-musics] Goal detected for: {} (not selected team)", detected_team);
-                                false
+                                (false, None)
                             }
                         }
-                        Ok(None) => false,
+                        Ok(None) => (false, None),
                         Err(e) => {
                             tracing::error!("[fm-goal-musics] OCR error: {}", e);
-                            false
+                            (false, None)
                         }
                     }
                 } else {
                     // No team selection - use original detection
                     match ocr_manager.detect_goal(&image) {
-                        Ok(detected) => detected,
+                        Ok(detected) => (detected, None),
                         Err(e) => {
                             tracing::error!("[fm-goal-musics] OCR error: {}", e);
-                            false
+                            (false, None)
                         }
                     }
                 };
@@ -777,6 +797,12 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                                 ambiance_msg,
                                 st.detection_count
                             );
+
+                            // Publish GoalDetected event
+                            event_bus.publish(Event::GoalDetected {
+                                team: detected_team_opt,
+                                timestamp: std::time::Instant::now(),
+                            });
                         }
                         Err(e) => {
                             tracing::error!("[fm-goal-musics] Failed to play music: {}", e);
@@ -818,10 +844,55 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             let _ = tx.send(DetectionCommand::StopAudio);
         }
     }
+
+    /// Handle events from the event bus
+    fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::GoalDetected { team, timestamp } => {
+                tracing::info!(
+                    "[Event] Goal detected at {:?} for team: {:?}",
+                    timestamp,
+                    team.as_ref().map(|t| &t.display_name)
+                );
+                // GUI state is already updated by the detection thread
+                // This event can be used for additional UI feedback, logging, etc.
+            }
+            Event::ProcessStateChanged {
+                old_state,
+                new_state,
+            } => {
+                tracing::info!("[Event] Process state changed: {:?} -> {:?}", old_state, new_state);
+                // State already updated by start_detection/stop_detection
+            }
+            Event::ConfigChanged { field } => {
+                tracing::info!("[Event] Config changed: {:?}", field);
+            }
+            Event::ErrorOccurred { message, context } => {
+                tracing::error!("[Event] Error in {}: {}", context, message);
+            }
+            Event::Shutdown => {
+                tracing::info!("[Event] Shutdown requested");
+            }
+            _ => {
+                // Other events (MatchStarted, MatchEnded, MusicSelected, etc.)
+                tracing::debug!("[Event] Received event: {}", event.description());
+            }
+        }
+    }
 }
 
 impl eframe::App for FMGoalMusicsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Process events from event bus
+        let events: Vec<Event> = if let Some(rx) = &self.event_rx {
+            rx.try_iter().collect()
+        } else {
+            Vec::new()
+        };
+        for event in events {
+            self.handle_event(event);
+        }
+
         // Check for update results from background thread
         if let Some(rx) = &self.update_check_rx {
             if let Ok(result) = rx.try_recv() {
