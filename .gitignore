@@ -16,7 +16,7 @@ detection.log
 debug_goal_*.png
 
 # Config directory (contains user-specific settings and audio files)
-config/
+# config/
 
 # IDE
 .vscode/
