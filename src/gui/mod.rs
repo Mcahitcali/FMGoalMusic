@@ -1630,19 +1630,44 @@ impl eframe::App for FMGoalMusicsApp {
             });
             ui.separator();
 
-            // Status bar
+            // Status bar (simplified with visual indicators)
             {
-                let window_rect = ctx.input(|i| i.viewport_rect());
-                let window_width = window_rect.width().round() as i32;
-                let window_height = window_rect.height().round() as i32;
                 ui.horizontal(|ui| {
-                    ui.label("Status:");
+                    // Status indicator dot
+                    let dot_color = if detection_count > 0 || status_message.contains("Running") || status_message.contains("Detecting") {
+                        egui::Color32::from_rgb(76, 175, 80) // Green
+                    } else {
+                        egui::Color32::from_rgb(158, 158, 158) // Gray
+                    };
+
+                    let painter = ui.painter();
+                    let dot_pos = ui.cursor().left_top() + egui::vec2(8.0, 8.0);
+                    painter.circle_filled(dot_pos, 6.0, dot_color);
+
+                    ui.add_space(20.0);
+
+                    // Status message
                     ui.colored_label(status_color, &status_message);
-                    ui.label(format!("| Detections: {}", detection_count));
-                    if let Some((sw, sh)) = self.screen_resolution {
-                        ui.label(format!("| Display: {}x{}", sw, sh));
-                    }
-                    ui.label(format!("| Window: {}x{}", window_width, window_height));
+
+                    ui.separator();
+
+                    // Detection count
+                    ui.label(format!("🎯 Detections: {}", detection_count));
+
+                    // Technical info in tooltip
+                    ui.separator();
+                    let tech_label = ui.label("ℹ️");
+                    tech_label.on_hover_ui(|ui| {
+                        ui.label("Technical Information:");
+                        ui.separator();
+                        let window_rect = ctx.input(|i| i.viewport_rect());
+                        let window_width = window_rect.width().round() as i32;
+                        let window_height = window_rect.height().round() as i32;
+                        if let Some((sw, sh)) = self.screen_resolution {
+                            ui.label(format!("Display: {}x{}", sw, sh));
+                        }
+                        ui.label(format!("Window: {}x{}", window_width, window_height));
+                    });
                 });
             }
 
