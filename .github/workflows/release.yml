@@ -115,6 +115,18 @@ jobs:
           makensis /V4 build_scripts/FMGoalMusicInstaller.nsi 2>&1 | Tee-Object -FilePath build_scripts\nsis.log
           if ($LASTEXITCODE -ne 0) { Write-Error "makensis failed with code $LASTEXITCODE"; exit $LASTEXITCODE }
 
+      - name: Ensure installer in build/windows
+        shell: pwsh
+        run: |
+          # If NSIS wrote the installer into build_scripts\build\windows, copy it to build\windows where upload step expects it.
+          if (Test-Path build_scripts\build\windows\FMGoalMusicInstaller.exe) {
+            if (-not (Test-Path build\windows)) { New-Item -ItemType Directory -Path build\windows | Out-Null }
+            Copy-Item build_scripts\build\windows\FMGoalMusicInstaller.exe -Destination build\windows -Force
+            Write-Host "Copied installer from build_scripts/build/windows -> build/windows"
+          } else {
+            Write-Host "No installer in build_scripts/build/windows; leaving existing build/windows as-is."
+          }
+
       - name: Verify installer output
         shell: pwsh
         run: |
@@ -130,6 +142,7 @@ jobs:
           name: FMGoalMusic-Windows
           path: |
             build/windows/FMGoalMusicInstaller.exe
+            build_scripts/build/windows/FMGoalMusicInstaller.exe
             build/windows/*
 
       - name: Upload NSIS log on failure
