@@ -1,4 +1,4 @@
-name: Publish Existing Release
+name: Publish Local Release
 
 on:
   workflow_dispatch:
@@ -13,27 +13,33 @@ permissions:
 
 jobs:
   release:
-    name: Publish Existing Artifacts
-    runs-on: ubuntu-latest
+    name: Publish from Runner Files
+    runs-on: self-hosted
 
     steps:
-      - name: Download existing build artifacts
-        uses: actions/download-artifact@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          name: FMGoalMusic-Windows
-          path: artifacts/FMGoalMusic-Windows
+          fetch-depth: 1
 
-      - name: List downloaded artifacts
+      - name: Verify local build files
+        shell: pwsh
         run: |
-          echo "📂 Downloaded files:"
-          ls -lh artifacts/FMGoalMusic-Windows || echo "No artifacts found!"
+          $installer = "build/windows/FMGoalMusicInstaller.exe"
+          $binary = "build/windows/fm-goal-musics-gui.exe"
 
-      - name: Verify artifact existence
-        run: |
-          if [ ! -f "artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe" ]; then
-            echo "❌ No installer found. Make sure you previously ran a successful build workflow."
+          Write-Host "🔍 Checking for local build files..."
+          if (-not (Test-Path $installer)) {
+            Write-Error "❌ Missing installer: $installer"
             exit 1
-          fi
+          }
+          if (-not (Test-Path $binary)) {
+            Write-Error "❌ Missing main binary: $binary"
+            exit 1
+          }
+
+          Write-Host "✅ Found both build files."
+          Get-ChildItem build/windows | Format-Table Name, Length, LastWriteTime
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -41,8 +47,8 @@ jobs:
           tag_name: ${{ inputs.version }}
           name: "FM Goal Musics ${{ inputs.version }}"
           files: |
-            artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe
-            artifacts/FMGoalMusic-Windows/fm-goal-musics-gui.exe
+            build/windows/FMGoalMusicInstaller.exe
+            build/windows/fm-goal-musics-gui.exe
           draft: false
           prerelease: false
           generate_release_notes: true
