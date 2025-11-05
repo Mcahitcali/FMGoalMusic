@@ -1655,7 +1655,7 @@ impl eframe::App for FMGoalMusicsApp {
 
             // Settings tab
             if self.active_tab == AppTab::Settings {
-                views::settings::render_settings(self, ui);
+                views::settings::render_settings(self, ui, ctx);
             }
 
             if self.active_tab == AppTab::Help {

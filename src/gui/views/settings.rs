@@ -3,11 +3,14 @@
 /// Displays all configurable settings for the application.
 
 use eframe::egui;
+use std::time::Instant;
+
+use crate::gui::state::save_capture_image;
 
 use super::super::FMGoalMusicsApp;
 
 /// Render the settings tab
-pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
+pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.separator();
 
     // Configuration section
@@ -40,6 +43,44 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
         }
     });
     ui.label("💡 Recommended: Use visual selector for accurate coordinates on HiDPI/Retina displays");
+
+    // Capture preview
+    app.refresh_capture_preview(ctx);
+    if let Some(texture) = &app.capture_preview.texture {
+        ui.group(|ui| {
+            ui.heading("📷 Capture Preview");
+            let aspect = texture.size()[0] as f32 / texture.size()[1] as f32;
+            let max_width = ui.available_width().min(400.0);
+            let desired_size = egui::Vec2::new(max_width, max_width / aspect);
+            ui.image(egui::load::SizedTexture::new(texture.id(), desired_size));
+
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Resolution: {}x{}",
+                    app.capture_preview.width, app.capture_preview.height
+                ));
+
+                if let Some(ts) = app.capture_preview.timestamp {
+                    let age = Instant::now().saturating_duration_since(ts);
+                    ui.label(format!("Age: {:.1}s", age.as_secs_f32()));
+                }
+
+                if ui.button("Save frame...").clicked() {
+                    if let Some(img) = &app.capture_preview.last_image {
+                        if let Err(e) = save_capture_image(img) {
+                            let mut st = app.state.lock();
+                            st.status_message = format!("Failed to save capture: {}", e);
+                        } else {
+                            let mut st = app.state.lock();
+                            st.status_message = "Saved capture preview to disk".to_string();
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    ui.add_space(10.0);
 
     // Monitor selection (multi-monitor support)
     ui.horizontal(|ui| {
