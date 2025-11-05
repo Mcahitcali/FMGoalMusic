@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   release:
-    name: Publish from Runner Files
+    name: Publish from Local Runner Files
     runs-on: self-hosted
 
     steps:
@@ -22,13 +22,19 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Verify local build files
+      - name: Verify local build files (absolute path fix)
         shell: pwsh
         run: |
-          $installer = "build/windows/FMGoalMusicInstaller.exe"
-          $binary = "build/windows/fm-goal-musics-gui.exe"
+          $repoRoot = Get-Location
+          Write-Host "📂 Current working directory: $repoRoot"
+
+          $installer = Join-Path $repoRoot "build/windows/FMGoalMusicInstaller.exe"
+          $binary = Join-Path $repoRoot "build/windows/fm-goal-musics-gui.exe"
 
           Write-Host "🔍 Checking for local build files..."
+          Write-Host "  Installer path: $installer"
+          Write-Host "  Binary path: $binary"
+
           if (-not (Test-Path $installer)) {
             Write-Error "❌ Missing installer: $installer"
             exit 1
@@ -38,8 +44,8 @@ jobs:
             exit 1
           }
 
-          Write-Host "✅ Found both build files."
-          Get-ChildItem build/windows | Format-Table Name, Length, LastWriteTime
+          Write-Host "✅ Found both build files successfully!"
+          Get-ChildItem (Join-Path $repoRoot "build/windows") | Format-Table Name, Length, LastWriteTime
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
