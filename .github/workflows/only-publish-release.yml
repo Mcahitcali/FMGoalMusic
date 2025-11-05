@@ -1,4 +1,4 @@
-name: Quick Test Release (manual ZIP upload)
+name: Quick Test Release (ZIP inside repo)
 
 on:
   workflow_dispatch:
@@ -7,38 +7,52 @@ on:
         description: 'Release version (e.g., v0.2.7-test)'
         required: true
         default: 'v0.2.7-test'
-      artifact_zip:
-        description: 'Upload your FMGoalMusic-Windows.zip file here'
-        required: true
-        type: file
+      zip_path:
+        description: 'Path to ZIP inside repo (default: .github/release_files/FMGoalMusic-Windows.zip)'
+        required: false
+        default: '.github/release_files/FMGoalMusic-Windows.zip'
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Publish from Uploaded ZIP
+    name: Publish Release from Repo ZIP
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download and extract uploaded ZIP
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Verify ZIP path
+        run: |
+          echo "📦 Checking for ZIP at: ${{ inputs.zip_path }}"
+          if [ ! -f "${{ inputs.zip_path }}" ]; then
+            echo "❌ ZIP file not found at path: ${{ inputs.zip_path }}"
+            ls -R .github || true
+            exit 1
+          fi
+          echo "✅ Found ZIP file:"
+          ls -lh "${{ inputs.zip_path }}"
+
+      - name: Extract ZIP contents
         run: |
           mkdir -p artifacts/FMGoalMusic-Windows
-          unzip "${{ github.event.inputs.artifact_zip }}" -d artifacts/FMGoalMusic-Windows
+          unzip "${{ inputs.zip_path }}" -d artifacts/FMGoalMusic-Windows
           echo "✅ Extracted files:"
           ls -lh artifacts/FMGoalMusic-Windows
 
-      - name: Verify required files exist
+      - name: Verify required EXE files
         run: |
           if [ ! -f "artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe" ]; then
-            echo "❌ Missing FMGoalMusicInstaller.exe inside uploaded zip."
+            echo "❌ Missing FMGoalMusicInstaller.exe"
             exit 1
           fi
           if [ ! -f "artifacts/FMGoalMusic-Windows/fm-goal-musics-gui.exe" ]; then
-            echo "❌ Missing fm-goal-musics-gui.exe inside uploaded zip."
+            echo "❌ Missing fm-goal-musics-gui.exe"
             exit 1
           fi
-          echo "✅ All required files found."
+          echo "✅ Verified both executables exist"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
