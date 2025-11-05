@@ -1422,6 +1422,9 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
 
 impl eframe::App for FMGoalMusicsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Apply football theme
+        theme::apply_theme(ctx);
+
         // Process events from event bus
         let events: Vec<Event> = if let Some(rx) = &self.event_rx {
             rx.try_iter().collect()
