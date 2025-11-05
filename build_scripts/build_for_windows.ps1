@@ -1,179 +1,168 @@
-# build_for_windows.ps1
-# Robust Windows build + stage script for your self-hosted runner.
-# Designed to match the Release workflow (uses VCPKG_ROOT and LIBCLANG_PATH if provided).
+# build_scripts/build_for_windows.ps1
+# Robust build script for GitHub self-hosted Windows runner (pwsh).
+# Avoids PowerShell parsing pitfalls by using Start-Process for external commands,
+# explicit path quoting and clear error handling.
 
-[CmdletBinding()]
-param()
-
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
 Write-Host "=== build_for_windows.ps1 starting ==="
 
-# 1) Environment defaults (can be overridden by workflow env)
-if (-not $env:VCPKG_ROOT -or $env:VCPKG_ROOT -eq '') {
-    $env:VCPKG_ROOT = 'C:\vcpkg'
-    Write-Host "VCPKG_ROOT not set; defaulting to $env:VCPKG_ROOT"
-} else {
-    Write-Host "VCPKG_ROOT = $env:VCPKG_ROOT"
-}
+# --- ENV defaults (mirror release.yml) ---
+if (-not $env:CARGO_BUILD_JOBS -or $env:CARGO_BUILD_JOBS -eq '') { $env:CARGO_BUILD_JOBS = '1' }
+if (-not $env:RUSTFLAGS -or $env:RUSTFLAGS -eq '') { $env:RUSTFLAGS = '-C codegen-units=1' }
+if (-not $env:RUST_BACKTRACE -or $env:RUST_BACKTRACE -eq '') { $env:RUST_BACKTRACE = '1' }
+if (-not $env:VCPKG_ROOT -or $env:VCPKG_ROOT -eq '') { $env:VCPKG_ROOT = 'C:\vcpkg' }
+if (-not $env:LIBCLANG_PATH -or $env:LIBCLANG_PATH -eq '') { $env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin' }
+if (-not $env:VCPKG_DEFAULT_TRIPLET -or $env:VCPKG_DEFAULT_TRIPLET -eq '') { $env:VCPKG_DEFAULT_TRIPLET = 'x64-windows-static' }
 
-if (-not $env:LIBCLANG_PATH -or $env:LIBCLANG_PATH -eq '') {
-    $env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
-    Write-Host "LIBCLANG_PATH not set; defaulting to $env:LIBCLANG_PATH"
-} else {
-    Write-Host "LIBCLANG_PATH = $env:LIBCLANG_PATH"
-}
+Write-Host "Env summary:"
+Write-Host "  CARGO_BUILD_JOBS    = $($env:CARGO_BUILD_JOBS)"
+Write-Host "  RUSTFLAGS           = $($env:RUSTFLAGS)"
+Write-Host "  RUST_BACKTRACE      = $($env:RUST_BACKTRACE)"
+Write-Host "  VCPKG_ROOT          = $($env:VCPKG_ROOT)"
+Write-Host "  VCPKG_DEFAULT_TRIPLET = $($env:VCPKG_DEFAULT_TRIPLET)"
+Write-Host "  LIBCLANG_PATH       = $($env:LIBCLANG_PATH)"
+Write-Host ""
 
-# Ensure PATH contains LIBCLANG_PATH and Git bash if present
-if (Test-Path $env:LIBCLANG_PATH) {
-    if ($env:Path -notlike "*$env:LIBCLANG_PATH*") {
-        Write-Host "Adding LIBCLANG_PATH to PATH for this process"
-        $env:Path = "$env:LIBCLANG_PATH;$env:Path"
-    }
-} else {
-    Write-Warning "LIBCLANG_PATH path does not exist: $env:LIBCLANG_PATH"
-}
-
-# Add common Git-for-Windows locations to PATH for steps that expect bash
-$gitPaths = @(
+# --- Ensure common tools are visible in PATH (best-effort) ---
+$possiblePaths = @(
     'C:\Program Files\Git\usr\bin',
     'C:\Program Files\Git\bin',
     'C:\Program Files (x86)\Git\usr\bin',
-    'C:\Program Files (x86)\Git\bin'
+    'C:\Program Files (x86)\Git\bin',
+    'C:\Program Files (x86)\NSIS',
+    'C:\Program Files\LLVM\bin'
 )
-foreach ($p in $gitPaths) {
-    if (Test-Path $p -and $env:Path -notlike "*$p*") {
-        Write-Host "Adding $p to PATH"
-        $env:Path = "$p;$env:Path"
-        break
+foreach ($p in $possiblePaths) {
+    if (Test-Path $p) {
+        if ($env:Path -notlike "*$p*") {
+            Write-Host "Adding $p to PATH"
+            $env:Path = "$env:Path;$p"
+        }
     }
 }
 
-# 2) Useful debug info (helps when runner fails)
-Write-Host "---- Env summary ----"
-Write-Host "CARGO_BUILD_JOBS = $env:CARGO_BUILD_JOBS"
-Write-Host "RUSTFLAGS = $env:RUSTFLAGS"
-Write-Host "RUST_BACKTRACE = $env:RUST_BACKTRACE"
-Write-Host "PATH contains first 6 entries:"
-$env:Path.Split(';')[0..6] -join "`n" | Write-Host
-
-if (Test-Path (Join-Path $env:VCPKG_ROOT 'vcpkg.exe')) {
-    Write-Host "vcpkg found:"
-    & "$($env:VCPKG_ROOT)\vcpkg.exe" list | Select-String -Pattern 'leptonica|tesseract|tiff' -Quiet | Out-Null
-} else {
-    Write-Warning "vcpkg.exe not found under $env:VCPKG_ROOT. If you rely on vcpkg, install or set VCPKG_ROOT correctly."
+# helper to run external progs via Start-Process and return exit code + stream output
+function Run-Proc {
+    param(
+        [Parameter(Mandatory=$true)] [string] $File,
+        [Parameter(Mandatory=$false)] [string[]] $Args = @()
+    )
+    $argList = $Args
+    Write-Host "`nRunning: $File $($argList -join ' ')"
+    $proc = Start-Process -FilePath $File -ArgumentList $argList -NoNewWindow -PassThru -Wait -RedirectStandardOutput ([System.IO.Path]::GetTempFileName()) -RedirectStandardError ([System.IO.Path]::GetTempFileName())
+    # Note: Start-Process -Redirect* requires full .NET support; on GH runners it's OK.
+    return $proc.ExitCode
 }
 
-# 3) Choose vcpkg triplet to copy runtime DLLs from
-$tripletCandidates = @('x64-windows', 'x64-windows-static', 'x64-windows-static-md', 'x64-windows-md')
-$selectedTriplet = $null
-foreach ($t in $tripletCandidates) {
-    if (Test-Path (Join-Path $env:VCPKG_ROOT "installed\$t")) {
-        $selectedTriplet = $t
-        break
-    }
-}
-if (-not $selectedTriplet) {
-    Write-Warning "No known vcpkg triplet folder found under $env:VCPKG_ROOT\installed. Falling back to 'x64-windows' if present."
-    if (Test-Path (Join-Path $env:VCPKG_ROOT 'installed\x64-windows')) { $selectedTriplet = 'x64-windows' }
-}
-Write-Host "Selected vcpkg triplet: $selectedTriplet"
-
-# 4) Clean old staged files (optional)
-$repoRoot = (Get-Location).ProviderPath
-$buildWindows = Join-Path $repoRoot 'build\windows'
-if (Test-Path $buildWindows) {
-    Write-Host "Cleaning existing build/windows contents..."
-    Get-ChildItem $buildWindows -Recurse -Force | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-}
-New-Item -ItemType Directory -Force -Path $buildWindows | Out-Null
-
-# 5) Run cargo build --release
-Write-Host "Starting cargo build --release"
-# Ensure single-job builds on low-memory runners if provided by workflow env
-$cargoArgs = @('build','--release')
-# If you want locked builds uncomment next line:
-# $cargoArgs += '--locked'
-$start = Get-Date
-try {
-    & cargo @cargoArgs
-} catch {
-    Write-Error "cargo build failed: $($_.Exception.Message)"
-    # print a bit more debug
-    Write-Host "=== cargo env ==="
-    cargo --version | Write-Host
-    Write-Host "Printing last 200 lines of cargo build log (if any)..."
-    throw
-}
-$duration = (Get-Date) - $start
-Write-Host "cargo build completed in $($duration.TotalMinutes) minutes"
-
-# 6) Find main exe in target\release (exclude build-script exes)
-$targetRelease = Join-Path $repoRoot 'target\release'
-$exeCandidates = Get-ChildItem -Path $targetRelease -Filter *.exe -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '\\build\\' } |
-    Sort-Object Length -Descending
-
-if ($exeCandidates.Count -eq 0) {
-    Write-Error "No exe found in $targetRelease (after build). Aborting."
+# --- vcpkg checks ---
+$vcpkgExe = Join-Path $env:VCPKG_ROOT 'vcpkg.exe'
+if (-not (Test-Path $vcpkgExe)) {
+    Write-Error "vcpkg.exe not found at $vcpkgExe. Install vcpkg on runner or adjust VCPKG_ROOT."
     exit 1
 }
-# pick largest non-deps exe
-$mainExe = $exeCandidates | Select-Object -First 1
-Write-Host "Selected exe: $($mainExe.FullName) ($([Math]::Round($mainExe.Length/1MB,2)) MB)"
+Write-Host "`nvcpkg present at: $vcpkgExe"
 
-# 7) Copy exe to build/windows
-Copy-Item -Path $mainExe.FullName -Destination (Join-Path $buildWindows $mainExe.Name) -Force
-Write-Host "Copied exe -> $buildWindows\$($mainExe.Name)"
+$triplet = $env:VCPKG_DEFAULT_TRIPLET
+# packages we expect; adjust if your project needs others
+$packages = @('leptonica','tesseract','zlib','libpng','libtiff','libjpeg-turbo') | ForEach-Object { "$_:$triplet" }
 
-# 8) Copy any DLLs from target\release (some dlls appear there)
-Get-ChildItem -Path $targetRelease -Filter *.dll -File -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "Copying target dll: $($_.Name)"
-    Copy-Item $_.FullName -Destination $buildWindows -Force
+# print vcpkg list (filtered)
+Write-Host "`n== vcpkg list (filtered) =="
+& $vcpkgExe list | Select-String -Pattern 'leptonica|tesseract|zlib|libpng|libtiff|jpeg' -SimpleMatch | ForEach-Object { Write-Host $_.ToString() }
+
+# Attempt install if any package missing (best-effort)
+foreach ($pkg in $packages) {
+    Write-Host "`nChecking $pkg ..."
+    $listed = (& $vcpkgExe list) -join "`n"
+    if ($listed -notmatch [regex]::Escape($pkg.Split(':')[0] + ':')) {
+        Write-Host "$pkg not clearly present in vcpkg list — attempting install (may be slow)..."
+        $rc = Start-Process -FilePath $vcpkgExe -ArgumentList @('install', $pkg) -NoNewWindow -Wait -PassThru
+        if ($rc.ExitCode -ne 0) {
+            Write-Warning "vcpkg install $pkg failed with exit code $($rc.ExitCode). Continue but cargo may fail later."
+        } else {
+            Write-Host "Installed $pkg via vcpkg."
+        }
+    } else {
+        Write-Host "$pkg already appears installed (skipping)."
+    }
 }
 
-# 9) Copy vcpkg-provided runtime DLLs (from selected triplet)
-if ($selectedTriplet) {
-    $vcpkgBin = Join-Path $env:VCPKG_ROOT "installed\$selectedTriplet\bin"
-    $vcpkgLib = Join-Path $env:VCPKG_ROOT "installed\$selectedTriplet\lib"
-    $pathsToCopy = @()
-    if (Test-Path $vcpkgBin) { $pathsToCopy += $vcpkgBin }
-    if (Test-Path $vcpkgLib) { $pathsToCopy += $vcpkgLib }
-    foreach ($p in $pathsToCopy) {
-        Get-ChildItem -Path $p -Filter *.dll -File -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "Copying vcpkg dll: $($_.Name) from $p"
-            Copy-Item $_.FullName -Destination $buildWindows -Force
-        }
-    }
+# integrate (best-effort)
+try {
+    $rc = Start-Process -FilePath $vcpkgExe -ArgumentList @('integrate','install') -NoNewWindow -Wait -PassThru
+    if ($rc.ExitCode -eq 0) { Write-Host "vcpkg integrate ok." } else { Write-Host "vcpkg integrate returned $($rc.ExitCode)." }
+} catch {
+    Write-Host "vcpkg integrate failed or already integrated: $_"
+}
 
-    # Also copy large runtime files like zlib1.dll etc from installed\$triplet\debug or 'tools' if present
-    $maybePaths = @(
-        Join-Path $env:VCPKG_ROOT "installed\$selectedTriplet\debug\bin",
-        Join-Path $env:VCPKG_ROOT "installed\$selectedTriplet\tools"
-    )
-    foreach ($mp in $maybePaths) {
-        if (Test-Path $mp) {
-            Get-ChildItem -Path $mp -Filter *.dll -File -ErrorAction SilentlyContinue | ForEach-Object {
-                Copy-Item $_.FullName -Destination $buildWindows -Force
-            }
-        }
-    }
+# --- Clean target (safe) ---
+Write-Host "`nCleaning previous build artifacts..."
+if (Test-Path '.\target') {
+    Remove-Item -Recurse -Force .\target
+    Write-Host "Removed ./target"
 } else {
-    Write-Warning "No vcpkg triplet selected; skipping vcpkg dll copy step."
+    Write-Host "No ./target to remove"
 }
 
-# 10) Copy repository-provided assets that NSIS expects (if exist)
-$repoAssets = @('app.ico','icon.icns','readme.md') # adjust if you have other files
-foreach ($f in $repoAssets) {
-    $src = Join-Path $repoRoot $f
-    if (Test-Path $src) {
-        Copy-Item $src -Destination $buildWindows -Force
-        Write-Host "Copied asset: $f"
+# --- Cargo build (release) ---
+Write-Host "`nStarting cargo build --release ..."
+
+# Use Start-Process to avoid parsing quirks
+$cargo = 'cargo'
+$cargoArgs = @('build','--release','--jobs',$env:CARGO_BUILD_JOBS)
+$proc = Start-Process -FilePath $cargo -ArgumentList $cargoArgs -NoNewWindow -Wait -PassThru
+if ($proc.ExitCode -ne 0) {
+    Write-Error "cargo build failed with exit code $($proc.ExitCode)"
+    exit $proc.ExitCode
+}
+Write-Host "cargo build succeeded."
+
+# --- Stage artifacts into build/windows ---
+$repoRoot = Get-Location
+$stageDir = Join-Path $repoRoot 'build\windows'
+if (-not (Test-Path $stageDir)) { New-Item -ItemType Directory -Path $stageDir | Out-Null }
+
+# find the largest exe in target/release (exclude small build-script exes)
+$exeFiles = Get-ChildItem -Path (Join-Path $repoRoot 'target\release') -Filter *.exe -Recurse -ErrorAction SilentlyContinue |
+           Where-Object { $_.FullName -notmatch '\\build\\' } |
+           Sort-Object Length -Descending
+if ($exeFiles.Count -eq 0) {
+    Write-Error "No exe found in target/release (build failed or different binary name)."
+    exit 1
+}
+$mainExe = $exeFiles[0].FullName
+Write-Host "Selected exe to stage: $mainExe"
+Copy-Item -Path $mainExe -Destination $stageDir -Force
+Write-Host "Copied exe -> $stageDir"
+
+# Copy vcpkg runtime DLLs (bin or lib path)
+$vcpkgBin = Join-Path $env:VCPKG_ROOT "installed\$triplet\bin"
+$vcpkgLib = Join-Path $env:VCPKG_ROOT "installed\$triplet\lib"
+$copiedDll = $false
+if (Test-Path $vcpkgBin) {
+    Get-ChildItem -Path $vcpkgBin -Filter *.dll -File -ErrorAction SilentlyContinue | ForEach-Object {
+        Copy-Item $_.FullName -Destination $stageDir -Force
     }
+    $copiedDll = $true
+    Write-Host "Copied DLLs from $vcpkgBin"
+} elseif (Test-Path $vcpkgLib) {
+    Get-ChildItem -Path $vcpkgLib -Filter *.dll -File -ErrorAction SilentlyContinue | ForEach-Object {
+        Copy-Item $_.FullName -Destination $stageDir -Force
+    }
+    $copiedDll = $true
+    Write-Host "Copied DLLs from $vcpkgLib"
+} else {
+    Write-Warning "No vcpkg bin/lib directory found for triplet $triplet. Installer may miss runtime DLLs."
 }
 
-# 11) Post-check: list final staged files
-Write-Host "=== Staged build/windows contents ==="
-Get-ChildItem -Path $buildWindows -Recurse | Sort-Object Length -Descending | Select-Object Name,Length | Format-Table -AutoSize
+# copy other common assets if exist
+foreach ($res in @('app.ico','icon.icns')) {
+    $src = Join-Path $repoRoot "build\windows\$res"
+    if (Test-Path $src) { Copy-Item $src -Destination $stageDir -Force }
+}
 
+Write-Host "`nStaging complete. Artifacts are in: $stageDir"
 Write-Host "=== build_for_windows.ps1 finished successfully ==="
 exit 0
