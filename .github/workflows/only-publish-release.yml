@@ -1,0 +1,50 @@
+name: Publish Existing Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v0.2.6)'
+        required: true
+        default: 'v0.2.6'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish Existing Artifacts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download existing build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: FMGoalMusic-Windows
+          path: artifacts/FMGoalMusic-Windows
+
+      - name: List downloaded artifacts
+        run: |
+          echo "📂 Downloaded files:"
+          ls -lh artifacts/FMGoalMusic-Windows || echo "No artifacts found!"
+
+      - name: Verify artifact existence
+        run: |
+          if [ ! -f "artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe" ]; then
+            echo "❌ No installer found. Make sure you previously ran a successful build workflow."
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ inputs.version }}
+          name: "FM Goal Musics ${{ inputs.version }}"
+          files: |
+            artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe
+            artifacts/FMGoalMusic-Windows/fm-goal-musics-gui.exe
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
