@@ -7,21 +7,25 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Manual version (e.g., 1.0.0)'
+        description: 'Manual version (e.g., 0.2.4)'
         required: true
-        default: '1.0.0'
+        default: '0.2.4'
+      skip_build:
+        description: 'Skip build step and only publish existing artifacts?'
+        required: false
+        default: 'false'
 
 jobs:
   build:
     name: Build Windows Release
+    # Build sadece skip_build false olduğunda veya tag push olduğunda çalışacak
+    if: github.event_name != 'workflow_dispatch' || inputs.skip_build != 'true'
     runs-on: self-hosted
     timeout-minutes: 180
     env:
-      # Reduce parallelism to avoid OOM on low-RAM runners
       CARGO_BUILD_JOBS: "1"
       RUSTFLAGS: "-C codegen-units=1"
       RUST_BACKTRACE: "1"
-      # Ensure vcpkg / libclang are visible to the job (adjust if your paths differ)
       VCPKG_ROOT: "C:\\vcpkg"
       LIBCLANG_PATH: "C:\\Program Files\\LLVM\\bin"
 
@@ -50,10 +54,10 @@ jobs:
             }
           }
           if (-not $found) {
-            Write-Host "bash.exe not found in common locations; if you rely on bash in steps, install Git for Windows on runner."
+            Write-Host "bash.exe not found; install Git for Windows if needed."
           }
 
-      - name: Debug env & vcpkg (one-run)
+      - name: Debug env & vcpkg
         shell: pwsh
         run: |
           Write-Host "==== JOB ENV VARS ===="
@@ -62,13 +66,9 @@ jobs:
           Write-Host "RUST_BACKTRACE: $env:RUST_BACKTRACE"
           Write-Host "VCPKG_ROOT: $env:VCPKG_ROOT"
           Write-Host "LIBCLANG_PATH: $env:LIBCLANG_PATH"
-          Write-Host "==== PATH (first 20 entries) ===="
-          $env:PATH.Split(';')[0..19] -join "`n"
           if (Test-Path 'C:\vcpkg\vcpkg.exe') {
             Write-Host "==== vcpkg list (filtered) ===="
-            C:\vcpkg\vcpkg.exe list | Select-String -Pattern 'leptonica|tesseract|tiff' || Write-Host "vcpkg list ran but no matches"
-            Write-Host "==== installed folder sample ===="
-            Get-ChildItem 'C:\vcpkg\installed' -Depth 1 | Select-Object -First 40
+            C:\vcpkg\vcpkg.exe list | Select-String -Pattern 'leptonica|tesseract|tiff'
           } else {
             Write-Host 'C:\vcpkg\vcpkg.exe not found'
           }
@@ -89,25 +89,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Reduce cargo parallelism (safety)
-        shell: pwsh
-        run: |
-          echo "CARGO_BUILD_JOBS=1" >> $env:GITHUB_ENV
-          echo "RUSTFLAGS=-C codegen-units=1" >> $env:GITHUB_ENV
-          echo "Ensured job-level cargo parallelism envs"
-
       - name: Build & Stage (PowerShell)
         shell: pwsh
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force
           ./build_scripts/build_for_windows.ps1
-
-      - name: Upload vcpkg logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vcpkg-logs
-          path: C:\vcpkg-logs\*
 
       - name: Create NSIS Installer (verbose)
         shell: pwsh
@@ -118,13 +104,10 @@ jobs:
       - name: Ensure installer in build/windows
         shell: pwsh
         run: |
-          # If NSIS wrote the installer into build_scripts\build\windows, copy it to build\windows where upload step expects it.
           if (Test-Path build_scripts\build\windows\FMGoalMusicInstaller.exe) {
             if (-not (Test-Path build\windows)) { New-Item -ItemType Directory -Path build\windows | Out-Null }
             Copy-Item build_scripts\build\windows\FMGoalMusicInstaller.exe -Destination build\windows -Force
-            Write-Host "Copied installer from build_scripts/build/windows -> build/windows"
-          } else {
-            Write-Host "No installer in build_scripts/build/windows; leaving existing build/windows as-is."
+            Write-Host "Copied installer to build/windows"
           }
 
       - name: Verify installer output
@@ -132,7 +115,6 @@ jobs:
         run: |
           if (-not (Test-Path "build/windows/FMGoalMusicInstaller.exe")) {
             Write-Error "FMGoalMusicInstaller.exe not found after makensis."
-            Get-ChildItem build/windows -Recurse | Format-Table Length, LastWriteTime, FullName
             exit 1
           }
 
@@ -142,21 +124,15 @@ jobs:
           name: FMGoalMusic-Windows
           path: |
             build/windows/FMGoalMusicInstaller.exe
-            build_scripts/build/windows/FMGoalMusicInstaller.exe
+            build/windows/fm-goal-musics-gui.exe
             build/windows/*
-
-      - name: Upload NSIS log on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: nsis-log
-          path: build_scripts/nsis.log
 
   release:
     name: Publish Release
-    needs: build
     runs-on: ubuntu-latest
+    # Build job optional hale geldi, release her durumda çalışabilir
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: [build]
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -167,6 +143,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: v${{ inputs.version || github.ref_name }}
+          name: "FM Goal Musics v${{ inputs.version || github.ref_name }}"
           files: |
             artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe
             artifacts/FMGoalMusic-Windows/fm-goal-musics-gui.exe
