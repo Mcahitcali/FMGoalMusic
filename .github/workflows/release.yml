@@ -16,12 +16,62 @@ jobs:
     name: Build Windows Release
     runs-on: self-hosted
     timeout-minutes: 180
+    env:
+      # Reduce parallelism to avoid OOM on low-RAM runners
+      CARGO_BUILD_JOBS: "1"
+      RUSTFLAGS: "-C codegen-units=1"
+      RUST_BACKTRACE: "1"
+      # Ensure vcpkg / libclang are visible to the job (adjust if your paths differ)
+      VCPKG_ROOT: "C:\\vcpkg"
+      LIBCLANG_PATH: "C:\\Program Files\\LLVM\\bin"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Ensure Bash (Git for Windows) is available
+        shell: pwsh
+        run: |
+          $candidates = @(
+            'C:\Program Files\Git\usr\bin',
+            'C:\Program Files\Git\bin',
+            'C:\Program Files (x86)\Git\usr\bin',
+            'C:\Program Files (x86)\Git\bin'
+          )
+          $found = $false
+          foreach ($d in $candidates) {
+            if (Test-Path (Join-Path $d 'bash.exe')) {
+              Write-Host "Found bash at $d"
+              Add-Content -Path $env:GITHUB_PATH -Value $d
+              $found = $true
+              break
+            }
+          }
+          if (-not $found) {
+            Write-Host "bash.exe not found in common locations; if you rely on bash in steps, install Git for Windows on runner."
+          }
+
+      - name: Debug env & vcpkg (one-run)
+        shell: pwsh
+        run: |
+          Write-Host "==== JOB ENV VARS ===="
+          Write-Host "CARGO_BUILD_JOBS: $env:CARGO_BUILD_JOBS"
+          Write-Host "RUSTFLAGS: $env:RUSTFLAGS"
+          Write-Host "RUST_BACKTRACE: $env:RUST_BACKTRACE"
+          Write-Host "VCPKG_ROOT: $env:VCPKG_ROOT"
+          Write-Host "LIBCLANG_PATH: $env:LIBCLANG_PATH"
+          Write-Host "==== PATH (first 20 entries) ===="
+          $env:PATH.Split(';')[0..19] -join "`n"
+          if (Test-Path 'C:\vcpkg\vcpkg.exe') {
+            Write-Host "==== vcpkg list (filtered) ===="
+            C:\vcpkg\vcpkg.exe list | Select-String -Pattern 'leptonica|tesseract|tiff' || Write-Host "vcpkg list ran but no matches"
+            Write-Host "==== installed folder sample ===="
+            Get-ChildItem 'C:\vcpkg\installed' -Depth 1 | Select-Object -First 40
+          } else {
+            Write-Host 'C:\vcpkg\vcpkg.exe not found'
+          }
 
       - name: Install Rust (stable + MSVC target)
         uses: dtolnay/rust-toolchain@stable
@@ -38,6 +88,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: Reduce cargo parallelism (safety)
+        shell: pwsh
+        run: |
+          echo "CARGO_BUILD_JOBS=1" >> $env:GITHUB_ENV
+          echo "RUSTFLAGS=-C codegen-units=1" >> $env:GITHUB_ENV
+          echo "Ensured job-level cargo parallelism envs"
 
       - name: Build & Stage (PowerShell)
         shell: pwsh
