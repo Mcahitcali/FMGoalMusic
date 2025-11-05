@@ -20,7 +20,7 @@ impl TesseractDetector {
     /// # Returns
     /// `Ok(TesseractDetector)` on success, or error if Tesseract initialization fails
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        log::info!("Initializing Tesseract OCR...");
+        tracing::info!("Initializing Tesseract OCR...");
 
         // Set up Tesseract data path for Windows bundled distribution
         Self::setup_tesseract_data_path()?;
@@ -32,8 +32,8 @@ impl TesseractDetector {
         // PSM 3 = Fully automatic page segmentation, but no OSD
         tess.set_variable(Variable::TesseditPagesegMode, "3")?;
 
-        log::info!("✓ Tesseract OCR initialized");
-        log::info!("  Mode: PSM_AUTO (searches entire image)");
+        tracing::info!("✓ Tesseract OCR initialized");
+        tracing::info!("  Mode: PSM_AUTO (searches entire image)");
 
         Ok(Self { tess })
     }
@@ -45,9 +45,9 @@ impl TesseractDetector {
             // Set TESSDATA_PREFIX to the current directory's tessdata folder
             if std::path::Path::new("./tessdata").exists() {
                 std::env::set_var("TESSDATA_PREFIX", "./");
-                log::info!("✓ Using bundled Tesseract data from ./tessdata");
+                tracing::info!("✓ Using bundled Tesseract data from ./tessdata");
             } else {
-                log::info!("⚠️  Bundled tessdata not found, falling back to system Tesseract");
+                tracing::info!("⚠️  Bundled tessdata not found, falling back to system Tesseract");
             }
         }
         Ok(())
@@ -72,7 +72,7 @@ impl TesseractDetector {
 
         // Log detected text for debugging
         if !text.is_empty() {
-            log::info!("[fm-goal-musics][ocr-detect] {}", text);
+            tracing::info!("[fm-goal-musics][ocr-detect] {}", text);
         }
 
         // Clean up
@@ -94,7 +94,7 @@ impl TesseractDetector {
 
             // Log detected text
             if !text.is_empty() {
-                log::info!("[fm-goal-musics][ocr-detect-alt-{}] {}", i, text);
+                tracing::info!("[fm-goal-musics][ocr-detect-alt-{}] {}", i, text);
             }
 
             // Clean up

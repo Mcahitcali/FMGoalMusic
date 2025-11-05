@@ -34,7 +34,7 @@ struct GithubRelease {
 ///
 /// Returns `UpdateCheckResult` enum with the outcome (update available, up-to-date, or error).
 pub fn check_for_updates() -> UpdateCheckResult {
-    log::info!("[update-checker] Checking for updates...");
+    tracing::info!("[update-checker] Checking for updates...");
 
     // GitHub API endpoint for latest release
     const API_URL: &str = "https://api.github.com/repos/Mcahitcali/FMGoalMusic/releases/latest";
@@ -49,7 +49,7 @@ pub fn check_for_updates() -> UpdateCheckResult {
     {
         Ok(resp) => resp,
         Err(_e) => {
-            log::error!("[update-checker] Network error: {}", _e);
+            tracing::error!("[update-checker] Network error: {}", _e);
             return UpdateCheckResult::Error { message: "Network Error".to_string() };
         }
     };
@@ -57,7 +57,7 @@ pub fn check_for_updates() -> UpdateCheckResult {
     // Check if response is successful
     if response.status() != 200 {
         let error_msg = format!("GitHub API returned status {}", response.status());
-        log::error!("[update-checker] {}", error_msg);
+        tracing::error!("[update-checker] {}", error_msg);
         return UpdateCheckResult::Error { message: error_msg };
     }
 
@@ -66,12 +66,12 @@ pub fn check_for_updates() -> UpdateCheckResult {
         Ok(r) => r,
         Err(e) => {
             let error_msg = format!("Failed to parse response: {}", e);
-            log::error!("[update-checker] {}", error_msg);
+            tracing::error!("[update-checker] {}", error_msg);
             return UpdateCheckResult::Error { message: error_msg };
         }
     };
 
-    log::info!("[update-checker] Latest release: {}", release.tag_name);
+    tracing::info!("[update-checker] Latest release: {}", release.tag_name);
 
     // Parse versions (remove 'v' prefix if present)
     let latest_version_str = release.tag_name.trim_start_matches('v');
@@ -85,7 +85,7 @@ pub fn check_for_updates() -> UpdateCheckResult {
         (Ok(latest), Ok(current)) => (latest, current),
         (Err(e), _) | (_, Err(e)) => {
             let error_msg = format!("Version parsing error: {}", e);
-            log::error!("[update-checker] {}", error_msg);
+            tracing::error!("[update-checker] {}", error_msg);
             return UpdateCheckResult::Error { message: error_msg };
         }
     };
@@ -95,7 +95,7 @@ pub fn check_for_updates() -> UpdateCheckResult {
                                 (latest_version.major == current_version.major && latest_version.minor > current_version.minor);
 
     if has_major_minor_update {
-        log::info!(
+        tracing::info!(
             "[update-checker] Update available: {} -> {} (major/minor change)",
             current_version_str,
             latest_version_str
@@ -107,7 +107,7 @@ pub fn check_for_updates() -> UpdateCheckResult {
             download_url: release.html_url,
         }
     } else {
-        log::info!("[update-checker] App is up to date for major/minor versions ({})", current_version_str);
+        tracing::info!("[update-checker] App is up to date for major/minor versions ({})", current_version_str);
         UpdateCheckResult::UpToDate {
             current_version: current_version_str.to_string(),
         }
@@ -118,7 +118,7 @@ pub fn check_for_updates() -> UpdateCheckResult {
 pub fn should_skip_version(latest_version: &str, skipped_version: &Option<String>) -> bool {
     if let Some(skipped) = skipped_version {
         if skipped == latest_version {
-            log::info!("[update-checker] Skipping version {} (user preference)", latest_version);
+            tracing::info!("[update-checker] Skipping version {} (user preference)", latest_version);
             return true;
         }
     }

@@ -36,6 +36,9 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 # Parallel processing for performance-critical code
 rayon = "1.10"
 
+# Regular expressions for text parsing
+regex = "1.10"
+
 # Platform directories
 dirs = "5.0"
 
@@ -52,10 +55,19 @@ open = "5.0"  # Open URLs in default browser
 # Hotkey listener
 rdev = "0.5"
 
+# Error handling
+anyhow = "1.0"      # Application errors with context
+thiserror = "1.0"   # Library errors with derives
+
 # Logging for production debugging
-log = "0.4"
-flexi_logger = "0.28"  # File logging with rotation
+tracing = "0.1"     # Structured logging with spans
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"  # File appender with daily rotation
 sysinfo = "0.30"
+
+# Concurrency primitives (better than std)
+crossbeam-channel = "0.5"  # Better channels than std::mpsc
+parking_lot = "0.12"       # Faster locks than std::sync
 
 # Application packaging
 [target.'cfg(target_os = "macos")'.dependencies]

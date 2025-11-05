@@ -1,0 +1,160 @@
+/// Team Selection view - Team picker and capture preview
+///
+/// Allows users to select a specific team for goal detection.
+
+use eframe::egui;
+use std::time::Instant;
+
+use crate::gui::state::save_capture_image;
+
+use super::super::FMGoalMusicsApp;
+
+/// Render the team selection tab
+pub fn render_team_selection(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
+    ui.separator();
+
+    // Team Selection section
+    ui.heading("⚽ Team Selection");
+
+    if let Some(ref db) = app.team_database {
+        ui.label("Select your team to play sound only for their goals:");
+
+        // League dropdown
+        let leagues = db.get_leagues();
+        let mut league_changed = false;
+
+        ui.horizontal(|ui| {
+            ui.label("League:");
+            egui::ComboBox::from_label("")
+                .selected_text(app.selected_league.as_deref().unwrap_or("-- Select League --"))
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(app.selected_league.is_none(), "-- Select League --").clicked() {
+                        app.selected_league = None;
+                        app.selected_team_key = None;
+                        league_changed = true;
+                    }
+                    for league in &leagues {
+                        if ui.selectable_label(app.selected_league.as_ref() == Some(league), league).clicked() {
+                            app.selected_league = Some(league.clone());
+                            app.selected_team_key = None;
+                            league_changed = true;
+                        }
+                    }
+                });
+        });
+
+        // Team dropdown (only if league is selected)
+        if let Some(ref league) = app.selected_league {
+            if let Some(teams) = db.get_teams(league) {
+                ui.horizontal(|ui| {
+                    ui.label("Team:");
+                    egui::ComboBox::from_label(" ")
+                        .selected_text(
+                            app.selected_team_key.as_ref()
+                                .and_then(|key| teams.iter().find(|(k, _)| k == key))
+                                .map(|(_, team)| team.display_name.as_str())
+                                .unwrap_or("-- Select Team --")
+                        )
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_label(app.selected_team_key.is_none(), "-- Select Team --").clicked() {
+                                app.selected_team_key = None;
+                                league_changed = true;
+                            }
+                            for (key, team) in &teams {
+                                if ui.selectable_label(app.selected_team_key.as_ref() == Some(key), &team.display_name).clicked() {
+                                    app.selected_team_key = Some(key.clone());
+                                    league_changed = true;
+                                }
+                            }
+                        });
+                });
+            }
+        }
+
+        // Update state and save if team selection changed
+        if league_changed {
+            let mut state = app.state.lock();
+
+            if let (Some(ref league), Some(ref team_key)) = (&app.selected_league, &app.selected_team_key) {
+                if let Some(team) = db.find_team(league, team_key) {
+                    state.selected_team = Some(crate::config::SelectedTeam {
+                        league: league.clone(),
+                        team_key: team_key.clone(),
+                        display_name: team.display_name.clone(),
+                    });
+                }
+            } else {
+                state.selected_team = None;
+            }
+
+            drop(state);
+            app.save_config();
+        }
+
+        // Display current selection
+        {
+            let state = app.state.lock();
+            if let Some(ref team) = state.selected_team {
+                ui.label(format!("✓ Selected: {} ({})", team.display_name, team.league));
+            } else {
+                ui.label("ℹ No team selected - will play for all goals");
+            }
+        }
+
+        if ui.button("🗑️ Clear Selection").clicked() {
+            app.selected_league = None;
+            app.selected_team_key = None;
+            let mut state = app.state.lock();
+            state.selected_team = None;
+            drop(state);
+            app.save_config();
+        }
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(5.0);
+
+        // Add New Team section
+        app.render_add_team_ui(ui);
+    } else {
+        ui.label("⚠ Team database not available");
+    }
+
+    ui.separator();
+
+    // Capture preview
+    app.refresh_capture_preview(ctx);
+    if let Some(texture) = &app.capture_preview.texture {
+        ui.group(|ui| {
+            ui.heading("📷 Capture Preview");
+            let aspect = texture.size()[0] as f32 / texture.size()[1] as f32;
+            let max_width = ui.available_width().min(400.0);
+            let desired_size = egui::Vec2::new(max_width, max_width / aspect);
+            ui.image(egui::load::SizedTexture::new(texture.id(), desired_size));
+
+            ui.horizontal(|ui| {
+                ui.label(format!(
+                    "Resolution: {}x{}",
+                    app.capture_preview.width, app.capture_preview.height
+                ));
+
+                if let Some(ts) = app.capture_preview.timestamp {
+                    let age = Instant::now().saturating_duration_since(ts);
+                    ui.label(format!("Age: {:.1}s", age.as_secs_f32()));
+                }
+
+                if ui.button("Save frame...").clicked() {
+                    if let Some(img) = &app.capture_preview.last_image {
+                        if let Err(e) = save_capture_image(img) {
+                            let mut st = app.state.lock();
+                            st.status_message = format!("Failed to save capture: {}", e);
+                        } else {
+                            let mut st = app.state.lock();
+                            st.status_message = "Saved capture preview to disk".to_string();
+                        }
+                    }
+                }
+            });
+        });
+    }
+}

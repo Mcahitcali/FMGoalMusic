@@ -1,0 +1,18 @@
+{
+  "language": "Türkçe",
+  "code": "tr",
+  "detection": {
+    "goal_phrases": [
+      "GOL!",
+      "Gol!"
+    ],
+    "kickoff_phrases": [
+      "Başlangıç",
+      "Maç Başlangıcı"
+    ],
+    "match_end_phrases": [
+      "Maç Sonu",
+      "MS"
+    ]
+  }
+}

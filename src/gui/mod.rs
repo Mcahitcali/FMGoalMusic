@@ -1,9 +1,13 @@
 // GUI module for FM Goal Musics
 //
 // This module contains the main GUI application logic.
-// State-related types are in the `state` submodule.
+// Transitioning to MVU (Model-View-Update) architecture.
 
 mod state;
+pub mod model;
+pub mod messages;
+pub mod update;
+pub mod views;
 
 // Re-export public types
 pub use state::{AppState, MusicEntry, ProcessState};
@@ -15,9 +19,10 @@ use eframe::egui;
 use image::ImageBuffer;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Sender};
+use parking_lot::Mutex;
+use crossbeam_channel::{self, unbounded, Sender, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -25,8 +30,10 @@ use crate::audio::AudioManager;
 use crate::audio_converter;
 use crate::capture::{CaptureManager, CaptureRegion};
 use crate::config::Config;
+use crate::messaging::{Event, EventBus};
 use crate::ocr::OcrManager;
 use crate::utils::Debouncer;
+use crate::wizard::{WizardFlow, WizardPersistence};
 
 // Region selector is implemented inline to avoid creating nested native
 // windows that can crash on some platforms when called from UI callbacks.
@@ -72,9 +79,24 @@ pub struct FMGoalMusicsApp {
     selected_team_key: Option<String>,
     active_tab: AppTab,
 
+    // Event system
+    event_bus: EventBus,
+    event_rx: Option<Receiver<Event>>,
+
+    // Wizard state
+    wizard_flow: Option<WizardFlow>,
+
     // Update checker fields
-    update_check_rx: Option<mpsc::Receiver<crate::update_checker::UpdateCheckResult>>,
+    update_check_rx: Option<Receiver<crate::update_checker::UpdateCheckResult>>,
     update_modal_state: Option<UpdateModalState>,
+
+    // Add team UI state
+    add_team_ui_open: bool,
+    new_team_name: String,
+    new_team_league: String,
+    new_team_variations: String,
+    use_existing_league: bool,
+    new_team_error: Option<String>,
 }
 
 impl FMGoalMusicsApp {
@@ -95,14 +117,36 @@ impl FMGoalMusicsApp {
         let team_database = match crate::teams::TeamDatabase::load() {
             Ok(db) => {
                 let db_path = crate::teams::TeamDatabase::database_path_display();
-                log::info!("[fm-goal-musics] Team database loaded successfully from: {}", db_path);
+                tracing::info!("[fm-goal-musics] Team database loaded successfully from: {}", db_path);
                 Some(db)
             }
             Err(e) => {
-                log::error!("[fm-goal-musics] ERROR: Failed to load team database: {}", e);
-                log::error!("[fm-goal-musics] Team selection will not be available.");
-                log::error!("[fm-goal-musics] Expected location: {}", crate::teams::TeamDatabase::database_path_display());
+                tracing::error!("[fm-goal-musics] ERROR: Failed to load team database: {}", e);
+                tracing::error!("[fm-goal-musics] Team selection will not be available.");
+                tracing::error!("[fm-goal-musics] Expected location: {}", crate::teams::TeamDatabase::database_path_display());
                 None
+            }
+        };
+
+        // Initialize event bus for pub/sub messaging
+        let event_bus = EventBus::new();
+        let (event_rx, _event_sub_id) = event_bus.subscribe();
+
+        // Load wizard state (show on first run, hide if previously completed)
+        let wizard_flow = match WizardPersistence::load() {
+            Ok(state) => {
+                if state.should_show() {
+                    tracing::info!("First run detected - wizard will be shown");
+                    Some(WizardFlow::from_state(state))
+                } else {
+                    tracing::debug!("Wizard previously completed");
+                    None
+                }
+            }
+            Err(_) => {
+                // No saved state = first run
+                tracing::info!("No wizard state found - first run detected");
+                Some(WizardFlow::new())
             }
         };
 
@@ -125,14 +169,23 @@ impl FMGoalMusicsApp {
             selected_league: None,
             selected_team_key: None,
             active_tab: AppTab::Library,
+            event_bus,
+            event_rx: Some(event_rx),
+            wizard_flow,
             update_check_rx: None,
             update_modal_state: None,
+            add_team_ui_open: false,
+            new_team_name: String::new(),
+            new_team_league: String::new(),
+            new_team_variations: String::new(),
+            use_existing_league: true,
+            new_team_error: None,
         };
 
         // Load config and restore music list
         match Config::load() {
             Ok(config) => {
-                let mut state = app.state.lock().expect("Failed to acquire state lock");
+                let mut state = app.state.lock();
                 state.capture_region = config.capture_region;
                 state.ocr_threshold = config.ocr_threshold;
                 state.debounce_ms = config.debounce_ms;
@@ -152,7 +205,7 @@ impl FMGoalMusicsApp {
                 // Initialize update checker if enabled
                 if config.auto_check_updates {
                     let skipped_version = config.skipped_version.clone();
-                    let (tx, rx) = mpsc::channel();
+                    let (tx, rx) = unbounded();
                     app.update_check_rx = Some(rx);
 
                     // Spawn background thread to check for updates
@@ -189,13 +242,13 @@ impl FMGoalMusicsApp {
                     }
                 }).collect();
                 
-                log::info!("✓ Loaded {} music files from config", state.music_list.len());
+                tracing::info!("✓ Loaded {} music files from config", state.music_list.len());
             }
             Err(e) => {
-                log::warn!("⚠ Failed to load config: {}", e);
+                tracing::warn!("⚠ Failed to load config: {}", e);
                 // Use default screen-based capture region
                 if let Some((screen_w, screen_h)) = screen_resolution {
-                    let mut state = app.state.lock().expect("Failed to acquire state lock during music refresh");
+                    let mut state = app.state.lock();
                     if state.capture_region == [0, 0, 200, 100] {
                         let capture_height = (screen_h / 4).max(1);
                         let capture_y = screen_h.saturating_sub(capture_height);
@@ -238,18 +291,18 @@ impl FMGoalMusicsApp {
     }
 
     fn start_region_selection(&mut self) {
-        log::info!("═══════════════════════════════════════════════════════");
-        log::info!("🎯 REGION SELECTION BUTTON CLICKED!");
-        log::info!("   Platform: {}", std::env::consts::OS);
-        log::info!("   Starting region selection process...");
-        log::info!("═══════════════════════════════════════════════════════");
+        tracing::info!("═══════════════════════════════════════════════════════");
+        tracing::info!("🎯 REGION SELECTION BUTTON CLICKED!");
+        tracing::info!("   Platform: {}", std::env::consts::OS);
+        tracing::info!("   Starting region selection process...");
+        tracing::info!("═══════════════════════════════════════════════════════");
 
         self.selecting_region = true;
         self.region_selector = Some(RegionSelectState::default());
         self.hide_window_for_capture = false;
         self.capture_delay_frames = 0;
 
-        log::info!("   ✓ Region selector state initialized");
+        tracing::info!("   ✓ Region selector state initialized");
     }
 
     fn stop_preview(&mut self) {
@@ -268,7 +321,7 @@ impl FMGoalMusicsApp {
         }
 
         let bytes = fs::read(path).map_err(|e| format!("Failed to read audio file '{}': {}", path.display(), e))?;
-        log::info!("✓ Preloaded audio file: {} ({} bytes)", path.display(), bytes.len());
+        tracing::info!("✓ Preloaded audio file: {} ({} bytes)", path.display(), bytes.len());
         let arc = Arc::new(bytes);
         self.cached_audio_data = Some((path.to_path_buf(), Arc::clone(&arc)));
         Ok(arc)
@@ -280,7 +333,7 @@ impl FMGoalMusicsApp {
         }
 
         let maybe_capture = {
-            let mut slot = self.latest_capture.lock().expect("Failed to acquire latest capture lock");
+            let mut slot = self.latest_capture.lock();
             slot.take()
         };
 
@@ -319,7 +372,7 @@ impl FMGoalMusicsApp {
     }
 
     fn save_config(&self) {
-        let state = self.state.lock().expect("Failed to acquire state lock");
+        let state = self.state.lock();
         
         let new_config = Config {
             capture_region: state.capture_region,
@@ -405,23 +458,23 @@ impl FMGoalMusicsApp {
         }
 
         if let Err(e) = new_config.save() {
-            log::warn!("⚠ Failed to save config: {}", e);
+            tracing::warn!("⚠ Failed to save config: {}", e);
         } else {
             if changes.is_empty() {
-                log::info!("✓ Config saved (no changes detected)");
+                tracing::info!("✓ Config saved (no changes detected)");
             } else {
-                log::info!("✓ Config saved with changes:");
+                tracing::info!("✓ Config saved with changes:");
                 for change in changes {
-                    log::info!("  - {}", change);
+                    tracing::info!("  - {}", change);
                 }
             }
         }
     }
 
     fn check_for_updates_manually(&mut self) {
-        log::info!("[update-checker] Manual update check requested");
+        tracing::info!("[update-checker] Manual update check requested");
 
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = unbounded();
         self.update_check_rx = Some(rx);
 
         // Spawn background thread to check for updates
@@ -437,7 +490,7 @@ impl FMGoalMusicsApp {
         let final_path = match audio_converter::convert_to_wav(&path) {
             Ok(wav_path) => wav_path,
             Err(e) => {
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
+                let mut state = self.state.lock();
                 state.status_message = format!("Failed to convert audio: {}", e);
                 return;
             }
@@ -448,7 +501,7 @@ impl FMGoalMusicsApp {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let mut state = self.state.lock().expect("Failed to acquire state lock");
+        let mut state = self.state.lock();
         state.music_list.push(MusicEntry {
             name,
             path: final_path,
@@ -467,7 +520,7 @@ impl FMGoalMusicsApp {
         }
 
 let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms, selected_monitor_index) = {
-            let mut state = self.state.lock().expect("Failed to acquire state lock");
+            let mut state = self.state.lock();
 
             if state.process_state != ProcessState::Stopped {
                 state.status_message = "Already running!".to_string();
@@ -503,7 +556,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             let ambiance_length_ms = state.ambiance_length_ms;
             let selected_monitor_index = state.selected_monitor_index;
 
-            log::info!(
+            tracing::info!(
                 "[fm-goal-musics] Starting detection\n  music='{}'\n  region=[{}, {}, {}, {}]\n  ocr_threshold={}\n  debounce_ms={}\n  morph_open={}",
                 entry.name,
                 capture_region[0], capture_region[1], capture_region[2], capture_region[3],
@@ -513,12 +566,22 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             );
 
             if let Some(ref team) = selected_team {
-                log::info!("  team_selection={} ({})", team.display_name, team.league);
+                tracing::info!("  team_selection={} ({})", team.display_name, team.league);
             }
 
-            state.process_state = ProcessState::Running;
+            let old_state = state.process_state;
+            let new_state = ProcessState::Running {
+                since: Instant::now(),
+            };
+            state.process_state = new_state;
             state.status_message = format!("Starting detection with '{}'", entry.name);
             state.detection_count = 0;
+
+            // Publish ProcessStateChanged event
+            self.event_bus.publish(Event::ProcessStateChanged {
+                old_state,
+                new_state,
+            });
 
 (entry.path.clone(), entry.name.clone(), capture_region, ocr_threshold, debounce_ms, enable_morph_open, selected_team, music_volume, ambiance_volume, ambiance_path, ambiance_enabled, music_length_ms, ambiance_length_ms, selected_monitor_index)
         };
@@ -526,7 +589,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
         let audio_data = match self.get_or_load_audio_data(&music_path) {
             Ok(data) => data,
             Err(err) => {
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
+                let mut state = self.state.lock();
                 state.status_message = err;
                 state.process_state = ProcessState::Stopped;
                 return;
@@ -538,11 +601,11 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             if let Some(ref path) = ambiance_path {
                 match std::fs::read(path) {
                     Ok(bytes) => {
-                        log::info!("[fm-goal-musics] Preloaded ambiance sound: {} ({} bytes)", path, bytes.len());
+                        tracing::info!("[fm-goal-musics] Preloaded ambiance sound: {} ({} bytes)", path, bytes.len());
                         Some(Arc::new(bytes))
                     },
                     Err(e) => {
-                        log::warn!("[fm-goal-musics] Warning: Failed to read ambiance file: {}", e);
+                        tracing::warn!("[fm-goal-musics] Warning: Failed to read ambiance file: {}", e);
                         None
                     }
                 }
@@ -556,12 +619,13 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
         let state_clone = Arc::clone(&self.state);
         let latest_capture = Arc::clone(&self.latest_capture);
         let capture_dirty = Arc::clone(&self.capture_dirty);
-        let (cmd_tx, cmd_rx) = mpsc::channel();
+        let event_bus = self.event_bus.clone();
+        let (cmd_tx, cmd_rx) = unbounded();
         self.detection_cmd_tx = Some(cmd_tx);
 
         let handle = thread::spawn(move || {
             let notify_error = |message: String| {
-                let mut st = state_clone.lock().expect("Failed to acquire state lock");
+                let mut st = state_clone.lock();
                 st.status_message = message;
                 st.process_state = ProcessState::Stopped;
             };
@@ -582,11 +646,11 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 match AudioManager::from_preloaded(Arc::clone(data)) {
                     Ok(manager) => {
                         manager.set_volume(ambiance_volume);
-                        log::info!("[fm-goal-musics] Ambiance audio manager initialized");
+                        tracing::info!("[fm-goal-musics] Ambiance audio manager initialized");
                         Some(manager)
                     },
                     Err(e) => {
-                        log::warn!("[fm-goal-musics] Warning: Failed to initialize ambiance manager: {}", e);
+                        tracing::warn!("[fm-goal-musics] Warning: Failed to initialize ambiance manager: {}", e);
                         None
                     }
                 }
@@ -616,19 +680,19 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     Ok(db) => {
                         match db.find_team(&sel_team.league, &sel_team.team_key) {
                             Some(team) => {
-                                log::info!("[fm-goal-musics] Team matcher initialized for: {}", sel_team.display_name);
+                                tracing::info!("[fm-goal-musics] Team matcher initialized for: {}", sel_team.display_name);
                                 Some(crate::team_matcher::TeamMatcher::new(&team))
                             }
                             None => {
-                                log::warn!("[fm-goal-musics] Warning: Selected team not found in database");
+                                tracing::warn!("[fm-goal-musics] Warning: Selected team not found in database");
                                 None
                             }
                         }
                     }
                     Err(e) => {
-                        log::error!("[fm-goal-musics] ERROR: Failed to load team database in detection thread: {}", e);
-                        log::error!("[fm-goal-musics] Team-specific goal detection will not work.");
-                        log::error!("[fm-goal-musics] Check that teams.json exists at: {}", crate::teams::TeamDatabase::database_path_display());
+                        tracing::error!("[fm-goal-musics] ERROR: Failed to load team database in detection thread: {}", e);
+                        tracing::error!("[fm-goal-musics] Team-specific goal detection will not work.");
+                        tracing::error!("[fm-goal-musics] Check that teams.json exists at: {}", crate::teams::TeamDatabase::database_path_display());
                         None
                     }
                 }
@@ -640,7 +704,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
             let mut last_detection_time: Option<std::time::Instant> = None;
 
             {
-                let mut st = state_clone.lock().expect("Failed to acquire state lock");
+                let mut st = state_clone.lock();
                 if team_matcher.is_some() {
                     st.status_message = format!("Monitoring for goals by selected team... Playing '{}' when detected", music_name);
                 } else {
@@ -653,24 +717,24 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     match cmd {
                         DetectionCommand::StopAudio => {
                             audio_manager.stop();
-                            let mut st = state_clone.lock().expect("Failed to acquire state lock");
+                            let mut st = state_clone.lock();
                             st.status_message = "Goal audio stopped".to_string();
                         }
                     }
                 }
 
                 let process_state = {
-                    let state = state_clone.lock().expect("Failed to acquire state lock");
+                    let state = state_clone.lock();
                     state.process_state
                 };
 
                 match process_state {
                     ProcessState::Stopped => break,
-                    ProcessState::Paused => {
+                    ProcessState::Starting | ProcessState::Stopping => {
                         thread::sleep(Duration::from_millis(120));
                         continue;
                     }
-                    ProcessState::Running => {}
+                    ProcessState::Running { .. } => {}
                 }
 
                 // Skip expensive capture/OCR during debounce cooldown
@@ -694,37 +758,37 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                 };
 
                 {
-                    let mut slot = latest_capture.lock().expect("Failed to acquire state lock");
+                    let mut slot = latest_capture.lock();
                     *slot = Some((image.clone(), std::time::Instant::now()));
                     capture_dirty.store(true, Ordering::SeqCst);
                 }
 
                 // Perform OCR - use team detection if team matcher is available
-                let should_play_sound = if let Some(ref matcher) = team_matcher {
+                let (should_play_sound, detected_team_opt) = if let Some(ref matcher) = team_matcher {
                     // Team selection enabled - extract and match team name
                     match ocr_manager.detect_goal_with_team(&image) {
                         Ok(Some(detected_team)) => {
                             if matcher.matches(&detected_team) {
-                                log::info!("[fm-goal-musics] 🎯 GOAL FOR SELECTED TEAM: {}", detected_team);
-                                true
+                                tracing::info!("[fm-goal-musics] 🎯 GOAL FOR SELECTED TEAM: {}", detected_team);
+                                (true, selected_team.clone())
                             } else {
-                                log::info!("[fm-goal-musics] Goal detected for: {} (not selected team)", detected_team);
-                                false
+                                tracing::info!("[fm-goal-musics] Goal detected for: {} (not selected team)", detected_team);
+                                (false, None)
                             }
                         }
-                        Ok(None) => false,
+                        Ok(None) => (false, None),
                         Err(e) => {
-                            log::error!("[fm-goal-musics] OCR error: {}", e);
-                            false
+                            tracing::error!("[fm-goal-musics] OCR error: {}", e);
+                            (false, None)
                         }
                     }
                 } else {
                     // No team selection - use original detection
                     match ocr_manager.detect_goal(&image) {
-                        Ok(detected) => detected,
+                        Ok(detected) => (detected, None),
                         Err(e) => {
-                            log::error!("[fm-goal-musics] OCR error: {}", e);
-                            false
+                            tracing::error!("[fm-goal-musics] OCR error: {}", e);
+                            (false, None)
                         }
                     }
                 };
@@ -737,12 +801,12 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                     if let Some(ref ambiance) = ambiance_manager {
                         if ambiance_length_ms > 0 {
                             if let Err(e) = ambiance.play_sound_with_fade_and_limit(200, ambiance_length_ms) {
-                                log::error!("[fm-goal-musics] Failed to play ambiance: {}", e);
+                                tracing::error!("[fm-goal-musics] Failed to play ambiance: {}", e);
                             }
                         } else {
                             // No length limit, use regular fade-in
                             if let Err(e) = ambiance.play_sound_with_fade(200) {
-                                log::error!("[fm-goal-musics] Failed to play ambiance: {}", e);
+                                tracing::error!("[fm-goal-musics] Failed to play ambiance: {}", e);
                             }
                         }
                     }
@@ -757,7 +821,7 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
 
                     match music_result {
                         Ok(()) => {
-                            let mut st = state_clone.lock().expect("Failed to acquire state lock");
+                            let mut st = state_clone.lock();
                             st.detection_count += 1;
                             let ambiance_msg = if ambiance_manager.is_some() {
                                 " + crowd cheer"
@@ -770,10 +834,16 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
                                 ambiance_msg,
                                 st.detection_count
                             );
+
+                            // Publish GoalDetected event
+                            event_bus.publish(Event::GoalDetected {
+                                team: detected_team_opt,
+                                timestamp: std::time::Instant::now(),
+                            });
                         }
                         Err(e) => {
-                            log::error!("[fm-goal-musics] Failed to play music: {}", e);
-                            let mut st = state_clone.lock().expect("Failed to acquire state lock");
+                            tracing::error!("[fm-goal-musics] Failed to play music: {}", e);
+                            let mut st = state_clone.lock();
                             st.status_message = format!("Failed to play music: {}", e);
                         }
                     }
@@ -789,32 +859,564 @@ let (music_path, music_name, capture_region, ocr_threshold, debounce_ms, enable_
     fn stop_detection(&mut self) {
         self.detection_cmd_tx = None;
         self.stop_preview();
-        let mut state = self.state.lock().expect("Failed to acquire state lock");
+        let mut state = self.state.lock();
         state.process_state = ProcessState::Stopped;
         state.status_message = "Stopped".to_string();
         drop(state);
     }
 
-    fn pause_detection(&mut self) {
-        let mut state = self.state.lock().expect("Failed to acquire state lock");
-        if state.process_state == ProcessState::Running {
-            state.process_state = ProcessState::Paused;
-            state.status_message = "Paused".to_string();
-        } else if state.process_state == ProcessState::Paused {
-            state.process_state = ProcessState::Running;
-            state.status_message = "Resumed".to_string();
-        }
-    }
+//     fn pause_detection(&mut self) {
+//         let mut state = self.state.lock();
+//         if matches!(state.process_state, ProcessState::Running { .. }) {
+//             state.process_state = ProcessState::Paused;
+//             state.status_message = "Paused".to_string();
+//         } else if state.process_state == ProcessState::Paused {
+//             state.process_state = ProcessState::Running;
+//             state.status_message = "Resumed".to_string();
+//         }
+//     }
 
     fn stop_detection_audio(&mut self) {
         if let Some(tx) = &self.detection_cmd_tx {
             let _ = tx.send(DetectionCommand::StopAudio);
         }
     }
+
+    /// Handle events from the event bus
+    fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::GoalDetected { team, timestamp } => {
+                tracing::info!(
+                    "[Event] Goal detected at {:?} for team: {:?}",
+                    timestamp,
+                    team.as_ref().map(|t| &t.display_name)
+                );
+                // GUI state is already updated by the detection thread
+                // This event can be used for additional UI feedback, logging, etc.
+            }
+            Event::ProcessStateChanged {
+                old_state,
+                new_state,
+            } => {
+                tracing::info!("[Event] Process state changed: {:?} -> {:?}", old_state, new_state);
+                // State already updated by start_detection/stop_detection
+            }
+            Event::ConfigChanged { field } => {
+                tracing::info!("[Event] Config changed: {:?}", field);
+            }
+            Event::ErrorOccurred { message, context } => {
+                tracing::error!("[Event] Error in {}: {}", context, message);
+            }
+            Event::Shutdown => {
+                tracing::info!("[Event] Shutdown requested");
+            }
+            _ => {
+                // Other events (MatchStarted, MatchEnded, MusicSelected, etc.)
+                tracing::debug!("[Event] Received event: {}", event.description());
+            }
+        }
+    }
+
+    /// Render the wizard modal with multi-step pages
+    fn render_wizard(&mut self, ctx: &egui::Context, wizard: &mut WizardFlow) {
+        use crate::wizard::steps::WizardStep;
+
+        let mut close_wizard = false;
+        let current_step = wizard.current_step();
+
+        egui::Window::new(format!("🎉 {}", current_step.title()))
+            .collapsible(false)
+            .resizable(false)
+            .default_width(700.0)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                // Progress indicator
+                ui.horizontal(|ui| {
+                    ui.label(format!(
+                        "Step {} of {}",
+                        current_step.number(),
+                        WizardStep::total_steps()
+                    ));
+                });
+                ui.separator();
+                ui.add_space(10.0);
+
+                // Render current step content
+                match current_step {
+                    WizardStep::Welcome => {
+                        self.render_wizard_welcome(ui);
+                    }
+                    WizardStep::Permissions => {
+                        self.render_wizard_permissions(ui);
+                    }
+                    WizardStep::DisplaySelection => {
+                        self.render_wizard_display_selection(ui);
+                    }
+                    WizardStep::TeamSelection => {
+                        self.render_wizard_team_selection(ui);
+                    }
+                    WizardStep::AudioSetup => {
+                        self.render_wizard_audio_setup(ui);
+                    }
+                    WizardStep::Complete => {
+                        self.render_wizard_complete(ui);
+                    }
+                    WizardStep::RegionSetup => {
+                        // Skipped - should not be reached
+                        ui.label("This step is skipped (default settings work great!)");
+                    }
+                }
+
+                ui.add_space(20.0);
+                ui.separator();
+
+                // Navigation buttons
+                ui.horizontal(|ui| {
+                    // Back button
+                    if wizard.can_go_back() {
+                        if ui.button("⬅ Back").clicked() {
+                            wizard.back();
+                        }
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Next/Finish button
+                        if current_step == WizardStep::Complete {
+                            if ui.button("✅ Finish").clicked() {
+                                wizard.complete();
+                                if let Err(e) = WizardPersistence::save(wizard.state()) {
+                                    tracing::error!("Failed to save wizard state: {}", e);
+                                }
+                                close_wizard = true;
+                            }
+                        } else {
+                            if ui.button("Next ➜").clicked() {
+                                wizard.next();
+                                if let Err(e) = WizardPersistence::save(wizard.state()) {
+                                    tracing::error!("Failed to save wizard state: {}", e);
+                                }
+                            }
+                        }
+
+                        // Skip button for skippable steps
+                        if wizard.can_skip() {
+                            if ui.button("Skip").clicked() {
+                                wizard.skip();
+                            }
+                        }
+                    });
+                });
+            });
+
+        if close_wizard {
+            self.wizard_flow = None;
+        }
+    }
+
+    fn render_wizard_welcome(&self, ui: &mut egui::Ui) {
+        ui.heading("Welcome to FM Goal Musics! 🎵⚽");
+        ui.add_space(10.0);
+
+        ui.label("Transform your Football Manager experience with automatic goal music!");
+        ui.add_space(10.0);
+
+        ui.label("✨ Features:");
+        ui.label("  • Automatic goal detection");
+        ui.label("  • Custom music for your team's goals");
+        ui.label("  • Crowd cheer effects");
+        ui.label("  • Multi-language support");
+        ui.add_space(10.0);
+
+        ui.label("This quick setup wizard will help you get started in just a few steps.");
+    }
+
+    fn render_wizard_permissions(&self, ui: &mut egui::Ui) {
+        #[cfg(target_os = "macos")]
+        {
+            ui.heading("Screen Recording Permission 📸");
+            ui.add_space(10.0);
+
+            ui.label("FM Goal Musics needs permission to capture your screen to detect goals.");
+            ui.add_space(10.0);
+
+            ui.colored_label(egui::Color32::from_rgb(255, 165, 0), "⚠ Important:");
+            ui.label("1. macOS will show a permission dialog");
+            ui.label("2. Grant 'Screen Recording' permission");
+            ui.label("3. You may need to restart the app after granting permission");
+            ui.add_space(10.0);
+
+            ui.label("💡 This permission allows the app to monitor the Football Manager");
+            ui.label("   window for goal notifications. Your privacy is protected - the app");
+            ui.label("   only captures the small region where goal text appears.");
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            ui.label("No permissions needed on your platform!");
+        }
+    }
+
+    fn render_wizard_display_selection(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Select Display Monitor 🖥️");
+        ui.add_space(10.0);
+
+        // Get available monitors
+        let monitor_count = xcap::Monitor::all()
+            .map(|monitors| monitors.len())
+            .unwrap_or(1);
+
+        if monitor_count <= 1 {
+            ui.label("✅ Only one monitor detected - using primary display.");
+            ui.add_space(10.0);
+            ui.label("💡 You can skip this step and continue to the next one.");
+        } else {
+            ui.label(format!("Detected {} monitors on your system.", monitor_count));
+            ui.add_space(10.0);
+
+            ui.label("Which monitor is running Football Manager?");
+            ui.add_space(10.0);
+
+            let mut state = self.state.lock();
+            let prev_index = state.selected_monitor_index;
+
+            // Show monitor selection with visual cards
+            ui.horizontal(|ui| {
+                for i in 0..monitor_count {
+                    let is_selected = state.selected_monitor_index == i;
+                    let label = if i == 0 {
+                        format!("Monitor {} (Primary)", i + 1)
+                    } else {
+                        format!("Monitor {}", i + 1)
+                    };
+
+                    // Create a selectable button-like card
+                    let response = ui.selectable_label(is_selected, &label);
+                    if response.clicked() {
+                        state.selected_monitor_index = i;
+                    }
+                }
+            });
+
+            ui.add_space(10.0);
+            ui.label(format!("Currently selected: Monitor {} ({})",
+                state.selected_monitor_index + 1,
+                if state.selected_monitor_index == 0 { "Primary" } else { "Secondary" }));
+
+            // Save config if changed
+            if state.selected_monitor_index != prev_index {
+                drop(state);
+                self.save_config();
+            }
+
+            ui.add_space(10.0);
+            ui.label("💡 The app will capture goal notifications from this monitor.");
+            ui.label("   You can always change this later in Settings.");
+        }
+    }
+
+    fn render_wizard_team_selection(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Select Your Team (Optional) ⚽");
+        ui.add_space(10.0);
+
+        ui.label("Choose your favorite team to play music only when they score.");
+        ui.label("You can skip this and set it up later, or leave it unselected to");
+        ui.label("play music for all goals.");
+        ui.add_space(10.0);
+
+        if self.team_database.is_some() {
+            let db = self.team_database.as_ref().unwrap();
+            // Simple league/team selection
+            let leagues = db.get_leagues();
+
+            ui.horizontal(|ui| {
+                ui.label("League:");
+                egui::ComboBox::from_label("")
+                    .selected_text(self.selected_league.as_deref().unwrap_or("-- Select League --"))
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(self.selected_league.is_none(), "-- None --").clicked() {
+                            self.selected_league = None;
+                            self.selected_team_key = None;
+                        }
+                        for league in &leagues {
+                            if ui.selectable_label(self.selected_league.as_ref() == Some(league), league).clicked() {
+                                self.selected_league = Some(league.clone());
+                                self.selected_team_key = None;
+                            }
+                        }
+                    });
+            });
+
+            if let Some(ref league) = self.selected_league {
+                if let Some(teams) = db.get_teams(league) {
+                    ui.horizontal(|ui| {
+                        ui.label("Team:");
+                        egui::ComboBox::from_label(" ")
+                            .selected_text(
+                                self.selected_team_key.as_ref()
+                                    .and_then(|key| teams.iter().find(|(k, _)| k == key))
+                                    .map(|(_, team)| team.display_name.as_str())
+                                    .unwrap_or("-- Select Team --")
+                            )
+                            .show_ui(ui, |ui| {
+                                for (key, team) in &teams {
+                                    if ui.selectable_label(self.selected_team_key.as_ref() == Some(key), &team.display_name).clicked() {
+                                        self.selected_team_key = Some(key.clone());
+                                    }
+                                }
+                            });
+                    });
+                }
+            }
+
+            ui.add_space(5.0);
+            if let (Some(league), Some(team_key)) = (&self.selected_league, &self.selected_team_key) {
+                if let Some(team) = db.find_team(league, team_key) {
+                    ui.colored_label(egui::Color32::GREEN, format!("✓ Selected: {} ({})", team.display_name, league));
+                }
+            }
+
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(5.0);
+
+            // Add New Team section
+            self.render_add_team_ui(ui);
+        } else {
+            ui.colored_label(egui::Color32::RED, "⚠ Team database not available");
+        }
+    }
+
+    fn render_wizard_audio_setup(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Add Your Music 🎵");
+        ui.add_space(10.0);
+
+        ui.label("Add at least one music file to celebrate goals!");
+        ui.label("Supported formats: MP3, WAV, OGG");
+        ui.add_space(10.0);
+
+        ui.horizontal(|ui| {
+            if ui.button("➕ Add Music File").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Audio", &["mp3", "wav", "ogg"])
+                    .pick_file()
+                {
+                    self.add_music_file(path);
+                }
+            }
+        });
+
+        ui.add_space(10.0);
+
+        // Show current music list
+        let state = self.state.lock();
+        if state.music_list.is_empty() {
+            ui.colored_label(egui::Color32::from_rgb(255, 165, 0), "No music files added yet");
+        } else {
+            ui.label(format!("✓ {} music file(s) added", state.music_list.len()));
+            for entry in &state.music_list {
+                ui.label(format!("  • {}", entry.name));
+            }
+        }
+    }
+
+    fn render_wizard_complete(&self, ui: &mut egui::Ui) {
+        ui.heading("You're All Set! 🎉");
+        ui.add_space(10.0);
+
+        ui.label("FM Goal Musics is ready to make your Football Manager");
+        ui.label("experience more exciting!");
+        ui.add_space(15.0);
+
+        ui.label("📋 Quick Start:");
+        ui.label("  1. Add music files in the Library tab (if you haven't already)");
+        ui.label("  2. Configure capture region in Settings tab");
+        ui.label("  3. Click '▶️ Start Detection' button");
+        ui.label("  4. Play Football Manager and enjoy!");
+        ui.add_space(15.0);
+
+        ui.label("💡 Need help? Check the Help tab for detailed instructions.");
+    }
+
+    fn render_add_team_ui(&mut self, ui: &mut egui::Ui) {
+        ui.collapsing("➕ Add New Team", |ui| {
+            ui.add_space(5.0);
+
+            if let Some(ref db) = self.team_database {
+                // League selection/input
+                ui.horizontal(|ui| {
+                    ui.label("League:");
+                    if ui.radio(self.use_existing_league, "Existing").clicked() {
+                        self.use_existing_league = true;
+                        self.new_team_error = None;
+                    }
+                    if ui.radio(!self.use_existing_league, "New").clicked() {
+                        self.use_existing_league = false;
+                        self.new_team_error = None;
+                    }
+                });
+
+                if self.use_existing_league {
+                    // Select from existing leagues
+                    let leagues = db.get_leagues();
+                    egui::ComboBox::from_label("Select League")
+                        .selected_text(if self.new_team_league.is_empty() {
+                            "-- Select League --"
+                        } else {
+                            &self.new_team_league
+                        })
+                        .show_ui(ui, |ui| {
+                            for league in &leagues {
+                                if ui.selectable_label(&self.new_team_league == league, league).clicked() {
+                                    self.new_team_league = league.clone();
+                                    self.new_team_error = None;
+                                }
+                            }
+                        });
+                } else {
+                    // Input new league name
+                    ui.horizontal(|ui| {
+                        ui.label("New League Name:");
+                        if ui.text_edit_singleline(&mut self.new_team_league).changed() {
+                            self.new_team_error = None;
+                        }
+                    });
+                }
+
+                ui.add_space(5.0);
+
+                // Team name input
+                ui.horizontal(|ui| {
+                    ui.label("Team Name:");
+                    if ui.text_edit_singleline(&mut self.new_team_name).changed() {
+                        self.new_team_error = None;
+                    }
+                });
+
+                ui.add_space(5.0);
+
+                // Variations input
+                ui.label("Variations (one per line, optional):");
+                ui.label("💡 Add alternative names/spellings for better detection");
+                let variations_response = egui::TextEdit::multiline(&mut self.new_team_variations)
+                    .desired_rows(3)
+                    .desired_width(ui.available_width())
+                    .hint_text("e.g.\nMan Utd\nMan United\nMUFC")
+                    .show(ui);
+                if variations_response.response.changed() {
+                    self.new_team_error = None;
+                }
+
+                ui.add_space(5.0);
+
+                // Show error if any
+                if let Some(ref error) = self.new_team_error {
+                    ui.colored_label(egui::Color32::RED, format!("⚠ {}", error));
+                    ui.add_space(5.0);
+                }
+
+                // Add button
+                ui.horizontal(|ui| {
+                    if ui.button("➕ Add Team").clicked() {
+                        self.handle_add_team();
+                    }
+
+                    if ui.button("🔄 Clear").clicked() {
+                        self.new_team_name.clear();
+                        self.new_team_league.clear();
+                        self.new_team_variations.clear();
+                        self.use_existing_league = true;
+                        self.new_team_error = None;
+                    }
+                });
+            } else {
+                ui.colored_label(egui::Color32::RED, "⚠ Team database not available");
+            }
+        });
+    }
+
+    fn handle_add_team(&mut self) {
+        // Validate inputs
+        if self.new_team_name.trim().is_empty() {
+            self.new_team_error = Some("Team name cannot be empty".to_string());
+            return;
+        }
+
+        if self.new_team_league.trim().is_empty() {
+            self.new_team_error = Some("League must be selected or entered".to_string());
+            return;
+        }
+
+        if let Some(ref mut db) = self.team_database {
+            let team_key = crate::slug::slugify(&self.new_team_name);
+            let league_name = self.new_team_league.trim().to_string();
+
+            // Parse variations from text area (one per line)
+            let mut variations: Vec<String> = self.new_team_variations
+                .lines()
+                .map(|line| line.trim())
+                .filter(|line| !line.is_empty())
+                .map(|line| line.to_string())
+                .collect();
+
+            // Always include the team name itself as a variation
+            let team_name = self.new_team_name.trim().to_string();
+            if !variations.contains(&team_name) {
+                variations.insert(0, team_name.clone());
+            }
+
+            // If no variations were provided, use team name as the only variation
+            if variations.is_empty() {
+                variations.push(team_name.clone());
+            }
+
+            // Create the new team
+            let team = crate::teams::Team {
+                display_name: team_name,
+                variations,
+            };
+
+            // Add the team
+            match db.add_team(league_name.clone(), team_key.clone(), team) {
+                Ok(()) => {
+                    // Save the database
+                    if let Err(e) = db.save() {
+                        self.new_team_error = Some(format!("Failed to save: {}", e));
+                        tracing::error!("[teams] Failed to save team database: {}", e);
+                        return;
+                    }
+
+                    // Select the newly added team
+                    self.selected_league = Some(league_name);
+                    self.selected_team_key = Some(team_key);
+
+                    // Clear the form
+                    self.new_team_name.clear();
+                    self.new_team_league.clear();
+                    self.new_team_variations.clear();
+                    self.new_team_error = None;
+
+                    tracing::info!("[teams] Successfully added team and saved database");
+                }
+                Err(e) => {
+                    self.new_team_error = Some(e);
+                }
+            }
+        }
+    }
 }
 
 impl eframe::App for FMGoalMusicsApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Process events from event bus
+        let events: Vec<Event> = if let Some(rx) = &self.event_rx {
+            rx.try_iter().collect()
+        } else {
+            Vec::new()
+        };
+        for event in events {
+            self.handle_event(event);
+        }
+
         // Check for update results from background thread
         if let Some(rx) = &self.update_check_rx {
             if let Ok(result) = rx.try_recv() {
@@ -838,6 +1440,15 @@ impl eframe::App for FMGoalMusicsApp {
                         UpdateModalState::Error { message }
                     }
                 });
+            }
+        }
+
+        // Render first-run wizard if needed
+        if let Some(mut wizard) = self.wizard_flow.take() {
+            self.render_wizard(ctx, &mut wizard);
+            // Put it back unless completed
+            if !wizard.is_completed() {
+                self.wizard_flow = Some(wizard);
             }
         }
 
@@ -890,7 +1501,7 @@ impl eframe::App for FMGoalMusicsApp {
                             ui.horizontal(|ui| {
                                 if ui.button("📥 Download Update").clicked() {
                                     if let Err(e) = open::that(download_url) {
-                                        log::error!("[update-checker] Failed to open browser: {}", e);
+                                        tracing::error!("[update-checker] Failed to open browser: {}", e);
                                     }
                                     close_modal = true;
                                 }
@@ -960,7 +1571,7 @@ impl eframe::App for FMGoalMusicsApp {
             // Handle modal actions outside the closure
             if skip_version {
                 if let Some(version) = latest_version_to_skip {
-                    let mut state = self.state.lock().expect("Failed to acquire state lock");
+                    let mut state = self.state.lock();
                     state.skipped_version = Some(version);
                     drop(state);
                     self.save_config();
@@ -975,13 +1586,13 @@ impl eframe::App for FMGoalMusicsApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // Batch read state once per frame to minimize lock contention
             let (is_stopped, is_running, status_color, status_message, detection_count) = {
-                let state = self.state.lock().expect("Failed to acquire state lock");
+                let state = self.state.lock();
                 let is_stopped = state.process_state == ProcessState::Stopped;
-                let is_running = state.process_state == ProcessState::Running;
+                let is_running = matches!(state.process_state, ProcessState::Running { .. });
                 let status_color = match state.process_state {
-                    ProcessState::Running => egui::Color32::GREEN,
-                    ProcessState::Paused => egui::Color32::YELLOW,
+                    ProcessState::Running { .. } => egui::Color32::GREEN,
                     ProcessState::Stopped => egui::Color32::RED,
+                    ProcessState::Starting | ProcessState::Stopping => egui::Color32::YELLOW,
                 };
                 (is_stopped, is_running, status_color, state.status_message.clone(), state.detection_count)
             };
@@ -1034,610 +1645,47 @@ impl eframe::App for FMGoalMusicsApp {
 
             // Library tab
             if self.active_tab == AppTab::Library {
-                ui.heading("🎵 Music Files");
-                
-                ui.horizontal(|ui| {
-                    if ui.button("➕ Add Music File").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Audio", &["mp3", "wav", "ogg"])
-                            .pick_file()
-                        {
-                            self.add_music_file(path);
-                        }
-                    }
-                    
-                    if ui.button("🗑️ Remove Selected").clicked() {
-                        let mut state = self.state.lock().expect("Failed to acquire state lock");
-                        if let Some(idx) = state.selected_music_index {
-                            state.music_list.remove(idx);
-                            state.selected_music_index = None;
-                        }
-                        drop(state);
-                        self.stop_preview();
-                        self.save_config();
-                    }
-
-                    // Preview button
-                    let preview_active = self.preview_playing;
-                    let preview_label = if preview_active {
-                        "🔇 Stop Preview"
-                    } else {
-                        "▶️ Preview"
-                    };
-
-                    if ui.button(preview_label).clicked() {
-                        if preview_active {
-                            self.stop_preview();
-                        } else {
-                            let selected_path = {
-                                let state = self.state.lock().expect("Failed to acquire state lock");
-                                state
-                                    .selected_music_index
-                                    .and_then(|idx| state.music_list.get(idx))
-                                    .map(|entry| entry.path.clone())
-                            };
-
-                            match selected_path {
-                                Some(path) => {
-                                    let needs_reload = self
-                                        .preview_audio
-                                        .as_ref()
-                                        .map_or(true, |p| p.path.as_path() != path.as_path());
-
-                                    let audio_data = match self.get_or_load_audio_data(&path) {
-                                        Ok(data) => data,
-                                        Err(err) => {
-                                            let mut st = self.state.lock().expect("Failed to acquire state lock");
-                                            st.status_message = err;
-                                            return;
-                                        }
-                                    };
-
-                                    if needs_reload {
-                                        self.stop_preview();
-                                        match AudioManager::from_preloaded(Arc::clone(&audio_data)) {
-                                            Ok(manager) => {
-                                                self.preview_audio = Some(PreviewAudio {
-                                                    manager,
-                                                    path: path.clone(),
-                                                });
-                                            }
-                                            Err(e) => {
-                                                let mut st = self.state.lock().expect("Failed to acquire state lock");
-                                                st.status_message = format!("Preview init failed: {}", e);
-                                                return;
-                                            }
-                                        }
-                                    }
-
-                                    if let Some(preview) = self.preview_audio.as_ref() {
-                                        preview.manager.stop();
-                                        match preview.manager.play_sound() {
-                                            Ok(()) => {
-                                                self.preview_playing = true;
-                                                let mut st = self.state.lock().expect("Failed to acquire state lock");
-                                                st.status_message = "Preview playing...".to_string();
-                                            }
-                                            Err(e) => {
-                                                let mut st = self.state.lock().expect("Failed to acquire state lock");
-                                                st.status_message = format!("Preview failed: {}", e);
-                                            }
-                                        }
-                                    }
-                                }
-                                None => {
-                                    let mut st = self.state.lock().expect("Failed to acquire state lock");
-                                    st.status_message = "Select a music file to preview.".to_string();
-                                }
-                            }
-                        }
-                    }
-                });
-
-                ui.separator();
-
-                // Music list display
-                let selection_changed = egui::ScrollArea::vertical()
-                    .max_height(200.0)
-                    .show(ui, |ui| {
-                        let mut state = self.state.lock().expect("Failed to acquire state lock");
-                        let mut new_selection = state.selected_music_index;
-                        
-                        for (idx, entry) in state.music_list.iter().enumerate() {
-                            let is_selected = state.selected_music_index == Some(idx);
-                            
-                            ui.horizontal(|ui| {
-                                if ui.selectable_label(is_selected, &entry.name).clicked() {
-                                    new_selection = Some(idx);
-                                }
-                                
-                                if let Some(shortcut) = &entry.shortcut {
-                                    ui.label(format!("({})", shortcut));
-                                }
-                            });
-                        }
-                        
-                        let changed = new_selection != state.selected_music_index;
-                        if changed {
-                            state.selected_music_index = new_selection;
-                        }
-                        changed
-                    }).inner;
-                
-                if selection_changed {
-                    self.save_config();
-                }
-
-                ui.separator();
-
-                // Ambiance Sounds section
-                ui.heading("🎺 Ambiance Sounds");
-                
-                ui.horizontal(|ui| {
-                    let mut state = self.state.lock().expect("Failed to acquire state lock");
-                    if ui.checkbox(&mut state.ambiance_enabled, "Enable Ambiance").changed() {
-                        drop(state);
-                        self.save_config();
-                    }
-                });
-                
-                ui.horizontal(|ui| {
-                    if ui.button("➕ Add Goal Cheer Sound").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Audio", &["wav"])
-                            .pick_file()
-                        {
-                            let mut state = self.state.lock().expect("Failed to acquire state lock");
-                            state.goal_ambiance_path = Some(path.to_string_lossy().to_string());
-                            drop(state);
-                            self.save_config();
-                        }
-                    }
-                    
-                    if ui.button("🗑️ Remove Cheer Sound").clicked() {
-                        let mut state = self.state.lock().expect("Failed to acquire state lock");
-                        state.goal_ambiance_path = None;
-                        drop(state);
-                        self.save_config();
-                    }
-                });
-                
-                {
-                    let state = self.state.lock().expect("Failed to acquire state lock");
-                    if let Some(ref path) = state.goal_ambiance_path {
-                        let display_name = PathBuf::from(path)
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_else(|| path.clone());
-                        ui.label(format!("✓ Crowd cheer: {}", display_name));
-                    } else {
-                        ui.label("ℹ No crowd cheer sound selected");
-                    }
-                }
+                views::library::render_library(self, ui);
             }
 
             // Team Selection tab
             if self.active_tab == AppTab::TeamSelection {
-                ui.separator();
-
-                // Team Selection section
-                ui.heading("⚽ Team Selection");
-            
-            if let Some(ref db) = self.team_database {
-                ui.label("Select your team to play sound only for their goals:");
-                
-                // League dropdown
-                let leagues = db.get_leagues();
-                let mut league_changed = false;
-                
-                ui.horizontal(|ui| {
-                    ui.label("League:");
-                    egui::ComboBox::from_label("")
-                        .selected_text(self.selected_league.as_deref().unwrap_or("-- Select League --"))
-                        .show_ui(ui, |ui| {
-                            if ui.selectable_label(self.selected_league.is_none(), "-- Select League --").clicked() {
-                                self.selected_league = None;
-                                self.selected_team_key = None;
-                                league_changed = true;
-                            }
-                            for league in &leagues {
-                                if ui.selectable_label(self.selected_league.as_ref() == Some(league), league).clicked() {
-                                    self.selected_league = Some(league.clone());
-                                    self.selected_team_key = None;
-                                    league_changed = true;
-                                }
-                            }
-                        });
-                });
-                
-                // Team dropdown (only if league is selected)
-                if let Some(ref league) = self.selected_league {
-                    if let Some(teams) = db.get_teams(league) {
-                        ui.horizontal(|ui| {
-                            ui.label("Team:");
-                            egui::ComboBox::from_label(" ")
-                                .selected_text(
-                                    self.selected_team_key.as_ref()
-                                        .and_then(|key| teams.iter().find(|(k, _)| k == key))
-                                        .map(|(_, team)| team.display_name.as_str())
-                                        .unwrap_or("-- Select Team --")
-                                )
-                                .show_ui(ui, |ui| {
-                                    if ui.selectable_label(self.selected_team_key.is_none(), "-- Select Team --").clicked() {
-                                        self.selected_team_key = None;
-                                        league_changed = true;
-                                    }
-                                    for (key, team) in &teams {
-                                        if ui.selectable_label(self.selected_team_key.as_ref() == Some(key), &team.display_name).clicked() {
-                                            self.selected_team_key = Some(key.clone());
-                                            league_changed = true;
-                                        }
-                                    }
-                                });
-                        });
-                    }
-                }
-                
-                // Update state and save if team selection changed
-                if league_changed {
-                    let mut state = self.state.lock().expect("Failed to acquire state lock");
-                    
-                    if let (Some(ref league), Some(ref team_key)) = (&self.selected_league, &self.selected_team_key) {
-                        if let Some(team) = db.find_team(league, team_key) {
-                            state.selected_team = Some(crate::config::SelectedTeam {
-                                league: league.clone(),
-                                team_key: team_key.clone(),
-                                display_name: team.display_name.clone(),
-                            });
-                        }
-                    } else {
-                        state.selected_team = None;
-                    }
-                    
-                    drop(state);
-                    self.save_config();
-                }
-                
-                // Display current selection
-                {
-                    let state = self.state.lock().expect("Failed to acquire state lock");
-                    if let Some(ref team) = state.selected_team {
-                        ui.label(format!("✓ Selected: {} ({})", team.display_name, team.league));
-                    } else {
-                        ui.label("ℹ No team selected - will play for all goals");
-                    }
-                }
-                
-                if ui.button("🗑️ Clear Selection").clicked() {
-                    self.selected_league = None;
-                    self.selected_team_key = None;
-                    let mut state = self.state.lock().expect("Failed to acquire state lock");
-                    state.selected_team = None;
-                    drop(state);
-                    self.save_config();
-                }
-            } else {
-                ui.label("⚠ Team database not available");
+                views::team::render_team_selection(self, ui, ctx);
             }
-
-            ui.separator();
-
-            // Capture preview
-            self.refresh_capture_preview(ctx);
-            if let Some(texture) = &self.capture_preview.texture {
-                ui.group(|ui| {
-                    ui.heading("📷 Capture Preview");
-                    let aspect = texture.size()[0] as f32 / texture.size()[1] as f32;
-                    let max_width = ui.available_width().min(400.0);
-                    let desired_size = egui::Vec2::new(max_width, max_width / aspect);
-                    ui.image(egui::load::SizedTexture::new(texture.id(), desired_size));
-
-                    ui.horizontal(|ui| {
-                        ui.label(format!(
-                            "Resolution: {}x{}",
-                            self.capture_preview.width, self.capture_preview.height
-                        ));
-
-                        if let Some(ts) = self.capture_preview.timestamp {
-                            let age = Instant::now().saturating_duration_since(ts);
-                            ui.label(format!("Age: {:.1}s", age.as_secs_f32()));
-                        }
-
-                        if ui.button("Save frame...").clicked() {
-                            if let Some(img) = &self.capture_preview.last_image {
-                                if let Err(e) = save_capture_image(img) {
-                                    let mut st = self.state.lock().expect("Failed to acquire state lock");
-                                    st.status_message = format!("Failed to save capture: {}", e);
-                                } else {
-                                    let mut st = self.state.lock().expect("Failed to acquire state lock");
-                                    st.status_message = "Saved capture preview to disk".to_string();
-                                }
-                            }
-                        }
-                    });
-                });
-            }
-            } // end Detection tab
 
             // Settings tab
             if self.active_tab == AppTab::Settings {
-                ui.separator();
-
-                // Configuration section
-                ui.heading("⚙️ Configuration");
-            
-            // Capture region controls
-            {
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
-                ui.horizontal(|ui| {
-                    ui.label("Capture Region:");
-                    ui.add(egui::DragValue::new(&mut state.capture_region[0]).prefix("X: "));
-                    ui.add(egui::DragValue::new(&mut state.capture_region[1]).prefix("Y: "));
-                    ui.add(egui::DragValue::new(&mut state.capture_region[2]).prefix("W: "));
-                    ui.add(egui::DragValue::new(&mut state.capture_region[3]).prefix("H: "));
-                });
+                views::settings::render_settings(self, ui);
             }
-            
-            // Visual selector button (separate scope to avoid borrow issues)
-            ui.horizontal(|ui| {
-                if ui.button("🎯 Select Region Visually").clicked() {
-                    self.start_region_selection();
-                }
-                if ui.button("🔄 Reset Region").clicked() {
-                    if let Some((screen_w, screen_h)) = self.screen_resolution {
-                        let mut state = self.state.lock().expect("Failed to acquire state lock");
-                        let capture_height = (screen_h / 4).max(1);
-                        let capture_y = screen_h.saturating_sub(capture_height);
-                        state.capture_region = [0, capture_y, screen_w, capture_height];
-                    }
-                }
-            });
-            ui.label("💡 Recommended: Use visual selector for accurate coordinates on HiDPI/Retina displays");
-
-            // Monitor selection (multi-monitor support)
-            ui.horizontal(|ui| {
-                ui.label("Display:");
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
-
-                // Get available monitors count
-                let monitor_count = xcap::Monitor::all()
-                    .map(|monitors| monitors.len())
-                    .unwrap_or(1);
-
-                // Show dropdown with monitor indices
-                let prev_index = state.selected_monitor_index;
-                egui::ComboBox::from_label("")
-                    .selected_text(format!("Monitor {} ({})",
-                        state.selected_monitor_index + 1,
-                        if state.selected_monitor_index == 0 { "Primary" } else { "Secondary" }))
-                    .show_ui(ui, |ui| {
-                        for i in 0..monitor_count {
-                            let label = format!("Monitor {} ({})",
-                                i + 1,
-                                if i == 0 { "Primary" } else { "Secondary" });
-                            ui.selectable_value(&mut state.selected_monitor_index, i, label);
-                        }
-                    });
-
-                // Save config if changed
-                if state.selected_monitor_index != prev_index {
-                    drop(state);
-                    self.save_config();
-                }
-            });
-            ui.label("💡 Select which monitor to capture from (0 = primary display)");
-
-            // Other configuration options
-            {
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
-                
-                ui.horizontal(|ui| {
-                    ui.label("OCR Threshold:");
-                    ui.add(egui::Slider::new(&mut state.ocr_threshold, 0..=255).text("(0 = auto)"));
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label("Debounce (ms):");
-                    ui.add(egui::DragValue::new(&mut state.debounce_ms).speed(100));
-                });
-
-                ui.checkbox(&mut state.enable_morph_open, "Enable Morphological Opening (noise reduction)");
-            }
-                
-            ui.separator();
-            
-            // Volume Controls
-            ui.heading("🔊 Volume Controls");
-            
-            ui.horizontal(|ui| {
-                ui.label("🎵 Music:");
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
-                let mut music_vol_percent = (state.music_volume * 100.0) as i32;
-                if ui.add(egui::Slider::new(&mut music_vol_percent, 0..=100).suffix("%")).changed() {
-                    state.music_volume = (music_vol_percent as f32) / 100.0;
-                    drop(state);
-                    self.save_config();
-                }
-            });
-            
-            ui.horizontal(|ui| {
-                ui.label("🔉 Ambiance:");
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
-                let mut ambiance_vol_percent = (state.ambiance_volume * 100.0) as i32;
-                if ui.add(egui::Slider::new(&mut ambiance_vol_percent, 0..=100).suffix("%")).changed() {
-                    state.ambiance_volume = (ambiance_vol_percent as f32) / 100.0;
-                    drop(state);
-                    self.save_config();
-                }
-            });
-
-            ui.separator();
-
-            // Sound Length Controls
-            ui.heading("⏱️ Sound Length Controls");
-            
-            ui.horizontal(|ui| {
-                ui.label("🎵 Music Length:");
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
-                let mut music_length_seconds = (state.music_length_ms as f32) / 1000.0;
-                if ui.add(egui::Slider::new(&mut music_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
-                    state.music_length_ms = (music_length_seconds * 1000.0) as u64;
-                    drop(state);
-                    self.save_config();
-                }
-            });
-            
-            ui.horizontal(|ui| {
-                ui.label("🔉 Ambiance Length:");
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
-                let mut ambiance_length_seconds = (state.ambiance_length_ms as f32) / 1000.0;
-                if ui.add(egui::Slider::new(&mut ambiance_length_seconds, 0.0..=60.0).suffix(" seconds").step_by(1.0)).changed() {
-                    state.ambiance_length_ms = (ambiance_length_seconds * 1000.0) as u64;
-                    drop(state);
-                    self.save_config();
-                }
-            });
-
-            ui.separator();
-
-            // Update Checker
-            ui.heading("🔄 Updates");
-
-            ui.horizontal(|ui| {
-                let mut state = self.state.lock().expect("Failed to acquire state lock");
-                if ui.checkbox(&mut state.auto_check_updates, "Check for updates on startup").changed() {
-                    drop(state);
-                    self.save_config();
-                }
-            });
-
-            if ui.button("🔍 Check for Updates Now").clicked() {
-                self.check_for_updates_manually();
-            }
-
-            } // end Settings tab
 
             if self.active_tab == AppTab::Help {
-                ui.separator();
-
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.heading("📖 How to Use FM Goal Musics");
-                
-                ui.collapsing("🎵 Library Tab", |ui| {
-                    ui.label("• Click '➕ Add Music File' to add celebration music (MP3, WAV, OGG)");
-                    ui.label("• Select a music file from the list");
-                    ui.label("• Click '▶️ Preview' to test the selected music");
-                    ui.label("• Click '🗑️ Remove Selected' to remove unwanted music");
-                    ui.label("");
-                    ui.label("Ambiance Sounds:");
-                    ui.label("• Enable 'Ambiance' checkbox for crowd cheer effects");
-                    ui.label("• Click '➕ Add Goal Cheer Sound' to add a WAV crowd sound");
-                    ui.label("• This plays alongside your music for extra atmosphere");
-                });
-                
-                ui.collapsing("⚽ Team Selection Tab", |ui| {
-                    ui.label("• Select a League from the dropdown");
-                    ui.label("• Select your Team from the filtered list");
-                    ui.label("• Goal music will only play for your selected team's goals");
-                    ui.label("• Leave unselected to play for all goals");
-                    ui.label("");
-                    ui.label("Capture Preview:");
-                    ui.label("• Shows real-time capture of the configured screen region");
-                    ui.label("• Use 'Save frame...' to export the current captured frame");
-                });
-                
-                ui.collapsing("⚙️ Settings Tab", |ui| {
-                    ui.label("Configuration:");
-                    ui.label("• Capture Region: X, Y, Width, Height of screen area to monitor");
-                    ui.label("• Click '🎯 Select Region Visually' to drag-select on screen");
-                    ui.label("• OCR Threshold: 0 = auto (recommended), 1-255 = manual");
-                    ui.label("• Debounce: Cooldown between detections (default 8000ms)");
-                    ui.label("• Morphological Opening: Reduces noise (adds 5-10ms latency)");
-                    ui.label("");
-                    ui.label("Volume & Length:");
-                    ui.label("• Music Volume: 0-100% playback volume for celebration music");
-                    ui.label("• Ambiance Volume: 0-100% playback volume for crowd cheer");
-                    ui.label("• Music Length: How long to play music (0 = full track)");
-                    ui.label("• Ambiance Length: How long to play crowd sound (0 = full)");
-                });
-                
-                ui.collapsing("🏁 Quick Start", |ui| {
-                    ui.label("1. Add at least one music file in Library tab");
-                    ui.label("2. (Optional) Select your team in Team Selection tab");
-                    ui.label("3. Configure capture region in Settings tab");
-                    ui.label("4. Click '▶️ Start Detection' button (top-left)");
-                    ui.label("5. Play Football Manager and watch for goals!");
-                    ui.label("");
-                    ui.label("✅ Status bar shows detection state (Green = Running)");
-                    ui.label("✅ Detection count increments with each goal detected");
-                });
-                
-                ui.collapsing("🔧 Configuring teams.json", |ui| {
-                    ui.label("The teams database is automatically created on first run at:");
-                    ui.label("  macOS: ~/Library/Application Support/FMGoalMusic/teams.json");
-                    ui.label("  Windows: %APPDATA%/FMGoalMusic/teams.json");
-                    ui.label("  Linux: ~/.config/FMGoalMusic/teams.json");
-                    ui.label("");
-                    ui.label("You can safely edit this file to add your favorite teams!");
-                    ui.label("");
-                    ui.label("Structure:");
-                    ui.label("  {");
-                    ui.label("    \"Premier League\": {");
-                    ui.label("      \"manchester_united\": {");
-                    ui.label("        \"display_name\": \"Manchester Utd\",");
-                    ui.label("        \"variations\": [\"Man Utd\", \"Man United\", \"MUFC\"]");
-                    ui.label("      }");
-                    ui.label("    }");
-                    ui.label("  }");
-                    ui.label("");
-                    ui.label("• Add your leagues and teams with variations");
-                    ui.label("• Variations help match different OCR results");
-                    ui.label("• Restart the app after editing teams.json");
-                });
-                
-                ui.collapsing("❓ Troubleshooting", |ui| {
-                    ui.label("Music not playing:");
-                    ui.label("• Check music file is selected in Library");
-                    ui.label("• Verify 'Start Detection' is active (button shows 'Stop')");
-                    ui.label("• Confirm capture region covers goal text area");
-                    ui.label("");
-                    ui.label("No goals detected:");
-                    ui.label("• Use 'Capture Preview' to verify region captures goal text");
-                    ui.label("• Try OCR Threshold = 0 (auto) first");
-                    ui.label("• Increase debounce if detecting multiple times");
-                    ui.label("");
-                    ui.label("Team selection not working:");
-                    ui.label("• Verify team exists in teams.json with correct variations");
-                    ui.label("• Check Team Selection tab shows '✓ Selected: [team]'");
-                    ui.label("• Ensure OCR is reading team name correctly");
-                });
-                });
+                views::help::render_help(ui);
             }
 
         });
 
         // Region selector overlay window (implemented inline)
         if self.selecting_region {
-            log::info!("📸 Region selector active in update loop");
+            tracing::info!("📸 Region selector active in update loop");
 
             // Initialize on first show
             if let Some(sel) = &mut self.region_selector {
                 // Only minimize/hide if we haven't captured yet
                 if !sel.initialized && !self.hide_window_for_capture {
-                    log::info!("   Preparing window for screenshot capture...");
+                    tracing::info!("   Preparing window for screenshot capture...");
 
                     // On Windows, hiding the main window closes the app
                     // So we minimize it instead
                     #[cfg(target_os = "windows")]
                     {
-                        log::info!("   (Windows: Minimizing window instead of hiding)");
+                        tracing::info!("   (Windows: Minimizing window instead of hiding)");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                     }
 
                     // On macOS/Linux, we can safely hide the window
                     #[cfg(not(target_os = "windows"))]
                     {
-                        log::info!("   (macOS/Linux: Hiding window)");
+                        tracing::info!("   (macOS/Linux: Hiding window)");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
                     }
 
@@ -1648,25 +1696,25 @@ impl eframe::App for FMGoalMusicsApp {
                 }
                 if !sel.initialized {
                     if self.capture_delay_frames > 0 {
-                        log::info!("   Waiting for window to minimize/hide... (frames left: {})", self.capture_delay_frames);
+                        tracing::info!("   Waiting for window to minimize/hide... (frames left: {})", self.capture_delay_frames);
                         self.capture_delay_frames = self.capture_delay_frames.saturating_sub(1);
                         ctx.request_repaint();
                         return;
                     }
 
-                    log::info!("   Window minimized/hidden, starting screenshot capture...");
+                    tracing::info!("   Window minimized/hidden, starting screenshot capture...");
                     let capture_result = sel.capture_fullscreen();
 
                     // Restore window visibility
                     #[cfg(target_os = "windows")]
                     {
-                        log::info!("   Restoring window (Windows: un-minimize)...");
+                        tracing::info!("   Restoring window (Windows: un-minimize)...");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                     }
 
                     #[cfg(not(target_os = "windows"))]
                     {
-                        log::info!("   Restoring window (macOS/Linux: show)...");
+                        tracing::info!("   Restoring window (macOS/Linux: show)...");
                         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     }
 
@@ -1685,10 +1733,10 @@ impl eframe::App for FMGoalMusicsApp {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
 
                             // Log to console for debugging
-                            log::error!("❌ Region selection capture failed: {}", e);
-                            log::error!("   This error occurred during screen capture for region selection");
+                            tracing::error!("❌ Region selection capture failed: {}", e);
+                            tracing::error!("   This error occurred during screen capture for region selection");
 
-                            let mut st = self.state.lock().expect("Failed to acquire state lock");
+                            let mut st = self.state.lock();
                             st.status_message = format!("Region selection failed: {}", e);
 
                             self.selecting_region = false;
@@ -1696,7 +1744,7 @@ impl eframe::App for FMGoalMusicsApp {
                             return;
                         }
                         Ok(()) => {
-                            log::info!("✓ Screenshot captured successfully for region selection");
+                            tracing::info!("✓ Screenshot captured successfully for region selection");
                             sel.initialized = true;
                             ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
                             sel.fullscreen_on = true;
@@ -1826,7 +1874,7 @@ impl eframe::App for FMGoalMusicsApp {
                     let fullscreen = sel.fullscreen_on;
 
                     // Update state
-                    let mut st = self.state.lock().expect("Failed to acquire state lock");
+                    let mut st = self.state.lock();
                     st.capture_region = [x, y, w, h];
                     st.status_message = format!(
                         "Region selected: [{}, {}, {}, {}] (Logical: {}x{}, Physical: {}x{}, Scale: {:.1}x)",
@@ -1881,19 +1929,19 @@ impl RegionSelectState {
         // Use xcap to capture the entire screen
         use xcap::Monitor;
 
-        log::info!("🔍 Starting fullscreen capture for region selection...");
+        tracing::info!("🔍 Starting fullscreen capture for region selection...");
 
         // Get all monitors
         let monitors = Monitor::all()
             .map_err(|e| {
-                log::error!("❌ Failed to enumerate monitors: {}", e);
+                tracing::error!("❌ Failed to enumerate monitors: {}", e);
                 format!("Failed to enumerate monitors: {}", e)
             })?;
 
-        log::info!("   Found {} monitor(s)", monitors.len());
+        tracing::info!("   Found {} monitor(s)", monitors.len());
 
         if monitors.is_empty() {
-            log::error!("❌ No monitors found!");
+            tracing::error!("❌ No monitors found!");
             return Err("No monitors found".into());
         }
 
@@ -1905,15 +1953,15 @@ impl RegionSelectState {
         let logical_w = monitor.width().unwrap_or(0);
         let logical_h = monitor.height().unwrap_or(0);
 
-        log::info!("   Monitor logical size: {}x{}", logical_w, logical_h);
+        tracing::info!("   Monitor logical size: {}x{}", logical_w, logical_h);
 
-        log::info!("   Attempting to capture screen...");
+        tracing::info!("   Attempting to capture screen...");
 
         // Capture full screen with permission error handling
         let image = monitor.capture_image().map_err(|e| -> Box<dyn std::error::Error> {
             let error_msg = format!("{}", e);
 
-            log::error!("❌ Screen capture failed: {}", error_msg);
+            tracing::error!("❌ Screen capture failed: {}", error_msg);
 
             #[cfg(target_os = "macos")]
             if error_msg.contains("permission") || error_msg.contains("denied") || error_msg.contains("authorization") {
@@ -1949,7 +1997,7 @@ impl RegionSelectState {
             format!("Failed to capture screen: {}", e).into()
         })?;
 
-        log::info!("   ✓ Screen captured successfully");
+        tracing::info!("   ✓ Screen captured successfully");
 
         // Get dimensions and pixel data (physical resolution on Retina)
         let w = image.width();
@@ -1973,7 +2021,7 @@ impl RegionSelectState {
         self.pixels_rgba = Some(rgba);
         self.texture = None;
 
-        log::info!("Screenshot: {}x{} (physical) | Monitor: {}x{} (logical) | Scale: {}x",
+        tracing::info!("Screenshot: {}x{} (physical) | Monitor: {}x{} (logical) | Scale: {}x",
                  w, h, logical_w, logical_h, display_scale);
 
         Ok(())

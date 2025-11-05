@@ -23,7 +23,7 @@ impl AudioManager {
 
         // Verify the audio can be decoded
         let _sample_count = decoder.count();
-        log::info!("✓ Audio decoder warmed up and verified");
+        tracing::info!("✓ Audio decoder warmed up and verified");
 
         Ok(Self {
             _stream: stream,
@@ -45,7 +45,7 @@ impl AudioManager {
         
         // Read entire audio file into memory
         let audio_data = std::fs::read(path)?;
-        log::info!("✓ Preloaded audio file: {} ({} bytes)", path.display(), audio_data.len());
+        tracing::info!("✓ Preloaded audio file: {} ({} bytes)", path.display(), audio_data.len());
         Self::from_vec(audio_data)
     }
 
@@ -61,7 +61,7 @@ impl AudioManager {
 
         // Verify the audio can be decoded
         let _sample_count = decoder.count();
-        log::info!("✓ Audio decoder warmed up and verified");
+        tracing::info!("✓ Audio decoder warmed up and verified");
 
         Ok(Self {
             _stream: stream,

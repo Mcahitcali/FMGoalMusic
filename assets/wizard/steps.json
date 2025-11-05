@@ -1,0 +1,40 @@
+{
+  "steps": [
+    {
+      "id": "welcome",
+      "title": "Welcome to FM Goal Musics",
+      "description": "Let's get you set up to enjoy goal music in Football Manager!",
+      "skippable": false
+    },
+    {
+      "id": "permissions",
+      "title": "Permissions",
+      "description": "Grant necessary permissions for screen capture",
+      "skippable": false
+    },
+    {
+      "id": "region_setup",
+      "title": "Screen Region Setup",
+      "description": "Select the screen region where goal notifications appear",
+      "skippable": false
+    },
+    {
+      "id": "team_selection",
+      "title": "Select Your Team",
+      "description": "Choose your team to play custom music when they score",
+      "skippable": true
+    },
+    {
+      "id": "audio_setup",
+      "title": "Audio Setup",
+      "description": "Add music files and test audio playback",
+      "skippable": true
+    },
+    {
+      "id": "complete",
+      "title": "Setup Complete",
+      "description": "You're all set! Enjoy your personalized goal music.",
+      "skippable": false
+    }
+  ]
+}

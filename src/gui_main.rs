@@ -3,23 +3,29 @@
 
 mod audio;
 mod audio_converter;
+mod audio_system;
 mod capture;
 mod config;
+mod detection;
+mod error;
 mod gui;
+mod messaging;
 mod ocr;
 mod region_selector;
 mod slug;
+mod state;
 mod utils;
 mod teams;
 mod team_matcher;
 mod update_checker;
+mod wizard;
 
 use display_info::DisplayInfo;
 use sysinfo::System;
 
 const LOG_TARGET_STARTUP: &str = "fm_goal_musics::startup";
 
-/// Initialize file logging with rotation
+/// Initialize tracing with file rotation
 ///
 /// Logs are written to:
 /// - macOS: ~/Library/Application Support/FMGoalMusic/logs/
@@ -27,15 +33,15 @@ const LOG_TARGET_STARTUP: &str = "fm_goal_musics::startup";
 /// - Linux: ~/.config/FMGoalMusic/logs/
 ///
 /// Log rotation:
-/// - Max file size: 10 MB
-/// - Keep last 5 log files
-/// - Files named: fm-goal-musics_TIMESTAMP.log
+/// - Daily rotation (new file each day)
+/// - Files named: fm-goal-musics.YYYY-MM-DD.log
 ///
 /// Log output:
 /// - Debug builds: Console + File
 /// - Release builds: File only (console hidden on Windows)
-fn initialize_logging() {
-    use flexi_logger::{Duplicate, FileSpec, Logger};
+fn initialize_tracing() {
+    use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+    use tracing_appender::rolling;
 
     // Get log directory in user config folder
     let log_dir = dirs::config_dir()
@@ -47,39 +53,47 @@ fn initialize_logging() {
         eprintln!("Warning: Failed to create log directory: {}", e);
     }
 
-    // Configure logger
-    let logger = Logger::try_with_str("info")
-        .unwrap_or_else(|e| {
-            eprintln!("Warning: Failed to parse log level: {}", e);
-            Logger::try_with_str("warn").expect("Failed to initialize logger")
-        })
-        .log_to_file(
-            FileSpec::default()
-                .directory(&log_dir)
-                .basename("fm-goal-musics")
-                .suffix("log")
-        )
-        .rotate(
-            flexi_logger::Criterion::Size(10 * 1024 * 1024), // 10 MB
-            flexi_logger::Naming::Timestamps,
-            flexi_logger::Cleanup::KeepLogFiles(5), // Keep last 5 log files
-        )
-        .format_for_files(flexi_logger::detailed_format) // Timestamp, level, module, message
-        .format_for_stdout(flexi_logger::colored_opt_format); // Colored output for console
+    // Create file appender with daily rotation
+    let file_appender = rolling::daily(&log_dir, "fm-goal-musics.log");
 
-    // In debug builds, duplicate to console for easier development
-    // In release builds, file only (console is hidden on Windows anyway)
+    // Configure filter (info level by default)
+    let filter = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap_or_else(|_| EnvFilter::new("warn"));
+
+    // Create file layer
+    let file_layer = fmt::layer()
+        .with_writer(file_appender)
+        .with_ansi(false)
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_line_number(true);
+
+    // In debug builds, also log to console
     #[cfg(debug_assertions)]
-    let logger = logger.duplicate_to_stdout(Duplicate::Info);
+    {
+        let console_layer = fmt::layer()
+            .with_writer(std::io::stdout)
+            .with_ansi(true)
+            .with_target(false);
 
-    // Start logger
-    if let Err(e) = logger.start() {
-        eprintln!("Warning: Failed to initialize file logging: {}", e);
-        eprintln!("Logs will not be written to file.");
-    } else {
-        // Log the log file location (will appear in the log file itself)
-        log::info!("Log directory: {}", log_dir.display());
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(file_layer)
+            .with(console_layer)
+            .init();
     }
+
+    // In release builds, only log to file
+    #[cfg(not(debug_assertions))]
+    {
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(file_layer)
+            .init();
+    }
+
+    tracing::info!("Log directory: {}", log_dir.display());
 }
 
 fn log_runtime_environment() {
@@ -94,33 +108,33 @@ fn log_runtime_environment() {
         .unwrap_or_else(|| "Unknown Kernel".to_string());
     let architecture = std::env::consts::ARCH;
 
-    log::info!(target: LOG_TARGET_STARTUP,"Starting FM Goal Musics v{} on ({})", version, architecture);
-    log::info!(target: LOG_TARGET_STARTUP, "Operating System: {} (kernel {})", os_name, kernel);
+    tracing::info!(target: LOG_TARGET_STARTUP,"Starting FM Goal Musics v{} on ({})", version, architecture);
+    tracing::info!(target: LOG_TARGET_STARTUP, "Operating System: {} (kernel {})", os_name, kernel);
 
     // CPU and memory usage intentionally not logged (per user request)
 
     if let Ok(displays) = DisplayInfo::all() {
-        log::info!(
+        tracing::info!(
             target: LOG_TARGET_STARTUP,
             "Displays: {} detected",
             displays.len()
         );
-        for (index, display) in displays.iter().enumerate() {
-            log::debug!(
+        for (index, disp) in displays.iter().enumerate() {
+            tracing::debug!(
                 target: LOG_TARGET_STARTUP,
                 "  Display {}: {}x{}{}",
                 index,
-                display.width,
-                display.height,
-                if display.is_primary { " (primary)" } else { "" }
+                disp.width,
+                disp.height,
+                if disp.is_primary { " (primary)" } else { "" }
             );
         }
     }
 }
 
 fn main() -> Result<(), eframe::Error> {
-    // Initialize file logging with rotation
-    initialize_logging();
+    // Initialize tracing with file rotation
+    initialize_tracing();
     log_runtime_environment();
 
     let options = eframe::NativeOptions {

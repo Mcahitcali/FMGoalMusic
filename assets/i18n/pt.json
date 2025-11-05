@@ -1,0 +1,19 @@
+{
+  "language": "Português",
+  "code": "pt",
+  "detection": {
+    "goal_phrases": [
+      "GOL!",
+      "Gol!",
+      "GOLO!"
+    ],
+    "kickoff_phrases": [
+      "Pontapé Inicial",
+      "Início"
+    ],
+    "match_end_phrases": [
+      "Fim de Jogo",
+      "FJ"
+    ]
+  }
+}
