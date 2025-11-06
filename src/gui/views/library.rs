@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::audio::AudioManager;
 use crate::gui::state::PreviewAudio;
+use crate::gui::theme;
 
 use super::super::FMGoalMusicsApp;
 
@@ -16,11 +17,12 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
     // ========================================
     // Music Files Section
     // ========================================
-    ui.heading("🎵 Music Files");
-    ui.add_space(5.0);
+    theme::card_frame().show(ui, |ui| {
+        theme::styled_heading(ui, "🎵 Music Files");
+        theme::add_space_small(ui);
 
-    ui.horizontal(|ui| {
-        if ui.button("➕ Add Music File").clicked() {
+        ui.horizontal(|ui| {
+            if theme::styled_button(ui, "➕ Add Music File").clicked() {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Audio", &["mp3", "wav", "ogg"])
                 .pick_file()
@@ -29,15 +31,15 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
             }
         }
 
-        // Preview button (moved before Remove for better UX flow: Add → Preview → Remove)
-        let preview_active = app.preview_playing;
-        let preview_label = if preview_active {
-            "🔇 Stop Preview"
-        } else {
-            "▶️ Preview"
-        };
+            // Preview button (moved before Remove for better UX flow: Add → Preview → Remove)
+            let preview_active = app.preview_playing;
+            let preview_label = if preview_active {
+                "🔇 Stop Preview"
+            } else {
+                "▶️ Preview"
+            };
 
-        if ui.button(preview_label).clicked() {
+            if theme::styled_button(ui, preview_label).clicked() {
             if preview_active {
                 app.stop_preview();
             } else {
@@ -105,24 +107,24 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
             }
         }
 
-        if ui.button("🗑️ Remove Selected").clicked() {
-            let mut state = app.state.lock();
-            if let Some(idx) = state.selected_music_index {
-                state.music_list.remove(idx);
-                state.selected_music_index = None;
+            if theme::styled_danger_button(ui, "🗑️ Remove Selected").clicked() {
+                let mut state = app.state.lock();
+                if let Some(idx) = state.selected_music_index {
+                    state.music_list.remove(idx);
+                    state.selected_music_index = None;
+                }
+                drop(state);
+                app.stop_preview();
+                app.save_config();
             }
-            drop(state);
-            app.stop_preview();
-            app.save_config();
-        }
-    });
+        });
 
-    ui.separator();
+        theme::styled_separator(ui);
 
-    // Music list display
-    let selection_changed = egui::ScrollArea::vertical()
-        .max_height(200.0)
-        .show(ui, |ui| {
+        // Music list display
+        let selection_changed = egui::ScrollArea::vertical()
+            .max_height(200.0)
+            .show(ui, |ui| {
             let mut state = app.state.lock();
             let mut new_selection = state.selected_music_index;
 
@@ -147,28 +149,32 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
             changed
         }).inner;
 
-    if selection_changed {
-        app.save_config();
-    }
-
-    ui.separator();
-
-    // ========================================
-    // Ambiance Sounds Section
-    // ========================================
-    ui.heading("🎺 Ambiance Sounds");
-    ui.add_space(5.0);
-
-    ui.horizontal(|ui| {
-        let mut state = app.state.lock();
-        if ui.checkbox(&mut state.ambiance_enabled, "Enable Ambiance").changed() {
-            drop(state);
+        if selection_changed {
             app.save_config();
         }
     });
 
-    ui.horizontal(|ui| {
-        if ui.button("➕ Add Goal Cheer Sound").clicked() {
+    theme::add_space_medium(ui);
+
+    // ========================================
+    // Ambiance Sounds Section
+    // ========================================
+    theme::card_frame().show(ui, |ui| {
+        theme::styled_heading(ui, "🎺 Ambiance Sounds");
+        theme::add_space_small(ui);
+
+        ui.horizontal(|ui| {
+            let mut state = app.state.lock();
+            if ui.checkbox(&mut state.ambiance_enabled, "Enable Ambiance").changed() {
+                drop(state);
+                app.save_config();
+            }
+        });
+
+        theme::add_space_small(ui);
+
+        ui.horizontal(|ui| {
+            if theme::styled_button(ui, "➕ Add Goal Cheer Sound").clicked() {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Audio", &["wav"])
                 .pick_file()
@@ -180,15 +186,15 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
             }
         }
 
-        // Preview ambiance button
-        let ambiance_preview_active = app.ambiance_preview_playing;
-        let ambiance_preview_label = if ambiance_preview_active {
-            "🔇 Stop Preview"
-        } else {
-            "▶️ Preview"
-        };
+            // Preview ambiance button
+            let ambiance_preview_active = app.ambiance_preview_playing;
+            let ambiance_preview_label = if ambiance_preview_active {
+                "🔇 Stop Preview"
+            } else {
+                "▶️ Preview"
+            };
 
-        if ui.button(ambiance_preview_label).clicked() {
+            if theme::styled_button(ui, ambiance_preview_label).clicked() {
             if ambiance_preview_active {
                 app.stop_ambiance_preview();
             } else {
@@ -254,25 +260,28 @@ pub fn render_library(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui) {
             }
         }
 
-        if ui.button("🗑️ Remove Cheer Sound").clicked() {
-            let mut state = app.state.lock();
-            state.goal_ambiance_path = None;
-            drop(state);
-            app.stop_ambiance_preview();
-            app.save_config();
+            if theme::styled_danger_button(ui, "🗑️ Remove Cheer Sound").clicked() {
+                let mut state = app.state.lock();
+                state.goal_ambiance_path = None;
+                drop(state);
+                app.stop_ambiance_preview();
+                app.save_config();
+            }
+        });
+
+        theme::add_space_small(ui);
+
+        {
+            let state = app.state.lock();
+            if let Some(ref path) = state.goal_ambiance_path {
+                let display_name = PathBuf::from(path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.clone());
+                theme::success_label(ui, &format!("✓ Crowd cheer: {}", display_name));
+            } else {
+                theme::info_label(ui, "ℹ No crowd cheer sound selected");
+            }
         }
     });
-
-    {
-        let state = app.state.lock();
-        if let Some(ref path) = state.goal_ambiance_path {
-            let display_name = PathBuf::from(path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.clone());
-            ui.label(format!("✓ Crowd cheer: {}", display_name));
-        } else {
-            ui.label("ℹ No crowd cheer sound selected");
-        }
-    }
 }
