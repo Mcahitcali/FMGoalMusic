@@ -4,12 +4,14 @@
 
 use eframe::egui;
 
+use crate::gui::theme;
+
 /// Render the help tab
 pub fn render_help(ui: &mut egui::Ui) {
-    ui.separator();
-
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.heading("📖 How to Use FM Goal Musics");
+        theme::card_frame().show(ui, |ui| {
+            theme::styled_heading(ui, "📖 How to Use FM Goal Musics");
+            theme::add_space_medium(ui);
 
         // Quick Start - Most important section, shown first and open by default
         egui::CollapsingHeader::new("🏁 Quick Start")
@@ -111,7 +113,8 @@ pub fn render_help(ui: &mut egui::Ui) {
             ui.label("Team selection not working:");
             ui.label("• Verify team exists in teams.json with correct variations");
             ui.label("• Check Team Selection tab shows '✓ Selected: [team]'");
-            ui.label("• Ensure OCR is reading team name correctly via Capture Preview");
+                ui.label("• Ensure OCR is reading team name correctly via Capture Preview");
+            });
         });
     });
 }
