@@ -6,18 +6,18 @@ use eframe::egui;
 use std::time::Instant;
 
 use crate::gui::state::save_capture_image;
+use crate::gui::theme;
 
 use super::super::FMGoalMusicsApp;
 
 /// Render the settings tab
 pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.separator();
-
     // ========================================
     // GROUP 1: Display & Capture
     // ========================================
-    ui.heading("🖥️ Display & Capture");
-    ui.add_space(5.0);
+    theme::card_frame().show(ui, |ui| {
+        theme::styled_heading(ui, "🖥️ Display & Capture");
+        theme::add_space_small(ui);
 
     // Monitor selection (multi-monitor support)
     ui.horizontal(|ui| {
@@ -120,13 +120,16 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui:
         });
     }
 
-    ui.separator();
+    });
+
+    theme::add_space_medium(ui);
 
     // ========================================
     // GROUP 2: Detection Settings
     // ========================================
-    ui.heading("🔍 Detection Settings");
-    ui.add_space(5.0);
+    theme::card_frame().show(ui, |ui| {
+        theme::styled_heading(ui, "🔍 Detection Settings");
+        theme::add_space_small(ui);
 
     {
         let mut state = app.state.lock();
@@ -141,16 +144,18 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui:
             ui.add(egui::DragValue::new(&mut state.debounce_ms).speed(100));
         });
 
-        ui.checkbox(&mut state.enable_morph_open, "Enable Morphological Opening (noise reduction)");
-    }
+            ui.checkbox(&mut state.enable_morph_open, "Enable Morphological Opening (noise reduction)");
+        }
+    });
 
-    ui.separator();
+    theme::add_space_medium(ui);
 
     // ========================================
     // GROUP 3: Audio Settings
     // ========================================
-    ui.heading("🔊 Audio Settings");
-    ui.add_space(5.0);
+    theme::card_frame().show(ui, |ui| {
+        theme::styled_heading(ui, "🔊 Audio Settings");
+        theme::add_space_small(ui);
 
     // Volume Controls
     ui.label("Volume:");
@@ -199,26 +204,31 @@ pub fn render_settings(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui:
             state.ambiance_length_ms = (ambiance_length_seconds * 1000.0) as u64;
             drop(state);
             app.save_config();
-        }
+            }
+        });
     });
 
-    ui.separator();
+    theme::add_space_medium(ui);
 
     // ========================================
     // GROUP 4: Updates
     // ========================================
-    ui.heading("🔄 Updates");
-    ui.add_space(5.0);
+    theme::card_frame().show(ui, |ui| {
+        theme::styled_heading(ui, "🔄 Updates");
+        theme::add_space_small(ui);
 
-    ui.horizontal(|ui| {
-        let mut state = app.state.lock();
-        if ui.checkbox(&mut state.auto_check_updates, "Check for updates on startup").changed() {
-            drop(state);
-            app.save_config();
+        ui.horizontal(|ui| {
+            let mut state = app.state.lock();
+            if ui.checkbox(&mut state.auto_check_updates, "Check for updates on startup").changed() {
+                drop(state);
+                app.save_config();
+            }
+        });
+
+        theme::add_space_small(ui);
+
+        if theme::styled_button(ui, "🔍 Check for Updates Now").clicked() {
+            app.check_for_updates_manually();
         }
     });
-
-    if ui.button("🔍 Check for Updates Now").clicked() {
-        app.check_for_updates_manually();
-    }
 }

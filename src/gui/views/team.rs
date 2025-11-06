@@ -4,14 +4,15 @@
 
 use eframe::egui;
 
+use crate::gui::theme;
+
 use super::super::FMGoalMusicsApp;
 
 /// Render the team selection tab
-pub fn render_team_selection(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: &egui::Context) {
-    ui.separator();
-
-    // Team Selection section
-    ui.heading("⚽ Team Selection");
+pub fn render_team_selection(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, _ctx: &egui::Context) {
+    theme::card_frame().show(ui, |ui| {
+        theme::styled_heading(ui, "⚽ Team Selection");
+        theme::add_space_small(ui);
 
     if let Some(ref db) = app.team_database {
         ui.label("Select your team to play sound only for their goals:");
@@ -98,23 +99,22 @@ pub fn render_team_selection(app: &mut FMGoalMusicsApp, ui: &mut egui::Ui, ctx: 
             }
         }
 
-        if ui.button("🗑️ Clear Selection").clicked() {
-            app.selected_league = None;
-            app.selected_team_key = None;
-            let mut state = app.state.lock();
-            state.selected_team = None;
-            drop(state);
-            app.save_config();
+            if theme::styled_danger_button(ui, "🗑️ Clear Selection").clicked() {
+                app.selected_league = None;
+                app.selected_team_key = None;
+                let mut state = app.state.lock();
+                state.selected_team = None;
+                drop(state);
+                app.save_config();
+            }
+
+            theme::add_space_medium(ui);
+            theme::styled_separator(ui);
+
+            // Add New Team section
+            app.render_add_team_ui(ui);
+        } else {
+            theme::error_label(ui, "⚠ Team database not available");
         }
-
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(5.0);
-
-        // Add New Team section
-        app.render_add_team_ui(ui);
-    } else {
-        ui.label("⚠ Team database not available");
-    }
-
+    });
 }
