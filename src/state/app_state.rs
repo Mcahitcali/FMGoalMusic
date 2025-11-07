@@ -1,7 +1,6 @@
 /// Application state with validation
 ///
 /// Contains all runtime state for the application with validation methods.
-
 use std::path::PathBuf;
 
 use super::process_state::ProcessState;
@@ -18,7 +17,7 @@ pub struct MusicEntry {
 }
 
 /// Shared state between GUI and background detection thread
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AppState {
     // Music library
     pub music_list: Vec<MusicEntry>,
@@ -73,7 +72,7 @@ impl Default for AppState {
             ambiance_volume: 0.6,
             goal_ambiance_path: None,
             ambiance_enabled: true,
-            music_length_ms: 20_000, // 20 seconds
+            music_length_ms: 20_000,    // 20 seconds
             ambiance_length_ms: 20_000, // 20 seconds
             auto_check_updates: true,
             skipped_version: None,
@@ -97,7 +96,11 @@ impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ValidationError::InvalidVolume { field, value } => {
-                write!(f, "Invalid volume for {}: {} (must be 0.0-1.0)", field, value)
+                write!(
+                    f,
+                    "Invalid volume for {}: {} (must be 0.0-1.0)",
+                    field, value
+                )
             }
             ValidationError::InvalidRegion { region } => {
                 write!(
@@ -107,11 +110,7 @@ impl std::fmt::Display for ValidationError {
                 )
             }
             ValidationError::InvalidDebounce { value } => {
-                write!(
-                    f,
-                    "Invalid debounce: {}ms (must be 100-60000ms)",
-                    value
-                )
+                write!(f, "Invalid debounce: {}ms (must be 100-60000ms)", value)
             }
             ValidationError::InvalidLength { field, value } => {
                 write!(
