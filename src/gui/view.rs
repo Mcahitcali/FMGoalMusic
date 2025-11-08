@@ -610,6 +610,14 @@ impl MainView {
                     .h(px(160.0))
                     .rounded_lg()
                     .bg(cx.theme().tab_active)
+                    .relative()
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .rounded_lg()
+                            .bg(cx.theme().primary.opacity(0.08)),
+                    )
                     .flex()
                     .items_center()
                     .justify_center()
@@ -652,6 +660,14 @@ impl MainView {
                     .h(px(160.0))
                     .rounded_lg()
                     .bg(cx.theme().tab)
+                    .relative()
+                    .child(
+                        div()
+                            .absolute()
+                            .inset_0()
+                            .rounded_lg()
+                            .bg(cx.theme().primary.opacity(0.05)),
+                    )
                     .flex()
                     .items_center()
                     .justify_center()
@@ -840,6 +856,10 @@ impl MainView {
                             .py_2()
                             .w_full()
                             .justify_start()
+                            .when(
+                                self.active_tab == tab_value,
+                                |b| b.bg(cx.theme().primary.opacity(0.15)),
+                            )
                             .on_click(cx.listener(
                                 move |this, _event: &ClickEvent, _window, _cx| {
                                     this.active_tab = tab_value;
@@ -2886,6 +2906,13 @@ impl Render for MainView {
             .flex()
             .size_full()
             .bg(cx.theme().background)
+            .relative()
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .bg(cx.theme().primary.opacity(0.03)),
+            )
             .text_color(cx.theme().foreground)
             .child(self.render_sidebar(cx))
             .child(
