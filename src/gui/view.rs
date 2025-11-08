@@ -720,7 +720,7 @@ impl MainView {
                 .h(px(size))
                 .into_any_element()
         } else {
-            div().text_xl().child(alt).into_any_element()
+            div().text_xl().child(alt.to_string()).into_any_element()
         }
     }
 
@@ -835,6 +835,9 @@ impl MainView {
                         Button::new(("sidebar-tab", idx))
                             .ghost()
                             .selected(self.active_tab == tab_value)
+                            .rounded_full()
+                            .px_3()
+                            .py_2()
                             .w_full()
                             .justify_start()
                             .on_click(cx.listener(
