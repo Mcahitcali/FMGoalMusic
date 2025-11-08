@@ -48,7 +48,9 @@ jobs:
             libatk1.0-dev \
             libgdk-pixbuf2.0-0 \
             libgtk-3-0 \
-            pkg-config
+            pkg-config \
+            libpipewire-dev \
+            libspa-0.2-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -104,7 +106,9 @@ jobs:
             libatk1.0-dev \
             libgdk-pixbuf2.0-0 \
             libgtk-3-0 \
-            pkg-config
+            pkg-config \
+            libpipewire-dev \
+            libspa-0.2-dev
 
       - name: Install system dependencies (macOS)
         if: matrix.os == 'macos-latest'
@@ -159,7 +163,9 @@ jobs:
             libatk1.0-dev \
             libgdk-pixbuf2.0-0 \
             libgtk-3-0 \
-            pkg-config
+            pkg-config \
+            libpipewire-dev \
+            libspa-0.2-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
