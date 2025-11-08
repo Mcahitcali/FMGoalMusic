@@ -1,7 +1,8 @@
 ## 1. Implementation
-- [ ] 1.1 Update theme tokens to dark-red palette (primary `#EA2831`, surfaces `#121212`/`#1E1E1E`, success `#39FF14`)
-- [ ] 1.2 Implement Sidebar: branding, Start/Stop button, navigation list (Dashboard, Library, Team Selection, Detection, Settings, Help)
-- [ ] 1.3 Implement Dashboard header with status chip (Running/Stopped)
+- [ ] 1.1 Update theme tokens to dark-red palette (primary `#df1620`, background `#111111`, sidebar `#121212`, cards `#1E1E1E`, success `#39FF14`)
+- [ ] 1.2 Integrate Lucide icons for navigation and actions (bundle minimal SVG set: home, library, users, radar, settings, help, play, pause; render via GPUI component)
+- [ ] 1.3 Implement Sidebar: branding, Start/Stop button, navigation list (Dashboard, Library, Team Selection, Detection, Settings, Help)
+- [ ] 1.4 Implement Dashboard header with status chip states: Running (green), Idle (gray), Stopped (red), Hidden otherwise
 - [ ] 1.4 Implement Team Selection callout with "Configure" action → navigates to Team Selection
 - [ ] 1.5 Implement cards: "Goal Music" and "Other Music" with browse button → navigates to Library
 - [ ] 1.6 Wire interactions to controller/state (start/stop, nav). Reuse existing methods in `GuiController` and `AppTab`

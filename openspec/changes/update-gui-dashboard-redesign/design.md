@@ -7,12 +7,13 @@ GPUI + gpui-component are already in use. We will map the provided Tailwind-esqu
 
 ## Decisions
 - Theme palette:
-  - primary: `#EA2831`
-  - surfaces: sidebar `#121212`, cards `#1E1E1E`, background `#211111`
+  - primary: `#df1620`
+  - surfaces: sidebar `#121212`, cards `#1E1E1E`, background `#111111`
   - success (status chip): `#39FF14`
   - border: subtle `#ffffff1a` equivalent using theme border token
 - Layout: Sidebar (left, fixed width) + main content; cards with rounded corners and borders
-- Icons: Use existing emoji/text icons to avoid new asset dependency
+- Icons: Use Lucide icons (SVG). Bundle a minimal set (home, library, users, radar, settings, help, play, pause) and render via GPUI component that supports SVG paths.
+- Status chip states: Running (green), Idle (gray), Stopped (red); hidden otherwise.
 
 ## Risks / Trade-offs
 - Color accuracy vs. system theme tokens: we will approximate within GPUI theme limits

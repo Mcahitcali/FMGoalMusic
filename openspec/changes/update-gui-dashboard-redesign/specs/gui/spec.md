@@ -21,19 +21,31 @@ The GUI SHALL present a dashboard screen with a left sidebar and a main content 
 #### Scenario: Status chip
 - WHEN detection is running
 - THEN a green status chip labeled "Running" is shown in the top-right of the dashboard header
-- WHEN not running
-- THEN the status chip is hidden or rendered with a neutral/disabled look
+- WHEN detection is idle
+- THEN a gray status chip labeled "Idle" is shown
+- WHEN detection is stopped
+- THEN a red status chip labeled "Stopped" is shown
+- WHEN status is unknown or not applicable
+- THEN the status chip is hidden
 
 ### Requirement: Theme Palette and Styling
 The GUI theme SHALL use a dark-red palette inspired by the provided design.
 
 #### Scenario: Palette tokens
 - WHEN the theme is initialized
-- THEN the primary color MUST be approximately `#EA2831`
-- AND sidebar/background surfaces SHOULD use values near `#121212` and `#1E1E1E`
+- THEN the primary color MUST be approximately `#df1620`
+- AND surfaces SHOULD use: background `#111111`, sidebar `#121212`, cards `#1E1E1E`
 - AND success chip SHOULD use a green near `#39FF14`
 - AND rounded corners MUST be applied to cards and buttons
 
 #### Scenario: Layout sizing
 - GIVEN a window around 1180×760
 - THEN the dashboard MUST show a team callout card and two content cards (Goal Music, Other Music) arranged in two columns on medium widths and one column on small widths
+
+### Requirement: Iconography
+The GUI SHALL use Lucide icons for navigation items and key actions.
+
+#### Scenario: Navigation icons
+- WHEN the dashboard renders the sidebar
+- THEN each nav item includes a Lucide icon matching its label (e.g., home, library, users, radar, settings, help)
+- AND action buttons use Lucide icons where appropriate
