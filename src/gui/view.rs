@@ -74,110 +74,6 @@ impl RegionSelection {
         }
     }
 
-    fn render_dashboard_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let team_callout = div()
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded_lg()
-            .p_4()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(div().text_lg().font_semibold().child("Team Selection"))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Pick your team(s) to tailor detections."),
-            )
-            .child(
-                Button::new("dash-open-team-selection")
-                    .primary()
-                    .label("Configure")
-                    .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
-                        this.active_tab = AppTab::TeamSelection;
-                    })),
-            );
-
-        let goal_music = div()
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded_lg()
-            .p_4()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(div().text_lg().font_semibold().child("Goal Music"))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Manage celebration tracks for goals."),
-            )
-            .child(
-                Button::new("dash-open-library-1")
-                    .ghost()
-                    .label("Browse Library")
-                    .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
-                        this.active_tab = AppTab::Library;
-                    })),
-            );
-
-        let other_music = div()
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded_lg()
-            .p_4()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(div().text_lg().font_semibold().child("Other Music"))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Optional crowd or ambient layers."),
-            )
-            .child(
-                Button::new("dash-open-library-2")
-                    .ghost()
-                    .label("Browse Library")
-                    .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
-                        this.active_tab = AppTab::Library;
-                    })),
-            );
-
-        // Header with title (left) and status chip (right)
-        let header = {
-            let state = self.controller.state();
-            let guard = state.lock();
-            let process_state = guard.process_state;
-            drop(guard);
-
-            div()
-                .flex()
-                .justify_between()
-                .items_center()
-                .child(div().text_xl().font_semibold().child("Dashboard"))
-                .child(self.render_status_chip(process_state, cx))
-        };
-
-        div()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .child(header)
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_4()
-                    .child(div().flex_grow().min_w(px(320.0)).child(team_callout))
-                    .child(div().flex_grow().min_w(px(320.0)).child(goal_music))
-                    .child(div().flex_grow().min_w(px(320.0)).child(other_music)),
-            )
-    }
-
     fn display_size(&self) -> (f32, f32) {
         (
             self.physical_size.0 as f32 * self.render_scale,
@@ -635,6 +531,185 @@ impl MainView {
             },
         );
         self.subscriptions.push(subscription);
+    }
+
+    fn render_dashboard_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Team callout tile
+        let team_callout = div()
+            .bg(cx.theme().group_box)
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_5()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_3()
+                            // Placeholder for shield icon (will swap to Lucide)
+                            .child(div().text_lg().child("🛡"))
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_1()
+                                    .child(div().text_lg().font_semibold().child("Team Selection"))
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("The team currently being monitored. Click configure to change it."),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        Button::new("dash-open-team-selection")
+                            .primary()
+                            .label("Configure")
+                            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                                this.active_tab = AppTab::TeamSelection;
+                            })),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .px_2()
+                            .py_1()
+                            .rounded_full()
+                            .bg(cx.theme().muted)
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Home Team"),
+                    ),
+            );
+
+        // Music cards with a hero area
+        let goal_music = div()
+            .bg(cx.theme().group_box)
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .h(px(160.0))
+                    .rounded_lg()
+                    .bg(cx.theme().tab_active)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    // Placeholder icon (swap to Lucide waveform)
+                    .child(div().text_xl().text_color(cx.theme().primary).child("🔈")),
+            )
+            .child(
+                div()
+                    .p_5()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(div().text_lg().font_semibold().child("Goal Music"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Manage celebration tracks for goals."),
+                    )
+                    .child(
+                        Button::new("dash-open-library-1")
+                            .ghost()
+                            .label("Browse Library →")
+                            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                                this.active_tab = AppTab::Library;
+                            })),
+                    ),
+            );
+
+        let other_music = div()
+            .bg(cx.theme().group_box)
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_0()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .h(px(160.0))
+                    .rounded_lg()
+                    .bg(cx.theme().tab)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    // Placeholder icon (swap to Lucide music note)
+                    .child(div().text_xl().child("🎵")),
+            )
+            .child(
+                div()
+                    .p_5()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(div().text_lg().font_semibold().child("Other Music"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Optional crowd or ambient layers."),
+                    )
+                    .child(
+                        Button::new("dash-open-library-2")
+                            .ghost()
+                            .label("Browse Library →")
+                            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                                this.active_tab = AppTab::Library;
+                            })),
+                    ),
+            );
+
+        // Header with title (left) and status chip (right)
+        let header = {
+            let state = self.controller.state();
+            let guard = state.lock();
+            let process_state = guard.process_state;
+            drop(guard);
+
+            div()
+                .flex()
+                .justify_between()
+                .items_center()
+                .child(div().text_xl().font_semibold().child("Dashboard"))
+                .child(self.render_status_chip(process_state, cx))
+        };
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(header)
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_5()
+                    .child(div().flex_grow().min_w(px(360.0)).child(team_callout))
+                    .child(div().flex_grow().min_w(px(360.0)).child(goal_music))
+                    .child(div().flex_grow().min_w(px(360.0)).child(other_music)),
+            )
     }
 
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
