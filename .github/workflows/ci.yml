@@ -40,7 +40,15 @@ jobs:
             libclang-dev \
             libasound2-dev \
             libxdo-dev \
-            libglib2.0-dev
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libgdk-pixbuf2.0-dev \
+            libpango1.0-dev \
+            libcairo2-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf2.0-0 \
+            libgtk-3-0 \
+            pkg-config
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -88,7 +96,15 @@ jobs:
             libclang-dev \
             libasound2-dev \
             libxdo-dev \
-            libglib2.0-dev
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libgdk-pixbuf2.0-dev \
+            libpango1.0-dev \
+            libcairo2-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf2.0-0 \
+            libgtk-3-0 \
+            pkg-config
 
       - name: Install system dependencies (macOS)
         if: matrix.os == 'macos-latest'
@@ -135,7 +151,15 @@ jobs:
             libclang-dev \
             libasound2-dev \
             libxdo-dev \
-            libglib2.0-dev
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libgdk-pixbuf2.0-dev \
+            libpango1.0-dev \
+            libcairo2-dev \
+            libatk1.0-dev \
+            libgdk-pixbuf2.0-0 \
+            libgtk-3-0 \
+            pkg-config
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
