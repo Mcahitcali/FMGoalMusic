@@ -93,3 +93,5 @@ opt-level = 3           # Optimize dependencies too
 
 [build-dependencies]
 winres = "0.1"
+resvg = "0.43"
+walkdir = "2.5"
