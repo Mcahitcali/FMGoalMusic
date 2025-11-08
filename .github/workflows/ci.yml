@@ -49,7 +49,7 @@ jobs:
             libgdk-pixbuf2.0-0 \
             libgtk-3-0 \
             pkg-config \
-            libpipewire-dev \
+            libpipewire-0.3-dev \
             libspa-0.2-dev
 
       - name: Install Rust
@@ -164,7 +164,7 @@ jobs:
             libgdk-pixbuf2.0-0 \
             libgtk-3-0 \
             pkg-config \
-            libpipewire-dev \
+            libpipewire-0.3-dev \
             libspa-0.2-dev
 
       - name: Install Rust
