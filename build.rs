@@ -21,7 +21,6 @@ fn rasterize_svg_icons() -> Result<(), Box<dyn std::error::Error>> {
     use walkdir::WalkDir;
 
     use resvg::{tiny_skia, usvg, FitTo};
-    use usvg::TreeParsing;
 
     let svg_dir = Path::new("assets/icons/svg");
     if !svg_dir.exists() {
@@ -41,11 +40,18 @@ fn rasterize_svg_icons() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        let data = fs::read(path)?;
+        let raw = fs::read(path)?;
+        // Force icons to white so they look good on dark backgrounds.
+        let mut svg_text = String::from_utf8(raw.clone())
+            .unwrap_or_else(|_| String::from_utf8_lossy(&raw).to_string());
+        svg_text = svg_text
+            .replace("stroke=\"currentColor\"", "stroke=\"#ffffff\"")
+            .replace("fill=\"currentColor\"", "fill=\"#ffffff\"");
+        let data = svg_text.as_bytes();
 
         // Parse SVG
-        let opt = usvg::Options::default();
-        let tree = usvg::Tree::from_data(&data, &opt)
+        let opt = resvg::usvg::Options::default();
+        let tree = resvg::usvg::Tree::from_data(data, &opt)
             .map_err(|e| format!("usvg parse error for {}: {e:?}", path.display()))?;
 
         // Prepare canvas
@@ -57,7 +63,7 @@ fn rasterize_svg_icons() -> Result<(), Box<dyn std::error::Error>> {
             .ok_or("Failed to create Pixmap")?;
 
         // Render at original size
-        resvg::render(&tree, FitTo::Original, tiny_skia::Transform::default(), pixmap.as_mut())
+        resvg::render(&tree, FitTo::Original, pixmap.as_mut())
             .ok_or("resvg render returned None")?;
 
         // Write PNG next to other app assets
