@@ -108,7 +108,8 @@ jobs:
             libgtk-3-0 \
             pkg-config \
             libpipewire-0.3-dev \
-            libspa-0.2-dev
+            libspa-0.2-dev \
+            libsoup-3.0-dev
 
       - name: Install system dependencies (macOS)
         if: matrix.os == 'macos-latest'
