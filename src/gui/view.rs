@@ -554,8 +554,8 @@ impl MainView {
                             .flex()
                             .items_center()
                             .gap_3()
-                            // Placeholder for shield icon (will swap to Lucide)
-                            .child(div().text_lg().child("🛡"))
+                            // PNG shield icon with emoji fallback
+                            .child(self.render_png_icon("assets/icons/shield.png", 18.0, "🛡"))
                             .child(
                                 div()
                                     .flex()
@@ -613,8 +613,8 @@ impl MainView {
                     .flex()
                     .items_center()
                     .justify_center()
-                    // Placeholder icon (swap to Lucide waveform)
-                    .child(div().text_xl().text_color(cx.theme().primary).child("🔈")),
+                    // PNG waveform icon with emoji fallback
+                    .child(self.render_png_icon("assets/icons/waveform.png", 36.0, "🔈")),
             )
             .child(
                 div()
@@ -655,8 +655,8 @@ impl MainView {
                     .flex()
                     .items_center()
                     .justify_center()
-                    // Placeholder icon (swap to Lucide music note)
-                    .child(div().text_xl().child("🎵")),
+                    // PNG music icon with emoji fallback
+                    .child(self.render_png_icon("assets/icons/music.png", 36.0, "🎵")),
             )
             .child(
                 div()
@@ -710,6 +710,29 @@ impl MainView {
                     .child(div().flex_grow().min_w(px(360.0)).child(goal_music))
                     .child(div().flex_grow().min_w(px(360.0)).child(other_music)),
             )
+    }
+
+    fn render_png_icon(&self, file: &str, size: f32, alt: &str) -> AnyElement {
+        if Path::new(file).exists() {
+            img(file)
+                .object_fit(ObjectFit::Contain)
+                .w(px(size))
+                .h(px(size))
+                .into_any_element()
+        } else {
+            div().text_xl().child(alt).into_any_element()
+        }
+    }
+
+    fn render_tab_icon(&self, tab: AppTab) -> AnyElement {
+        match tab {
+            AppTab::Dashboard => self.render_png_icon("assets/icons/dashboard.png", 18.0, "🏟️"),
+            AppTab::Library => self.render_png_icon("assets/icons/library.png", 18.0, "🎵"),
+            AppTab::TeamSelection => self.render_png_icon("assets/icons/team.png", 18.0, "⚽"),
+            AppTab::Detection => self.render_png_icon("assets/icons/detection.png", 18.0, "🛰"),
+            AppTab::Settings => self.render_png_icon("assets/icons/settings.png", 18.0, "⚙️"),
+            AppTab::Help => self.render_png_icon("assets/icons/help.png", 18.0, "ℹ️"),
+        }
     }
 
     fn render_sidebar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -824,7 +847,7 @@ impl MainView {
                                     .flex()
                                     .items_center()
                                     .gap_3()
-                                    .child(div().text_xl().child(tab_value.icon()))
+                                    .child(self.render_tab_icon(tab_value))
                                     .child(div().flex().flex_col().gap_0().child(
                                         div().text_sm().font_semibold().child(tab_value.title()),
                                     )),
