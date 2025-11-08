@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use gpui::prelude::FluentBuilder;
 use gpui::{
     div, img, px, AnyElement, AppContext, Bounds, ClickEvent, Context, CursorStyle, Entity,
     FocusHandle, Focusable, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
@@ -602,7 +603,6 @@ impl MainView {
             .border_1()
             .border_color(cx.theme().border)
             .rounded_lg()
-            
             .flex()
             .flex_col()
             .child(
@@ -712,20 +712,15 @@ impl MainView {
                 .child(self.render_status_chip(process_state, cx))
         };
 
-        div()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .child(header)
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_5()
-                    .child(div().flex_grow().min_w(px(360.0)).child(team_callout))
-                    .child(div().flex_grow().min_w(px(360.0)).child(goal_music))
-                    .child(div().flex_grow().min_w(px(360.0)).child(other_music)),
-            )
+        div().flex().flex_col().gap_4().child(header).child(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap_5()
+                .child(div().flex_grow().min_w(px(360.0)).child(team_callout))
+                .child(div().flex_grow().min_w(px(360.0)).child(goal_music))
+                .child(div().flex_grow().min_w(px(360.0)).child(other_music)),
+        )
     }
 
     fn render_png_icon(&self, file: &str, size: f32, alt: &str) -> AnyElement {
@@ -856,10 +851,9 @@ impl MainView {
                             .py_2()
                             .w_full()
                             .justify_start()
-                            .when(
-                                self.active_tab == tab_value,
-                                |b| b.bg(cx.theme().primary.opacity(0.15)),
-                            )
+                            .when(self.active_tab == tab_value, |b| {
+                                b.bg(cx.theme().primary.opacity(0.15))
+                            })
                             .on_click(cx.listener(
                                 move |this, _event: &ClickEvent, _window, _cx| {
                                     this.active_tab = tab_value;

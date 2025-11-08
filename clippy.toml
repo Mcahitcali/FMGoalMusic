@@ -1,9 +1,6 @@
 # Clippy configuration for strict linting
 # https://doc.rust-lang.org/clippy/
 
-# Pedantic lints (enabled)
-pedantic-lints = true
-
 # Maximum allowed cognitive complexity for functions
 cognitive-complexity-threshold = 25
 

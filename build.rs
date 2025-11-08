@@ -20,7 +20,7 @@ fn rasterize_svg_icons() -> Result<(), Box<dyn std::error::Error>> {
     use std::path::{Path, PathBuf};
     use walkdir::WalkDir;
 
-    use resvg::{tiny_skia, usvg, FitTo};
+    use resvg::tiny_skia;
 
     let svg_dir = Path::new("assets/icons/svg");
     if !svg_dir.exists() {
@@ -63,7 +63,7 @@ fn rasterize_svg_icons() -> Result<(), Box<dyn std::error::Error>> {
             tiny_skia::Pixmap::new(size.width(), size.height()).ok_or("Failed to create Pixmap")?;
 
         // Render at original size
-        resvg::render(&tree, FitTo::Original, &mut pixmap.as_mut());
+        resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
 
         // Write PNG next to other app assets
         let stem = path
