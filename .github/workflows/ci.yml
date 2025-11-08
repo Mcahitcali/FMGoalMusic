@@ -39,7 +39,8 @@ jobs:
             clang \
             libclang-dev \
             libasound2-dev \
-            libxdo-dev
+            libxdo-dev \
+            libglib2.0-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -86,7 +87,8 @@ jobs:
             clang \
             libclang-dev \
             libasound2-dev \
-            libxdo-dev
+            libxdo-dev \
+            libglib2.0-dev
 
       - name: Install system dependencies (macOS)
         if: matrix.os == 'macos-latest'
@@ -132,7 +134,8 @@ jobs:
             clang \
             libclang-dev \
             libasound2-dev \
-            libxdo-dev
+            libxdo-dev \
+            libglib2.0-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
