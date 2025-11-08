@@ -69,7 +69,9 @@ mod tests {
         assert!(contains_goal_text("GOAL FOR Arsenal"));
         assert!(contains_goal_text("goal for arsenal")); // Case insensitive
         assert!(contains_goal_text("GOL Barcelona"));
-        assert!(contains_goal_text("Some noise GOAL FOR TeamName more noise"));
+        assert!(contains_goal_text(
+            "Some noise GOAL FOR TeamName more noise"
+        ));
 
         // Negative cases
         assert!(!contains_goal_text(""));

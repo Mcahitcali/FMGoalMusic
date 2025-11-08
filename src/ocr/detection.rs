@@ -2,7 +2,6 @@
 ///
 /// This module handles all Tesseract initialization and OCR operations.
 /// It manages the Tesseract instance and performs OCR on preprocessed images.
-
 use image::GrayImage;
 use leptess::{LepTess, Variable};
 use std::path::PathBuf;
@@ -60,7 +59,10 @@ impl TesseractDetector {
     ///
     /// # Returns
     /// Extracted text (uppercase, trimmed)
-    pub fn detect_text(&mut self, binary_image: &GrayImage) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn detect_text(
+        &mut self,
+        binary_image: &GrayImage,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         // Save to temp file (leptess requires file path)
         let temp_path = self.get_temp_path("ocr_temp.png");
         binary_image.save(&temp_path)?;
@@ -84,7 +86,10 @@ impl TesseractDetector {
     /// Perform OCR on multiple preprocessed images and return first non-empty result
     ///
     /// Used for alternative preprocessing methods
-    pub fn detect_text_multi(&mut self, images: Vec<GrayImage>) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn detect_text_multi(
+        &mut self,
+        images: Vec<GrayImage>,
+    ) -> Result<String, Box<dyn std::error::Error>> {
         for (i, image) in images.iter().enumerate() {
             let temp_path = self.get_temp_path(&format!("ocr_alt_{}.png", i));
             image.save(&temp_path)?;

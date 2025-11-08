@@ -1,537 +1,166 @@
-### Filename and Display Name Rules
+# FM Goal Musics — GPUI Design Architecture
 
-- **ASCII-only filenames**: When a user adds audio, the resulting WAV is saved under `config/musics/` using an ASCII slug.
-- **Slug rules**:
-  - Turkish letters mapped: ı→i, İ→I, ğ→g, Ğ→G, ş→s, Ş→S
-  - General diacritics removed via Unicode decomposition (e.g., ö→o, ü→u, ç→c)
-  - Spaces and non-alphanumerics → underscores
-  - Collapses multiple underscores, trims edges
-- **Display name**: Derived from the final WAV filename stem (no extension). What you see matches the on-disk name.
+Version: 2.0 (GPUI refresh)\
+Status: In progress – source of truth for every GUI change touching `src/gui/**`.
 
-### Fonts
-
-- Primary text is ASCII after slugging. For broader UI text (status/messages), the app may load a system font (e.g., Arial/Helvetica) at startup to improve glyph coverage on macOS.
-# FM Goal Musics – Design Specification
-
-## Design Philosophy
-FM Goal Musics follows a **minimal, functional, performance-first** design approach. The interface prioritizes clarity, speed, and reliability over visual flourish. Both CLI and GUI versions maintain consistent visual language while respecting platform conventions.
-
-## Design Principles
-
-### 1. Performance First
-- **Lightweight UI** – Minimal memory footprint, 60 FPS responsiveness
-- **Clear Feedback** – Instant visual response to user actions
-- **No Blocking Operations** – All heavy tasks run in background threads
-- **Efficient Rendering** – Immediate mode GUI (egui) with optimized draw calls
-
-### 2. Clarity & Simplicity
-- **Single Purpose Per Screen** – Each view focuses on one task
-- **Progressive Disclosure** – Advanced options hidden until needed
-- **Clear Labeling** – Descriptive button text and input labels
-- **Visual Hierarchy** – Important actions prominent, secondary actions subdued
-
-### 3. Consistency
-- **Unified Color Language** – Same colors mean same things across all views
-- **Predictable Behavior** – Actions produce expected results
-- **Platform Conventions** – Respect macOS/Windows UI patterns
-- **Shared Terminology** – Same terms in CLI and GUI
-
-### 4. Accessibility
-- **High Contrast** – Clear visual separation between elements
-- **Readable Text** – Minimum 14px font sizes
-- **Status Indicators** – Color + icon + text for colorblind accessibility
-- **Keyboard Navigation** – Full keyboard control in CLI, shortcuts in GUI
-
-## Color Palette
-
-### Primary Colors
-```
-Background (Dark):   #1e1e1e (RGB: 30, 30, 30)
-Background (Light):  #f5f5f5 (RGB: 245, 245, 245)
-Surface:             #2d2d2d (RGB: 45, 45, 45)
-```
-
-### Semantic Colors
-```
-Success (Green):     #4caf50 (RGB: 76, 175, 80)
-  - Running state
-  - Successful operations
-  - Valid input
-
-Warning (Yellow):    #ffb74d (RGB: 255, 183, 77)
-  - Paused state
-  - Attention needed
-  - Non-critical alerts
-
-Error (Red):         #f44336 (RGB: 244, 67, 54)
-  - Stopped state
-  - Error messages
-  - Invalid input
-
-Info (Blue):         #2196f3 (RGB: 33, 150, 243)
-  - Detection counter
-  - Information messages
-  - Neutral actions
-```
-
-### Text Colors
-```
-Primary Text:        #ffffff (RGB: 255, 255, 255) - Main content
-Secondary Text:      #b0b0b0 (RGB: 176, 176, 176) - Labels, descriptions
-Disabled Text:       #6e6e6e (RGB: 110, 110, 110) - Inactive elements
-Accent Text:         #90caf9 (RGB: 144, 202, 249) - Links, highlights
-```
-
-### UI Element Colors
-```
-Button Primary:      #2196f3 (RGB: 33, 150, 243)
-Button Hover:        #1976d2 (RGB: 25, 118, 210)
-Button Active:       #0d47a1 (RGB: 13, 71, 161)
-Button Disabled:     #424242 (RGB: 66, 66, 66)
-
-Input Background:    #3a3a3a (RGB: 58, 58, 58)
-Input Border:        #5a5a5a (RGB: 90, 90, 90)
-Input Focus:         #2196f3 (RGB: 33, 150, 243)
-Input Error:         #f44336 (RGB: 244, 67, 54)
-
-Selection BG:        #2196f3 (RGB: 33, 150, 243)
-Selection Text:      #ffffff (RGB: 255, 255, 255)
-```
-
-## Typography
-
-### Font Families
-```
-Primary Font:        System Default
-  - macOS: SF Pro Text, SF Pro Display
-  - Windows: Segoe UI
-  - Linux: Ubuntu, sans-serif
-
-Monospace Font:      System Monospace
-  - macOS: SF Mono, Menlo
-  - Windows: Consolas, Courier New
-  - Linux: Ubuntu Mono, Courier
-```
-
-### Font Sizes
-```
-Heading Large:       24px (1.5rem) - Section titles
-Heading Medium:      20px (1.25rem) - Subsection titles
-Heading Small:       16px (1rem) - Group labels
-
-Body Large:          16px (1rem) - Primary content
-Body Medium:         14px (0.875rem) - Standard text
-Body Small:          12px (0.75rem) - Secondary info, captions
-
-Monospace:           13px (0.8125rem) - Code, logs, coordinates
-```
-
-### Font Weights
-```
-Regular:             400 - Body text
-Medium:              500 - Emphasis, labels
-Semibold:            600 - Buttons, headings
-Bold:                700 - Important headings
-```
-
-## Layout & Spacing
-
-### Grid System
-```
-Base Unit:           8px
-Small Space:         8px (1 unit)
-Medium Space:        16px (2 units)
-Large Space:         24px (3 units)
-XLarge Space:        32px (4 units)
-
-Container Padding:   16px
-Section Margin:      24px
-Element Spacing:     8px
-```
-
-### Component Dimensions
-```
-Button Height:       32px (Standard), 40px (Large)
-Input Height:        32px
-List Item Height:    36px
-Header Height:       48px
-Sidebar Width:       280px
-Min Window Width:    600px
-Min Window Height:   500px
-```
-
-### Border Radius
-```
-Small:               4px - Inputs, small buttons
-Medium:              8px - Cards, panels
-Large:               12px - Modals, overlays
-```
-
-## GUI Components
-
-### Main Window Layout
-```
-┌─────────────────────────────────────────┐
-│ Title Bar                               │
-├─────────────────────────────────────────┤
-│                                         │
-│  Music Management Section               │
-│  ├─ Music List (scrollable)            │
-│  ├─ Add/Remove Buttons                 │
-│  └─ Selected Music Display             │
-│                                         │
-├─────────────────────────────────────────┤
-│  🔄 NEW: Team Selection Section         │
-│  ├─ League Dropdown                    │
-│  ├─ Team Dropdown (filtered by league) │
-│  ├─ Selected Team Display              │
-│  └─ Clear Selection Button             │
-│                                         │
-├─────────────────────────────────────────┤
-│                                         │
-│  Configuration Section                  │
-│  ├─ Capture Region (X, Y, W, H)        │
-│  ├─ Region Selector Button             │
-│  ├─ OCR Threshold                      │
-│  ├─ Debounce Time                      │
-│  └─ Morphological Opening Toggle       │
-│                                         │
-├─────────────────────────────────────────┤
-│                                         │
-│  Process Control Section                │
-│  ├─ Start/Pause/Stop Buttons           │
-│  ├─ Status Indicator                   │
-│  └─ Detection Counter                  │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-### Updated: Tabbed Layout (Final)
-
-```
-┌─────────────────────────────────────────┐
-│ [▶️ Start/Stop] | ⚽ FM Goal Musics     │
-├─────────────────────────────────────────┤
-│ Status: [state] | Detections: N |      │
-│ Display: WxH | Window: WxH             │
-├─────────────────────────────────────────┤
-│ Tab Bar: [🎵 Library | ⚽ Team Selection│
-│          | ⚙️ Settings | ℹ️ Help]      │
-├─────────────────────────────────────────┤
-│ Active Tab Content                      │
-│  • Library: music list (add/remove/     │
-│            preview), ambiance sounds    │
-│  • Team Selection: league/team dropdowns│
-│            capture preview              │
-│  • Settings: capture region, OCR,       │
-│            debounce, morphology,        │
-│            volumes, sound lengths       │
-│  • Help: comprehensive guide with       │
-│         teams.json configuration        │
-└─────────────────────────────────────────┘
-```
-
-**Key Changes:**
-- Start/Stop Detection button in header (top-left, color-coded)
-- 4 tabs instead of 5 (removed Audio, renamed Detection → Team Selection)
-- Preview button moved to Library tab
-- Ambiance controls in Library tab
-- Volume/Length controls in Settings tab
-- Help tab includes teams.json config guide and troubleshooting
-- Status bar always visible with real-time state updates
-
-### Button Styles
-
-#### Primary Button
-```
-State:      Default         Hover           Active          Disabled
-BG Color:   #2196f3         #1976d2         #0d47a1         #424242
-Text:       #ffffff         #ffffff         #ffffff         #6e6e6e
-Border:     None            None            None            None
-Shadow:     0 2px 4px       0 4px 8px       0 1px 2px       None
-            rgba(0,0,0,0.2) rgba(0,0,0,0.3) rgba(0,0,0,0.1)
-```
-
-#### Secondary Button
-```
-State:      Default         Hover           Active          Disabled
-BG Color:   #3a3a3a         #4a4a4a         #2a2a2a         #2d2d2d
-Text:       #ffffff         #ffffff         #ffffff         #6e6e6e
-Border:     1px #5a5a5a     1px #6a6a6a     1px #4a4a4a     1px #3d3d3d
-```
-
-#### Icon Button
-```
-Size:       32x32px (Standard), 40x40px (Large)
-Icon Size:  16px (Standard), 20px (Large)
-BG:         Transparent (hover: #3a3a3a)
-```
-
-### Status Indicators
-
-#### Running State
-```
-Icon:       🟢 (Green Circle)
-Text:       "Running"
-Color:      #4caf50 (Success Green)
-Animation:  Subtle pulse (1s cycle)
-```
-
-#### Paused State
-```
-Icon:       🟡 (Yellow Circle)
-Text:       "Paused"
-Color:      #ffb74d (Warning Yellow)
-Animation:  None
-```
-
-#### Stopped State
-```
-Icon:       🔴 (Red Circle)
-Text:       "Stopped"
-Color:      #f44336 (Error Red)
-Animation:  None
-```
-
-### Input Fields
-
-#### Text Input
-```
-Height:         32px
-Padding:        8px 12px
-BG Color:       #3a3a3a
-Border:         1px solid #5a5a5a
-Focus Border:   2px solid #2196f3
-Error Border:   2px solid #f44336
-Font Size:      14px
-Border Radius:  4px
-```
-
-#### Number Input
-```
-Same as Text Input, plus:
-Width:          80px (coordinates), 120px (general)
-Alignment:      Right-aligned text
-Step Controls:  +/- buttons (optional)
-```
-
-### List Components
-
-#### Music List Item
-```
-Height:         36px
-Padding:        8px 12px
-BG (Unselected): Transparent
-BG (Selected):   #2196f3
-BG (Hover):      #3a3a3a
-Text Color:      #ffffff (unselected), #ffffff (selected)
-Font Size:       14px
-Border:          None
-```
-
-#### Scrollbar
-```
-Width:          8px
-Track Color:    #2d2d2d
-Thumb Color:    #5a5a5a (default), #6a6a6a (hover)
-Border Radius:  4px
-```
-
-### Region Selector Overlay
-
-#### Full-Screen Overlay
-```
-BG Color:       rgba(0, 0, 0, 0.7) - Semi-transparent black
-Selection Box:  2px solid #f44336 (Red)
-Dimension Text: 16px white text with black shadow
-Cursor:         Crosshair
-```
-
-#### Selection Rectangle
-```
-Border:         2px solid #f44336
-Fill:           rgba(244, 67, 54, 0.2) - Transparent red
-Shadow:         0 0 8px rgba(244, 67, 54, 0.5)
-```
-
-## CLI Design
-
-### Color Scheme (Terminal)
-```
-Success:        Green (ANSI 32)
-Warning:        Yellow (ANSI 33)
-Error:          Red (ANSI 31)
-Info:           Blue (ANSI 34)
-Highlight:      Cyan (ANSI 36)
-Dim:            Gray (ANSI 90)
-```
-
-### Output Format
-
-#### Status Messages
-```
-✓ Success message          (Green checkmark)
-⚠ Warning message          (Yellow warning)
-✗ Error message            (Red X)
-ℹ Info message             (Blue info)
-```
-
-#### Progress Indicators
-```
-▸ Loading...               (Right arrow + animation)
-● Running detection        (Bullet point)
-⏸ Paused                   (Pause symbol)
-```
-
-#### Benchmark Table
-```
-╔═══════════════════════════════════════════════════════════════╗
-║           FM Goal Musics - Latency Benchmark Report          ║
-╚═══════════════════════════════════════════════════════════════╝
-
-Sample Size: 500 iterations
-
-┌─────────────────┬──────────┬──────────┬──────────┬──────────┐
-│ Stage           │   Mean   │   p50    │   p95    │   p99    │
-├─────────────────┼──────────┼──────────┼──────────┼──────────┤
-│ Capture         │  12.3 ms │  11.8 ms │  15.2 ms │  18.4 ms │
-│ Preprocess      │   2.1 ms │   2.0 ms │   2.8 ms │   3.5 ms │
-│ OCR             │  18.5 ms │  17.2 ms │  23.1 ms │  28.6 ms │
-│ Audio Trigger   │   0.8 ms │   0.7 ms │   1.2 ms │   1.8 ms │
-├─────────────────┼──────────┼──────────┼──────────┼──────────┤
-│ TOTAL           │  33.7 ms │  31.7 ms │  42.3 ms │  52.3 ms │
-└─────────────────┴──────────┴──────────┴──────────┴──────────┘
-```
-
-## Icons & Symbols
-
-### GUI Icons
-```
-➕ Add          - Add music file
-🗑️ Remove       - Remove selected music
-▶️ Start        - Start detection
-⏸️ Pause        - Pause detection
-⏹️ Stop         - Stop detection
-🎯 Target       - Region selector
-⚙️ Settings     - Configuration
-ℹ️ Info         - Information
-🎵 Music        - Audio file
-🟢 Running      - Active state
-🟡 Paused       - Paused state
-🔴 Stopped      - Inactive state
-```
-
-### CLI Symbols
-```
-✓  Success checkmark
-✗  Error cross
-⚠  Warning triangle
-ℹ  Information
-▸  Right arrow (progress)
-●  Bullet point (list)
-⏸  Pause symbol
-```
-
-## Animation & Transitions
-
-### GUI Animations
-```
-Button Hover:       150ms ease-in-out
-State Change:       200ms ease-in-out
-Modal Fade In:      250ms ease-out
-List Selection:     100ms ease-in-out
-Overlay Appear:     300ms fade
-```
-
-### Animation Guidelines
-- Keep animations subtle and functional
-- Disable animations on low-performance systems
-- No animations during active detection (performance priority)
-- Use animations only for state changes and feedback
-
-## Responsive Behavior
-
-### Window Resizing
-```
-Min Width:      600px
-Min Height:     500px
-Max Width:      None (expands with content)
-Max Height:     None (expands with content)
-
-Behavior:
-- Music list expands vertically
-- Configuration section maintains fixed height
-- Horizontal elements stack at narrow widths
-```
-
-### Scaling
-```
-DPI Scaling:    Automatic (respects system settings)
-Retina:         2x rendering on high-DPI displays
-Text Scaling:   Follows system font size preferences
-```
-
-## Accessibility Features
-
-### Visual Accessibility
-- High contrast mode support
-- Colorblind-safe palette (use icons + text, not color alone)
-- Minimum text size 12px
-- Clear focus indicators (2px blue outline)
-
-### Interaction Accessibility
-- Keyboard navigation in GUI
-- Screen reader compatible labels
-- Tooltip descriptions on hover
-- Clear error messages with solutions
-
-## Platform-Specific Design
-
-### macOS
-```
-Window Style:       Native macOS title bar
-Buttons:            Rounded corners (8px)
-Shadows:            Subtle depth (0 2px 8px rgba(0,0,0,0.15))
-Scrollbars:         Overlay style (hidden when not scrolling)
-```
-
-### Windows
-```
-Window Style:       Standard Windows chrome
-Buttons:            Squared corners (4px)
-Shadows:            Pronounced depth (0 4px 12px rgba(0,0,0,0.25))
-Scrollbars:         Always visible
-```
-
-### Linux
-```
-Window Style:       GTK/Qt compliant
-Buttons:            Follows desktop environment theme
-Shadows:            Minimal (0 2px 4px rgba(0,0,0,0.1))
-Scrollbars:         Desktop environment default
-```
-
-## Brand Identity
-
-### Application Name
-```
-Full Name:      FM Goal Musics
-Short Name:     FM Goal Musics
-Abbreviation:   FGM (internal use)
-```
-
-### Tagline
-```
-"Instant goal celebrations for Football Manager"
-```
-
-### Visual Identity
-- No custom logo (uses system icons and emoji)
-- Focus on functionality over branding
-- Clean, technical aesthetic
-- Performance-oriented presentation
+This document replaces the previous egui-oriented design guide. It reflects the gpui/gpui-component rewrite described in `ARCHITECTURE.md` and `openspec/changes/refactor-gui-to-gpui`. Treat it as the contract for layout, interaction, and theming.
 
 ---
 
-*Last Updated: 2025-10-30*
-*Version: 1.0*
+## 1. Design Goals
+
+1. **Instant feedback for real-time detection** – UI must acknowledge every action within a frame (≤16 ms) and never block the UI thread. All slow work (`rfd`, disk, audio preload) runs via `cx.defer_in`.
+2. **Operational clarity** – Tabs are scoped to single responsibilities (Library, Team, Detection, Settings, Help). Controls live inside contextual panels so users never guess where a setting belongs.
+3. **Hardware-friendly visuals** – Palette avoids pure dark/light extremes, emphasizing a mid-contrast “slate dusk” look that stays readable on SDR and HDR monitors.
+4. **Spec-driven components** – Only gpui-component widgets (`Button`, `Slider`, `Switch`, `List`, `Stack`, etc.) are allowed unless a requirement proves otherwise. Custom primitives (`div`, `label`) are only used to compose these widgets.
+5. **Backend stability** – The GUI orchestrates `GuiController` and state structures but never mutates detection/audio internals directly. Follow the MVU/Event flow described in `ARCHITECTURE.md`.
+
+## 2. Layout System
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Header (logo, detection controls, status, session summary, help link)    │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Tab Bar (Library · Team · Detection · Settings · Help)                   │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Content Area (grid-based panels, per-tab layout)                         │
+└──────────────────────────────────────────────────────────────────────────┘
+ Footer (capture region summary + hotkeys) – optional on narrow widths.
+```
+
+- **Header**: split layout with `flex` – left column shows product name + secondary status text; right column contains detection CTA(s) and quick links.
+- **Tab Bar**: uses `gpui_component::tab::TabBar` with underline style. Tab labels include emoji prefixes (🎵, ⚽, 🛰, ⚙️, ℹ️) for instant recognition.
+- **Content Grid**: default to two columns (list vs. inspector) ≥1280 px; collapse to stacked panels below 960 px.
+- **Panels**: `div().border_1().rounded_lg().p_3()`; panel titles use `text_sm().uppercase().tracking_wider()` for clarity.
+- **Footer**: status chips describing capture region `[x, y, w, h]`, selected monitor, and keyboard shortcuts (Cmd+1 pause, Cmd+Shift+R region tool).
+
+## 3. Tab Specifications
+
+### 3.1 Library
+
+- **Purpose**: Manage celebration music & ambiance clips, preview audio, and map shortcuts.
+- **Left Panel – Collections**
+  - Two collapsible sections: `Celebration Tracks` (list) and `Ambiance Clip` (single-slot card, because backend stores one ambiance path today).
+  - Each row uses `Button::ghost()` in list mode with `selected()` highlight for the active entry. The label shows display name + optional shortcut (e.g., `I Will Survive · ⇧1`).
+  - Actions above the list:
+    - `Add` opens native file dialog (`rfd::FileDialog::new().pick_files()`), supports multi-select, auto-converts to WAV via controller.
+    - `Remove`, `Clear Selection`, `Preview` (or `Stop Preview`), `Reveal in Finder/Explorer`.
+    - Buttons disabled when no selection is active.
+- **Right Panel – Inspector**
+  - Shows waveform placeholder, metadata (duration, sample rate if available), and `Set Shortcut` + `Play Preview`.
+  - Ambiance subsection mirrors actions but is limited to a single file slot; includes `Switch` for enable/disable + `Slider` for mix volume.
+  - Preview uses cached audio via `AudioManager` inside `PreviewSound`; stop preview resets state.
+- **Status messaging**: Use `status_text` to display success/failure; never rely on modal alerts.
+
+### 3.2 Team Selection
+
+- **Left Sidebar**: League list (scrollable). Each league entry is a `Button::ghost().selected(...)`. Searching/filtering uses an `Input` at top.
+- **Main Grid**: Responsive 3–5 columns of team cards. Each card shows team display name + key variations (chip list). Selecting a team updates controller + inspector panel.
+- **Custom Team Drawer**:
+  - Expandable panel toggled via `Button::ghost("Add Custom Team")`.
+  - Fields: `Team Name`, `League` (dropdown when existing, input when new), `Variations` (multi-line).
+  - Submit button validates via controller (`add_custom_team`), errors surface inline under input.
+
+### 3.3 Detection
+
+- **Capture Overview**: Show monitor identifier, capture region `[x, y, width, height]`, and screenshot placeholder.
+- **Controls**:
+  - Buttons for `Select Region`, `Reset Region`, `Monitor ▾`.
+  - Sliders for `OCR Threshold` (Auto label when 0), `Debounce`, `Morphological Opening` switch.
+  - `Detection Status` card summarizing `ProcessState`, detection count, last trigger timestamp.
+- **Actions**: `Start`, `Pause`, `Stop` button group. Buttons dispatch through controller once backend wiring lands.
+
+### 3.4 Settings
+
+- **Audio Section**: `Slider` for music/ambiance volumes, `Slider` for playback length (in seconds). Display value as `XX s` or `XX %`.
+- **Updates Section**: Switch for auto update checks, `Check Now` button.
+- **Diagnostics Section**: “Open Logs” and “Reveal Config” actions using `open::that`.
+
+### 3.5 Help
+
+- Cards for “Quick Start”, “Keyboard Shortcuts”, “Troubleshooting”, “Support Links”.
+- Each card uses `Button::ghost()` rows linking to docs (`open::that`).
+
+## 4. Component Guidelines
+
+| Intent                 | Component                                             | Notes |
+|------------------------|-------------------------------------------------------|-------|
+| Primary actions        | `Button::primary()`                                   | Use `Button::danger()` for destructive remove/reset. |
+| Secondary/list rows    | `Button::ghost().list_item(true)`                     | Always provide stable IDs via tuples `("music", idx)`. |
+| Toggles                | `gpui_component::switch::Switch`                      | Reflect controller state immediately; disable during blocking ops. |
+| Numeric inputs         | `gpui_component::slider::Slider`                      | For ms/percent/time values; show helper text with formatted values. |
+| Text inputs            | `gpui_component::input::Input`                        | Use `.cleanable(true)` and focus handling from gpui. |
+| Chips/badges           | `gpui_component::badge::Badge` or `div()` with `text-xs`. | Use for status (Running/Paused/Stopped). |
+| Lists                  | Compose with `div().flex().flex_col()` or use `List` once stabilized. |
+
+General rules:
+- IDs must be deterministic & stable across frames (`Button::new(("team", idx))`).
+- Avoid manual hover styling; rely on theme tokens.
+- All callbacks route through `cx.listener` and call controller methods; never mutate controller state directly without using these APIs.
+
+## 5. Theming
+
+Palette aims for mid-tone slate (neither full dark nor light).
+
+| Token                    | Hex      | Usage                                      |
+|--------------------------|----------|--------------------------------------------|
+| Background               | #262c34  | Window base, body background               |
+| Surface                  | #2f3540  | Panels, cards                              |
+| Elevated Surface         | #383f4d  | Popovers, inspectors                       |
+| Foreground               | #f5f7fb  | Primary text                               |
+| Muted Foreground         | #b7bfcd  | Secondary text                             |
+| Border                   | #3d4452  | Panel borders, separators                   |
+| Primary                  | #4c7cf4  | CTAs, selection, slider accent             |
+| Primary Hover            | #5d8cff  | Hover states                               |
+| Primary Active           | #365ed1  | Active/pressed                             |
+| Accent                   | #f48c4c  | Highlight chips, warnings                   |
+| Success                  | #55b685  | Running status                             |
+| Warning                  | #f6c343  | Attention chips                            |
+| Danger                   | #f05d70  | Errors, destructive buttons                |
+| Tab Bar Background       | #2b303a  | Tab strip                                  |
+| Tab Active               | #36404e  | Active tab                                 |
+| Tab Inactive             | #a9b2c4  | Tab labels                                 |
+
+Implementation notes:
+- Use `gpui::rgb` + `ActiveTheme` mapping (see `src/gui/theme.rs`).
+- Text must maintain ≥4.5:1 contrast; primary (#f5f7fb) on surface (#2f3540) is 5:1.
+- Avoid translucent overlays unless absolutely necessary; prefer solid backgrounds for clarity.
+
+## 6. Typography & Spacing
+
+- Font stack: rely on platform defaults (SF Pro, Segoe UI, Ubuntu). `gpui_component` uses system fonts; no custom font loading required.
+- Sizes: `text_xl` for headers (~20 px), `text_lg` (~18 px) for panel titles, `text_md` (~16 px) for body, `text_sm` (~14 px) for helper text.
+- Spacing scale: multiples of 4 px. Default panel padding `p_3` (12 px), gap between controls `gap_2` (8 px).
+
+## 7. Interaction Rules
+
+1. **File dialogs**: always dispatch with `cx.defer_in(window, move |this, window, cx| { … })` to avoid blocking the render loop.
+2. **Controller calls**: wrap in `if let Err(err) = controller.action(...) { status_text = err.into(); } else { refresh_status(); }`.
+3. **Selections**: clicking a list row sets controller selection and updates `status_text`. Use `.selected(selected_index == Some(idx))`.
+4. **Preview audio**: toggling preview on launches (or stops) `AudioManager`. Only one preview (music or ambiance) may play at a time.
+5. **Async operations**: for long tasks (update check, add music conversions) show ephemeral status text (“Converting ‘song.mp3’…”).
+
+## 8. Accessibility
+
+- Focus states: ensure `Focusable` implementations and `focus_handle` usage. Buttons auto-handle focus outlines; avoid removing them.
+- Keyboard shortcuts: document in Help tab and render helper text near relevant controls.
+- Colorblind safety: pair color-coded chips with labels (e.g., `Running` text + green dot).
+- Minimum touch target 40×40 px for all interactive elements.
+
+## 9. Responsiveness
+
+- Breakpoints: `lg ≥ 1280px` (two-column layout), `md 960–1279px` (single column + collapsible inspector), `sm < 960px` (stacked cards).
+- Tab bar wraps to multiple lines if width < 720 px; maintain readability by keeping emoji + short labels.
+
+## 10. Implementation Checklist
+
+- [ ] Theme installed via `theme::install(cx)` inside `App::run`.
+- [ ] Main view separated into helper methods per section (`render_library_tab`, `render_team_tab`, etc.).
+- [ ] All list selections highlight even when unfocused.
+- [ ] No usage of `webview` or custom GPU components; rely solely on gpui-component building blocks.
+- [ ] Status text updated after every controller mutation.
+- [ ] `cargo fmt` and `cargo clippy` remain clean.
+
+---
+
+Adhere to this document when implementing or reviewing any GUI code. If a change requires deviating from the rules above, update this document first (spec-first workflow).

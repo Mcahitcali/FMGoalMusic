@@ -1,8 +1,7 @@
 /// Goal detector implementation
 ///
 /// Detects when a goal is scored and identifies the scoring team.
-
-use super::detector::{Detector, DetectionContext, DetectionResult};
+use super::detector::{DetectionContext, DetectionResult, Detector};
 use super::i18n::I18nPhrases;
 
 /// Goal detector
@@ -100,7 +99,10 @@ impl Detector for GoalDetector {
             context.text
         );
 
-        DetectionResult::Goal { team_name: team, confidence }
+        DetectionResult::Goal {
+            team_name: team,
+            confidence,
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -126,7 +128,10 @@ mod tests {
         let result = detector.detect(&ctx);
 
         match result {
-            DetectionResult::Goal { team_name, confidence } => {
+            DetectionResult::Goal {
+                team_name,
+                confidence,
+            } => {
                 assert_eq!(team_name, Some("Home".to_string()));
                 assert!(confidence > 0.7);
             }
@@ -143,7 +148,10 @@ mod tests {
         let result = detector.detect(&ctx);
 
         match result {
-            DetectionResult::Goal { team_name, confidence } => {
+            DetectionResult::Goal {
+                team_name,
+                confidence,
+            } => {
                 assert_eq!(team_name, Some("Away".to_string()));
                 assert!(confidence > 0.7);
             }
@@ -156,8 +164,10 @@ mod tests {
         let phrases = I18nPhrases::new(Language::English);
         let detector = GoalDetector::new(phrases);
 
-        let ctx = DetectionContext::new("GOAL! Manchester United".to_string())
-            .with_teams(Some("Manchester United".to_string()), Some("Liverpool".to_string()));
+        let ctx = DetectionContext::new("GOAL! Manchester United".to_string()).with_teams(
+            Some("Manchester United".to_string()),
+            Some("Liverpool".to_string()),
+        );
 
         let result = detector.detect(&ctx);
 
@@ -214,7 +224,10 @@ mod tests {
                     confidence: conf2, ..
                 },
             ) => {
-                assert!(conf1 > conf2, "Expected higher confidence for clearer detection");
+                assert!(
+                    conf1 > conf2,
+                    "Expected higher confidence for clearer detection"
+                );
             }
             _ => panic!("Expected Goal detections"),
         }

@@ -1,13 +1,12 @@
 /// Command executor
 ///
 /// Executes commands and emits events on completion.
-
-use crossbeam_channel::{unbounded, Sender, Receiver};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::thread;
 
+use super::bus::EventBus;
 use super::commands::{Command, CommandResult};
 use super::events::Event;
-use super::bus::EventBus;
 
 /// Command executor that processes commands and emits events
 pub struct CommandExecutor {
@@ -61,7 +60,7 @@ impl CommandExecutor {
                 // Other commands will be implemented in future phases
                 tracing::warn!("Command not yet implemented: {}", command.description());
                 CommandResult::SuccessWithValue(
-                    "Command queued but not yet implemented".to_string()
+                    "Command queued but not yet implemented".to_string(),
                 )
             }
         }
@@ -122,7 +121,7 @@ mod tests {
 
         let result = executor.execute_sync(Command::SaveConfig);
         match result {
-            CommandResult::Success => {},
+            CommandResult::Success => {}
             _ => panic!("Expected success result"),
         }
     }
@@ -146,7 +145,7 @@ mod tests {
 
         let event = rx.try_recv().unwrap();
         match event {
-            Event::Shutdown => {},
+            Event::Shutdown => {}
             _ => panic!("Expected Shutdown event"),
         }
     }

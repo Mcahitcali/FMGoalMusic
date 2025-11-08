@@ -51,50 +51,50 @@ pub struct SelectedTeam {
 pub struct Config {
     /// Screen region to capture [x, y, width, height]
     pub capture_region: [u32; 4],
-    
+
     /// Binary threshold for OCR preprocessing (0-255)
     pub ocr_threshold: u8,
-    
+
     /// Debounce time in milliseconds to prevent duplicate triggers
     pub debounce_ms: u64,
-    
+
     /// Enable morphological opening for noise reduction
     pub enable_morph_open: bool,
-    
+
     /// Number of frames to run in benchmark mode
     pub bench_frames: usize,
-    
+
     /// List of music files added by the user
     #[serde(default)]
     pub music_list: Vec<MusicEntry>,
-    
+
     /// Index of the selected music file
     pub selected_music_index: Option<usize>,
-    
+
     /// Path to goal ambiance sound
     #[serde(default)]
     pub goal_ambiance_path: Option<String>,
-    
+
     /// Whether ambiance sounds are enabled
     #[serde(default = "default_ambiance_enabled")]
     pub ambiance_enabled: bool,
-    
+
     /// Music volume (0.0 to 1.0)
     #[serde(default = "default_music_volume")]
     pub music_volume: f32,
-    
+
     /// Ambiance volume (0.0 to 1.0)
     #[serde(default = "default_ambiance_volume")]
     pub ambiance_volume: f32,
-    
+
     /// Music length in milliseconds (0 = no limit)
     #[serde(default = "default_music_length")]
     pub music_length_ms: u64,
-    
+
     /// Ambiance length in milliseconds (0 = no limit)  
     #[serde(default = "default_ambiance_length")]
     pub ambiance_length_ms: u64,
-    
+
     /// Selected team for conditional audio playback
     #[serde(default)]
     pub selected_team: Option<SelectedTeam>,
@@ -174,17 +174,22 @@ impl Config {
             // Try migrating from legacy location (next to executable)
             let legacy_path = (|| -> Result<PathBuf, Box<dyn std::error::Error>> {
                 let exe_path = env::current_exe()?;
-                let exe_dir = exe_path.parent().ok_or("Could not determine executable directory")?;
+                let exe_dir = exe_path
+                    .parent()
+                    .ok_or("Could not determine executable directory")?;
                 Ok(exe_dir.join("config").join("config.json"))
             })();
 
             if let Ok(legacy) = legacy_path {
                 if legacy.exists() {
                     if let Ok(content) = fs::read_to_string(&legacy) {
-                        if let Ok(mut config) = serde_json::from_str::<Config>(&content) {
+                        if let Ok(config) = serde_json::from_str::<Config>(&content) {
                             // Save migrated config to new path
                             config.save()?;
-                            tracing::info!("✓ Migrated config from legacy path: {}", legacy.display());
+                            tracing::info!(
+                                "✓ Migrated config from legacy path: {}",
+                                legacy.display()
+                            );
                             tracing::info!("✓ New config at: {}", config_path.display());
                             return Ok(config);
                         }
@@ -200,46 +205,44 @@ impl Config {
             Ok(config)
         }
     }
-    
+
     /// Save configuration to disk
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         let config_path = Self::config_path()?;
-        
+
         // Ensure parent directory exists
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        
+
         let json = serde_json::to_string_pretty(self)?;
         fs::write(&config_path, json)?;
-        
+
         Ok(())
     }
-    
+
     /// Get the config file path in a user-writable config directory
     pub fn config_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let base = dirs::config_dir()
-            .ok_or("Could not determine user config directory")?;
+        let base = dirs::config_dir().ok_or("Could not determine user config directory")?;
         // Application-specific folder
         let app_dir = base.join("FMGoalMusic");
         // Ensure directory exists
         fs::create_dir_all(&app_dir)?;
         Ok(app_dir.join("config.json"))
     }
-    
+
     /// Get the config directory path (for display purposes)
     pub fn config_dir_display() -> String {
         Self::config_path()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|_| "unknown".to_string())
     }
-    
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_default_config() {
         let config = Config::default();
@@ -249,13 +252,13 @@ mod tests {
         assert_eq!(config.bench_frames, 500);
         assert!(!config.enable_morph_open);
     }
-    
+
     #[test]
     fn test_config_serialization() {
         let config = Config::default();
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: Config = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(config.capture_region, deserialized.capture_region);
         assert_eq!(config.ocr_threshold, deserialized.ocr_threshold);
     }

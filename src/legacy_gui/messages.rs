@@ -1,7 +1,6 @@
 /// GUI Messages for MVU pattern
 ///
 /// All possible user actions and system events in the GUI.
-
 use std::path::PathBuf;
 
 use crate::config::SelectedTeam;

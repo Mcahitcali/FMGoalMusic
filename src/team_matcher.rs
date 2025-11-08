@@ -8,11 +8,7 @@ pub struct TeamMatcher {
 impl TeamMatcher {
     /// Create a new matcher for a specific team
     pub fn new(team: &Team) -> Self {
-        let normalized_variations = team
-            .variations
-            .iter()
-            .map(|v| Self::normalize(v))
-            .collect();
+        let normalized_variations = team.variations.iter().map(|v| Self::normalize(v)).collect();
 
         Self {
             normalized_variations,
@@ -92,10 +88,7 @@ mod tests {
     #[test]
     fn test_normalize_special_chars() {
         assert_eq!(TeamMatcher::normalize("FC Barcelona"), "fc barcelona");
-        assert_eq!(
-            TeamMatcher::normalize("Atlético Madrid"),
-            "atltico madrid"
-        );
+        assert_eq!(TeamMatcher::normalize("Atlético Madrid"), "atltico madrid");
         assert_eq!(TeamMatcher::normalize("Man. City!"), "man city");
     }
 

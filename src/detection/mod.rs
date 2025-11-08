@@ -37,21 +37,20 @@
 ///     }
 /// }
 /// ```
-
 pub mod detector;
 pub mod goal_detector;
-pub mod kickoff_detector;
-pub mod match_end_detector;
 pub mod i18n;
 pub mod i18n_loader;
+pub mod kickoff_detector;
+pub mod match_end_detector;
 // Pipeline module will be added in a later phase when capture/OCR are properly abstracted
 // pub mod pipeline;
 
 // Re-export commonly used types
-pub use detector::{Detector, DetectionResult, DetectionContext};
+pub use detector::{DetectionContext, DetectionResult, Detector};
 pub use goal_detector::GoalDetector;
-pub use kickoff_detector::KickoffDetector;
-pub use match_end_detector::MatchEndDetector;
 pub use i18n::{I18nPhrases, Language};
 pub use i18n_loader::load_phrases;
+pub use kickoff_detector::KickoffDetector;
+pub use match_end_detector::MatchEndDetector;
 // pub use pipeline::DetectorPipeline;

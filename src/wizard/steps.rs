@@ -149,13 +149,13 @@ impl WizardStep {
     /// Check if this step can be skipped
     pub fn is_skippable(&self) -> bool {
         match self {
-            WizardStep::Welcome => false,        // Must see welcome
-            WizardStep::Permissions => false,    // Must handle permissions
+            WizardStep::Welcome => false,         // Must see welcome
+            WizardStep::Permissions => false,     // Must handle permissions
             WizardStep::DisplaySelection => true, // Can use default monitor
-            WizardStep::RegionSetup => false,    // Required for functionality
-            WizardStep::TeamSelection => true,   // Can be set later
-            WizardStep::AudioSetup => true,      // Can be set later
-            WizardStep::Complete => false,       // Final step
+            WizardStep::RegionSetup => false,     // Required for functionality
+            WizardStep::TeamSelection => true,    // Can be set later
+            WizardStep::AudioSetup => true,       // Can be set later
+            WizardStep::Complete => false,        // Final step
         }
     }
 

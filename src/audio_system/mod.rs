@@ -1,3 +1,6 @@
+pub mod effects;
+pub mod manager;
+pub mod player;
 /// Audio system module
 ///
 /// Provides a comprehensive audio system supporting:
@@ -47,14 +50,10 @@
 /// // Multiple sources can play simultaneously
 /// manager.play(AudioSourceType::GoalAmbiance)?;
 /// ```
-
 pub mod source;
-pub mod effects;
-pub mod player;
-pub mod manager;
 
 // Re-export commonly used types
-pub use source::AudioSourceType;
-pub use effects::{EffectChain, FadeEffect, VolumeEffect, LimiterEffect};
-pub use player::AudioPlayer;
+pub use effects::{EffectChain, FadeEffect, LimiterEffect, VolumeEffect};
 pub use manager::AudioSystemManager;
+pub use player::AudioPlayer;
+pub use source::AudioSourceType;

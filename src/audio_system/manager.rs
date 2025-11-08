@@ -1,15 +1,14 @@
 /// Audio system manager
 ///
 /// Coordinates multiple audio players for simultaneous playback.
-
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use super::player::AudioPlayer;
 use super::effects::EffectChain;
+use super::player::AudioPlayer;
 use super::source::AudioSourceType;
 
 /// Audio system manager

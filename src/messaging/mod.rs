@@ -1,3 +1,5 @@
+pub mod bus;
+pub mod commands;
 /// Messaging module for Event/Command architecture
 ///
 /// This module implements the Event/Command segregation pattern:
@@ -45,14 +47,11 @@
 ///     }
 /// }
 /// ```
-
 pub mod events;
-pub mod commands;
-pub mod bus;
 pub mod executor;
 
 // Re-export commonly used types
-pub use events::{Event, ConfigField, AudioSource};
-pub use commands::{Command, CommandResult, ConfigUpdate, AudioSourceType, CrowdCheerVariant};
 pub use bus::{EventBus, SubscriberId};
+pub use commands::{AudioSourceType, Command, CommandResult, ConfigUpdate, CrowdCheerVariant};
+pub use events::{AudioSource, ConfigField, Event};
 pub use executor::CommandExecutor;

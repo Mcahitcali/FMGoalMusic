@@ -2,7 +2,6 @@
 ///
 /// Events represent things that have happened (past tense).
 /// They are broadcast to all subscribers.
-
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -19,9 +18,7 @@ pub enum Event {
     },
 
     /// Match has started (kickoff detected) - for v0.2
-    MatchStarted {
-        timestamp: Instant,
-    },
+    MatchStarted { timestamp: Instant },
 
     /// Match has ended - for v0.3
     MatchEnded {
@@ -37,41 +34,25 @@ pub enum Event {
     },
 
     /// Configuration was changed
-    ConfigChanged {
-        field: ConfigField,
-    },
+    ConfigChanged { field: ConfigField },
 
     /// Music file was selected
-    MusicSelected {
-        path: PathBuf,
-        name: String,
-    },
+    MusicSelected { path: PathBuf, name: String },
 
     /// Team was selected
-    TeamSelected {
-        team: SelectedTeam,
-    },
+    TeamSelected { team: SelectedTeam },
 
     /// Capture region was changed
-    RegionChanged {
-        region: [u32; 4],
-    },
+    RegionChanged { region: [u32; 4] },
 
     /// Audio playback started
-    AudioPlaybackStarted {
-        source: AudioSource,
-    },
+    AudioPlaybackStarted { source: AudioSource },
 
     /// Audio playback finished
-    AudioPlaybackFinished {
-        source: AudioSource,
-    },
+    AudioPlaybackFinished { source: AudioSource },
 
     /// An error occurred
-    ErrorOccurred {
-        message: String,
-        context: String,
-    },
+    ErrorOccurred { message: String, context: String },
 
     /// Application is shutting down
     Shutdown,
@@ -97,7 +78,7 @@ pub enum ConfigField {
 pub enum AudioSource {
     GoalMusic,
     Ambiance,
-    CrowdCheer, // For v0.3
+    CrowdCheer,  // For v0.3
     Commentator, // Future
 }
 
@@ -113,7 +94,11 @@ impl Event {
                 }
             }
             Event::MatchStarted { .. } => "Match started".to_string(),
-            Event::MatchEnded { home_score, away_score, .. } => {
+            Event::MatchEnded {
+                home_score,
+                away_score,
+                ..
+            } => {
                 format!("Match ended {}-{}", home_score, away_score)
             }
             Event::ProcessStateChanged { new_state, .. } => {

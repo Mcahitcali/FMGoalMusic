@@ -1,8 +1,7 @@
 /// Match end detector implementation
 ///
 /// Detects match end events and extracts final scores.
-
-use super::detector::{Detector, DetectionContext, DetectionResult};
+use super::detector::{DetectionContext, DetectionResult, Detector};
 use super::i18n::I18nPhrases;
 
 /// Match end detector
@@ -77,9 +76,7 @@ impl Detector for MatchEndDetector {
         }
 
         // Try to extract score
-        let (home_score, away_score) = self
-            .extract_score(&context.text)
-            .unwrap_or((0, 0));
+        let (home_score, away_score) = self.extract_score(&context.text).unwrap_or((0, 0));
 
         // Calculate confidence
         let has_score = home_score > 0 || away_score > 0;

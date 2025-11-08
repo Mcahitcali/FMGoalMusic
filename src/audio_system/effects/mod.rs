@@ -1,14 +1,13 @@
 /// Audio effects module
 ///
 /// Provides effect decorators for audio playback: fade in/out, volume, time limiting.
-
 pub mod fade;
-pub mod volume;
 pub mod limiter;
+pub mod volume;
 
 pub use fade::FadeEffect;
-pub use volume::VolumeEffect;
 pub use limiter::LimiterEffect;
+pub use volume::VolumeEffect;
 
 /// Effect configuration that can be applied to audio playback
 #[derive(Debug, Clone)]
@@ -29,7 +28,7 @@ pub struct EffectChain {
 impl Default for EffectChain {
     fn default() -> Self {
         Self {
-            fade_in_ms: Some(200), // 200ms fade in
+            fade_in_ms: Some(200),   // 200ms fade in
             fade_out_ms: Some(2000), // 2s fade out
             volume: 1.0,
             limit_ms: Some(20_000), // 20s limit

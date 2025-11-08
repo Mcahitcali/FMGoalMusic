@@ -61,8 +61,7 @@ impl TeamDatabase {
 
     /// Get the path to the teams database file in user-writable config directory
     pub fn database_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
-        let base = dirs::config_dir()
-            .ok_or("Could not determine user config directory")?;
+        let base = dirs::config_dir().ok_or("Could not determine user config directory")?;
         // Application-specific folder
         let app_dir = base.join("FMGoalMusic");
         // Ensure directory exists
@@ -143,17 +142,32 @@ impl TeamDatabase {
     }
 
     /// Add a new team to an existing league
-    pub fn add_team(&mut self, league_name: String, team_key: String, team: Team) -> Result<(), String> {
+    pub fn add_team(
+        &mut self,
+        league_name: String,
+        team_key: String,
+        team: Team,
+    ) -> Result<(), String> {
         // Get or create league
-        let teams = self.leagues.entry(league_name.clone()).or_insert_with(HashMap::new);
+        let teams = self
+            .leagues
+            .entry(league_name.clone())
+            .or_insert_with(HashMap::new);
 
         // Check if team already exists
         if teams.contains_key(&team_key) {
-            return Err(format!("Team '{}' already exists in league '{}'", team_key, league_name));
+            return Err(format!(
+                "Team '{}' already exists in league '{}'",
+                team_key, league_name
+            ));
         }
 
         teams.insert(team_key.clone(), team.clone());
-        tracing::info!("[teams] Added new team: {} to league: {}", team.display_name, league_name);
+        tracing::info!(
+            "[teams] Added new team: {} to league: {}",
+            team.display_name,
+            league_name
+        );
         Ok(())
     }
 
@@ -215,10 +229,9 @@ mod tests {
         let db = TeamDatabase::load_embedded().unwrap();
         let results = db.search_team("manchester");
         assert!(!results.is_empty());
-        assert!(results.iter().any(|(_, _, t)| t
-            .display_name
-            .to_lowercase()
-            .contains("manchester")));
+        assert!(results
+            .iter()
+            .any(|(_, _, t)| t.display_name.to_lowercase().contains("manchester")));
     }
 
     #[test]

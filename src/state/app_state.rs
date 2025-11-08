@@ -53,6 +53,7 @@ pub struct AppState {
 
     // Multi-monitor support
     pub selected_monitor_index: usize,
+    pub preview_image_path: Option<PathBuf>,
 }
 
 impl Default for AppState {
@@ -77,6 +78,7 @@ impl Default for AppState {
             auto_check_updates: true,
             skipped_version: None,
             selected_monitor_index: 0, // Primary monitor
+            preview_image_path: None,
         }
     }
 }

@@ -1,15 +1,10 @@
 fn main() {
+    #[cfg(windows)]
+    {
+        let mut res = winres::WindowsResource::new();
 
-#[cfg(windows)]
+        res.set_icon("assets\\app.ico");
 
-{
-
-let mut res = winres::WindowsResource::new();
-
-res.set_icon("assets\\app.ico");
-
-res.compile().unwrap();
-
-}
-
+        res.compile().unwrap();
+    }
 }

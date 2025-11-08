@@ -1,8 +1,7 @@
 /// Kickoff detector implementation
 ///
 /// Detects match start events.
-
-use super::detector::{Detector, DetectionContext, DetectionResult};
+use super::detector::{DetectionContext, DetectionResult, Detector};
 use super::i18n::I18nPhrases;
 
 /// Kickoff detector

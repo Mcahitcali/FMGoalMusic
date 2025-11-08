@@ -1,3 +1,6 @@
+pub mod flow;
+pub mod persistence;
+pub mod state;
 /// First-run wizard module
 ///
 /// Provides an onboarding experience for new users.
@@ -44,14 +47,10 @@
 /// 4. **TeamSelection** - Help user select their team
 /// 5. **AudioSetup** - Configure and test audio
 /// 6. **Complete** - Finish setup and mark as completed
-
 pub mod steps;
-pub mod state;
-pub mod flow;
-pub mod persistence;
 
 // Re-export commonly used types
-pub use steps::WizardStep;
-pub use state::WizardState;
 pub use flow::WizardFlow;
 pub use persistence::WizardPersistence;
+pub use state::WizardState;
+pub use steps::WizardStep;

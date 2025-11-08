@@ -1,7 +1,6 @@
 /// Audio player for individual sound playback
 ///
 /// Handles playback of a single audio source with effects.
-
 use std::sync::Arc;
 use std::time::Duration;
 

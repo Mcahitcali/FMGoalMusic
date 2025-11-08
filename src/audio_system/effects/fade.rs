@@ -51,7 +51,7 @@ impl FadeEffect {
 impl Default for FadeEffect {
     fn default() -> Self {
         Self {
-            fade_in_ms: 200,  // 200ms fade in
+            fade_in_ms: 200,   // 200ms fade in
             fade_out_ms: 2000, // 2s fade out
         }
     }

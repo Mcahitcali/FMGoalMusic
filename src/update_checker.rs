@@ -11,23 +11,19 @@ pub enum UpdateCheckResult {
         download_url: String,
     },
     /// Already up to date
-    UpToDate {
-        current_version: String,
-    },
+    UpToDate { current_version: String },
     /// Error occurred during check
-    Error {
-        message: String,
-    },
+    Error { message: String },
 }
 
 /// GitHub Release API response structure
 #[derive(Debug, Deserialize)]
 struct GithubRelease {
-    tag_name: String,      // e.g., "v0.2.0"
+    tag_name: String, // e.g., "v0.2.0"
     #[allow(dead_code)]
-    name: String,          // e.g., "FM Goal Musics v0.2.0" (unused, but part of API response)
-    body: String,          // Markdown changelog
-    html_url: String,      // URL to release page
+    name: String, // e.g., "FM Goal Musics v0.2.0" (unused, but part of API response)
+    body: String,     // Markdown changelog
+    html_url: String, // URL to release page
 }
 
 /// Checks for updates by querying GitHub Releases API
@@ -42,15 +38,17 @@ pub fn check_for_updates() -> UpdateCheckResult {
     // Make HTTP GET request to GitHub API
     let user_agent = format!("FMGoalMusic/{}", env!("CARGO_PKG_VERSION"));
     let response = match ureq::get(API_URL)
-        .set("User-Agent", &user_agent)  // GitHub requires User-Agent
+        .set("User-Agent", &user_agent) // GitHub requires User-Agent
         .set("Accept", "application/vnd.github+json")
-        .timeout(std::time::Duration::from_secs(15))  // 15 second timeout
+        .timeout(std::time::Duration::from_secs(15)) // 15 second timeout
         .call()
     {
         Ok(resp) => resp,
         Err(_e) => {
             tracing::error!("[update-checker] Network error: {}", _e);
-            return UpdateCheckResult::Error { message: "Network Error".to_string() };
+            return UpdateCheckResult::Error {
+                message: "Network Error".to_string(),
+            };
         }
     };
 
@@ -91,8 +89,9 @@ pub fn check_for_updates() -> UpdateCheckResult {
     };
 
     // Only check for major/minor version changes, ignore patch versions
-    let has_major_minor_update = latest_version.major > current_version.major || 
-                                (latest_version.major == current_version.major && latest_version.minor > current_version.minor);
+    let has_major_minor_update = latest_version.major > current_version.major
+        || (latest_version.major == current_version.major
+            && latest_version.minor > current_version.minor);
 
     if has_major_minor_update {
         tracing::info!(
@@ -107,7 +106,10 @@ pub fn check_for_updates() -> UpdateCheckResult {
             download_url: release.html_url,
         }
     } else {
-        tracing::info!("[update-checker] App is up to date for major/minor versions ({})", current_version_str);
+        tracing::info!(
+            "[update-checker] App is up to date for major/minor versions ({})",
+            current_version_str
+        );
         UpdateCheckResult::UpToDate {
             current_version: current_version_str.to_string(),
         }
@@ -118,7 +120,10 @@ pub fn check_for_updates() -> UpdateCheckResult {
 pub fn should_skip_version(latest_version: &str, skipped_version: &Option<String>) -> bool {
     if let Some(skipped) = skipped_version {
         if skipped == latest_version {
-            tracing::info!("[update-checker] Skipping version {} (user preference)", latest_version);
+            tracing::info!(
+                "[update-checker] Skipping version {} (user preference)",
+                latest_version
+            );
             return true;
         }
     }
@@ -154,12 +159,15 @@ mod tests {
         assert!(v3 > v1); // major/minor change (0.1.5 > 0.1.0)
         assert!(v2 > v3); // major/minor change (0.2.0 > 0.1.5)
         assert!(v5 > v4); // patch change only
-        
+
         // Test our major/minor logic
-        let has_major_minor_1_to_2 = v2.major > v1.major || (v2.major == v1.major && v2.minor > v1.minor);
-        let has_major_minor_3_to_4 = v4.major > v3.major || (v4.major == v3.major && v4.minor > v3.minor);
-        let has_major_minor_4_to_5 = v5.major > v4.major || (v5.major == v4.major && v5.minor > v4.minor);
-        
+        let has_major_minor_1_to_2 =
+            v2.major > v1.major || (v2.major == v1.major && v2.minor > v1.minor);
+        let has_major_minor_3_to_4 =
+            v4.major > v3.major || (v4.major == v3.major && v4.minor > v3.minor);
+        let has_major_minor_4_to_5 =
+            v5.major > v4.major || (v5.major == v4.major && v5.minor > v4.minor);
+
         assert!(has_major_minor_1_to_2); // 0.1.x to 0.2.x should notify
         assert!(has_major_minor_3_to_4); // 0.1.x to 0.2.x should notify
         assert!(!has_major_minor_4_to_5); // 0.2.3 to 0.2.4 should NOT notify

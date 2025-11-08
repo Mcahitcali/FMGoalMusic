@@ -3,7 +3,6 @@
 /// This module contains all image transformation and preprocessing logic
 /// to prepare images for Tesseract OCR, including grayscale conversion,
 /// thresholding, and noise reduction.
-
 use image::{GenericImageView, GrayImage, ImageBuffer, Luma, Rgba};
 use rayon::prelude::*;
 
@@ -26,7 +25,11 @@ impl ImagePreprocessor {
     /// * `threshold` - Manual threshold (0 = automatic Otsu thresholding)
     /// * `enable_morph_open` - Enable morphological opening for noise reduction
     pub fn new(threshold: u8, enable_morph_open: bool) -> Self {
-        let manual_threshold = if threshold == 0 { None } else { Some(threshold) };
+        let manual_threshold = if threshold == 0 {
+            None
+        } else {
+            Some(threshold)
+        };
 
         Self {
             manual_threshold,
@@ -47,7 +50,8 @@ impl ImagePreprocessor {
 
         // Step 2: Apply threshold
         let (width, height) = gray.dimensions();
-        let threshold_value = self.manual_threshold
+        let threshold_value = self
+            .manual_threshold
             .unwrap_or_else(|| self.calculate_otsu_threshold(&gray));
 
         let mut binary = GrayImage::new(width, height);
@@ -76,7 +80,10 @@ impl ImagePreprocessor {
     /// Try alternative preprocessing methods for colored text
     ///
     /// Tries each RGB channel separately to handle colored text on colored backgrounds
-    pub fn try_alternative_methods(&self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Vec<GrayImage> {
+    pub fn try_alternative_methods(
+        &self,
+        image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+    ) -> Vec<GrayImage> {
         let mut results = Vec::new();
 
         // Method 1: Try each RGB channel separately
@@ -91,7 +98,11 @@ impl ImagePreprocessor {
     }
 
     /// Preprocess using a single color channel
-    fn preprocess_single_channel(&self, image: &ImageBuffer<Rgba<u8>, Vec<u8>>, channel: usize) -> GrayImage {
+    fn preprocess_single_channel(
+        &self,
+        image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+        channel: usize,
+    ) -> GrayImage {
         let (width, height) = image.dimensions();
         let mut binary = GrayImage::new(width, height);
 
@@ -148,8 +159,7 @@ impl ImagePreprocessor {
                 // Apply contrast enhancement: (value - 128) * 1.5 + 128
                 // Rewritten as: value + (value - 128) / 2
                 let centered = enhanced_gray as i32 - 128;
-                let contrast_enhanced = (enhanced_gray as i32 + centered / 2)
-                    .clamp(0, 255) as u8;
+                let contrast_enhanced = (enhanced_gray as i32 + centered / 2).clamp(0, 255) as u8;
 
                 gray.put_pixel(x, y, Luma([contrast_enhanced]));
             }
@@ -230,7 +240,8 @@ impl ImagePreprocessor {
         // Split buffer into rows and process in parallel
         let row_size = width as usize;
         eroded
-            .as_mut()
+            .as_flat_samples_mut()
+            .samples
             .par_chunks_mut(row_size)
             .enumerate()
             .skip(1)
@@ -246,11 +257,12 @@ impl ImagePreprocessor {
                     let right = unsafe { image.unsafe_get_pixel(x + 1, y)[0] };
 
                     // Pixel is white only if all neighbors are white
-                    row_buffer[x as usize] = if center > 127 && top > 127 && bottom > 127 && left > 127 && right > 127 {
-                        255
-                    } else {
-                        0
-                    };
+                    row_buffer[x as usize] =
+                        if center > 127 && top > 127 && bottom > 127 && left > 127 && right > 127 {
+                            255
+                        } else {
+                            0
+                        };
                 }
             });
 
@@ -265,7 +277,8 @@ impl ImagePreprocessor {
         // Split buffer into rows and process in parallel
         let row_size = width as usize;
         dilated
-            .as_mut()
+            .as_flat_samples_mut()
+            .samples
             .par_chunks_mut(row_size)
             .enumerate()
             .skip(1)
@@ -281,11 +294,12 @@ impl ImagePreprocessor {
                     let right = unsafe { image.unsafe_get_pixel(x + 1, y)[0] };
 
                     // Pixel is white if any neighbor is white
-                    row_buffer[x as usize] = if center > 127 || top > 127 || bottom > 127 || left > 127 || right > 127 {
-                        255
-                    } else {
-                        0
-                    };
+                    row_buffer[x as usize] =
+                        if center > 127 || top > 127 || bottom > 127 || left > 127 || right > 127 {
+                            255
+                        } else {
+                            0
+                        };
                 }
             });
 
@@ -303,7 +317,9 @@ impl ImagePreprocessor {
             for x in 0..width {
                 let pixel = image.get_pixel(x, y);
                 // Fixed-point: (77*R + 150*G + 29*B) / 256
-                let gray_val = ((77 * pixel[0] as u32 + 150 * pixel[1] as u32 + 29 * pixel[2] as u32) >> 8) as u8;
+                let gray_val =
+                    ((77 * pixel[0] as u32 + 150 * pixel[1] as u32 + 29 * pixel[2] as u32) >> 8)
+                        as u8;
                 gray.put_pixel(x, y, Luma([gray_val]));
             }
         }
@@ -314,7 +330,8 @@ impl ImagePreprocessor {
         // Split buffer into rows and process in parallel
         let row_size = width as usize;
         thresholded
-            .as_mut()
+            .as_flat_samples_mut()
+            .samples
             .par_chunks_mut(row_size)
             .enumerate()
             .skip(1)

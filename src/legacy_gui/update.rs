@@ -1,7 +1,6 @@
 /// Message handlers for MVU pattern
 ///
 /// Handles all GUI messages and updates the model accordingly.
-
 use super::messages::Message;
 use super::model::Model;
 
@@ -21,7 +20,10 @@ pub fn update(model: &mut Model, message: Message) -> Vec<Message> {
 
         // Placeholder for other messages - will be implemented as we extract views
         _ => {
-            tracing::warn!("Message not yet handled in new MVU architecture: {}", message.description());
+            tracing::warn!(
+                "Message not yet handled in new MVU architecture: {}",
+                message.description()
+            );
             vec![]
         }
     }
@@ -29,11 +31,11 @@ pub fn update(model: &mut Model, message: Message) -> Vec<Message> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::sync::Arc;
-    use parking_lot::Mutex;
-    use crate::state::AppState;
     use super::super::state::AppTab;
+    use super::*;
+    use crate::state::AppState;
+    use parking_lot::Mutex;
+    use std::sync::Arc;
 
     #[test]
     fn test_tab_changed() {

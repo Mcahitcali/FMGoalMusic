@@ -2,7 +2,6 @@
 ///
 /// Commands represent requests to perform actions (imperative).
 /// They are executed by the command executor.
-
 use std::path::PathBuf;
 
 use crate::config::SelectedTeam;
@@ -36,25 +35,16 @@ pub enum Command {
     LoadConfig,
 
     /// Select a music file
-    SelectMusic {
-        path: PathBuf,
-        name: String,
-    },
+    SelectMusic { path: PathBuf, name: String },
 
     /// Select a team
-    SelectTeam {
-        team: SelectedTeam,
-    },
+    SelectTeam { team: SelectedTeam },
 
     /// Change capture region
-    ChangeRegion {
-        region: [u32; 4],
-    },
+    ChangeRegion { region: [u32; 4] },
 
     /// Update a configuration value
-    UpdateConfig {
-        update: ConfigUpdate,
-    },
+    UpdateConfig { update: ConfigUpdate },
 
     /// Check for application updates
     CheckForUpdates,
@@ -67,14 +57,10 @@ pub enum Command {
 #[derive(Debug, Clone)]
 pub enum AudioSourceType {
     /// Play the selected goal music
-    GoalMusic {
-        path: PathBuf,
-    },
+    GoalMusic { path: PathBuf },
 
     /// Play goal ambiance
-    Ambiance {
-        path: PathBuf,
-    },
+    Ambiance { path: PathBuf },
 
     /// Play crowd cheer (for v0.3)
     CrowdCheer {
@@ -123,7 +109,9 @@ impl Command {
     /// Get a human-readable description of the command
     pub fn description(&self) -> String {
         match self {
-            Command::StartDetection { music_name, team, .. } => {
+            Command::StartDetection {
+                music_name, team, ..
+            } => {
                 if let Some(team) = team {
                     format!("Start detection: {} ({})", music_name, team.display_name)
                 } else {

@@ -1,15 +1,15 @@
+use crate::config::Config;
+use crate::slug::slugify;
+use parking_lot::Mutex;
 use std::fs::{self, File};
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
-use parking_lot::Mutex;
 use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
-use crate::config::Config;
-use crate::slug::slugify;
 
 /// Cached musics directory path to avoid repeated resolution
 static MUSICS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
@@ -17,17 +17,17 @@ static MUSICS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// Get or initialize the musics directory path
 fn get_musics_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let mut cache = MUSICS_DIR.lock();
-    
+
     if let Some(ref path) = *cache {
         return Ok(path.clone());
     }
-    
+
     // Use a user-writable data directory for storing converted music files
     let base = dirs::data_dir().ok_or("Could not determine user data directory")?;
     let app_dir = base.join("FMGoalMusic");
     let musics_dir = app_dir.join("musics");
     fs::create_dir_all(&musics_dir)?;
-    
+
     *cache = Some(musics_dir.clone());
     Ok(musics_dir)
 }
@@ -39,7 +39,10 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::
     let musics_dir = get_musics_dir()?;
 
     // Build slugged output filename based on input filename but with .wav extension
-    let stem_raw = input_path.file_stem().and_then(|s| s.to_str()).unwrap_or("converted");
+    let stem_raw = input_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("converted");
     let slug = slugify(stem_raw);
     let output_path = musics_dir.join(format!("{}.wav", slug));
 
@@ -74,8 +77,7 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::
     let fmt_opts: FormatOptions = Default::default();
 
     // Probe the media source
-    let probed = symphonia::default::get_probe()
-        .format(&hint, mss, &fmt_opts, &meta_opts)?;
+    let probed = symphonia::default::get_probe().format(&hint, mss, &fmt_opts, &meta_opts)?;
 
     // Get the instantiated format reader
     let mut format = probed.format;
@@ -91,14 +93,16 @@ pub fn convert_to_wav(input_path: &Path) -> Result<PathBuf, Box<dyn std::error::
     let dec_opts: DecoderOptions = Default::default();
 
     // Create a decoder for the track
-    let mut decoder = symphonia::default::get_codecs()
-        .make(&track.codec_params, &dec_opts)?;
+    let mut decoder = symphonia::default::get_codecs().make(&track.codec_params, &dec_opts)?;
 
     // Store the track identifier, we'll use it to filter packets
     let track_id = track.id;
 
     // Get audio parameters
-    let sample_rate = track.codec_params.sample_rate.ok_or("Unknown sample rate")?;
+    let sample_rate = track
+        .codec_params
+        .sample_rate
+        .ok_or("Unknown sample rate")?;
     let channels = track.codec_params.channels.ok_or("Unknown channel count")?;
     let channel_count = channels.count() as u16;
 

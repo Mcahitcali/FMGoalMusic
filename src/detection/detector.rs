@@ -1,7 +1,6 @@
 /// Detector trait and common types
 ///
 /// Defines the interface for all game event detectors.
-
 use std::time::Instant;
 
 /// Detection result from a detector

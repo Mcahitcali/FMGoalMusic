@@ -1,10 +1,9 @@
+use crossbeam_channel::{unbounded, Receiver, Sender};
+use parking_lot::RwLock;
 /// Event bus for pub/sub messaging
 ///
 /// Allows modules to subscribe to events and broadcast events to all subscribers.
-
 use std::sync::Arc;
-use crossbeam_channel::{unbounded, Sender, Receiver};
-use parking_lot::RwLock;
 
 use super::events::Event;
 
@@ -42,10 +41,7 @@ impl EventBus {
         *next_id += 1;
         drop(next_id);
 
-        let subscriber = Subscriber {
-            id,
-            sender: tx,
-        };
+        let subscriber = Subscriber { id, sender: tx };
 
         self.subscribers.write().push(subscriber);
 
@@ -130,7 +126,7 @@ mod tests {
 
         let received = rx.try_recv().unwrap();
         match received {
-            Event::GoalDetected { .. } => {},
+            Event::GoalDetected { .. } => {}
             _ => panic!("Wrong event type received"),
         }
     }

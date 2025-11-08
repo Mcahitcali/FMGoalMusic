@@ -1,7 +1,6 @@
 /// Audio source types
 ///
 /// Defines different categories of audio that can be played simultaneously.
-
 use std::fmt;
 
 /// Audio source categories
@@ -39,7 +38,7 @@ impl AudioSourceType {
     /// Check if this source should stop others when playing
     pub fn is_exclusive(&self) -> bool {
         match self {
-            AudioSourceType::GoalMusic => false, // Can play with ambiance
+            AudioSourceType::GoalMusic => false,    // Can play with ambiance
             AudioSourceType::GoalAmbiance => false, // Can play with music
             AudioSourceType::MatchStart => false,
             AudioSourceType::MatchEnd => false,

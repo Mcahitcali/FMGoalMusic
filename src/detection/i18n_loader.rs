@@ -1,7 +1,6 @@
 /// I18n phrase loader from embedded JSON files
 ///
 /// Loads detection phrases from embedded JSON assets.
-
 use super::i18n::{I18nPhrases, Language};
 use serde::Deserialize;
 
@@ -110,7 +109,12 @@ mod tests {
 
         for (code, json) in jsons {
             let result: Result<I18nJson, _> = serde_json::from_str(json);
-            assert!(result.is_ok(), "Invalid JSON for {}: {:?}", code, result.err());
+            assert!(
+                result.is_ok(),
+                "Invalid JSON for {}: {:?}",
+                code,
+                result.err()
+            );
         }
     }
 }

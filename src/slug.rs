@@ -75,7 +75,7 @@ mod tests {
         assert_eq!(slugify("ŞAĞ"), "SAG");
         assert_eq!(slugify("ğ"), "g");
         assert_eq!(slugify("Ğ"), "G");
-        
+
         // Test composed characters (handled by Unicode-NFD)
         assert_eq!(slugify("çağlar"), "caglar");
         assert_eq!(slugify("Çağlar"), "Caglar");

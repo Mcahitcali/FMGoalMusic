@@ -1,7 +1,6 @@
 /// State management module
 ///
 /// Centralized state management for the application with validation and persistence.
-
 pub mod app_state;
 pub mod process_state;
 

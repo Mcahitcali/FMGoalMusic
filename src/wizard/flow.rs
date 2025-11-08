@@ -1,7 +1,6 @@
 /// Wizard flow management
 ///
 /// Manages navigation through wizard steps.
-
 use super::state::WizardState;
 use super::steps::WizardStep;
 

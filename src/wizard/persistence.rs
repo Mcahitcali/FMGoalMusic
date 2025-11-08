@@ -1,7 +1,6 @@
 /// Wizard state persistence
 ///
 /// Saves and loads wizard completion state.
-
 use super::state::WizardState;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -46,8 +45,7 @@ impl WizardPersistence {
     pub fn save(state: &WizardState) -> Result<(), Box<dyn std::error::Error>> {
         let persistence = Self::from_state(state);
 
-        let path = Self::config_file_path()
-            .ok_or("Failed to get config directory")?;
+        let path = Self::config_file_path().ok_or("Failed to get config directory")?;
 
         // Create parent directory if it doesn't exist
         if let Some(parent) = path.parent() {
@@ -63,8 +61,7 @@ impl WizardPersistence {
 
     /// Load wizard state from disk
     pub fn load() -> Result<WizardState, Box<dyn std::error::Error>> {
-        let path = Self::config_file_path()
-            .ok_or("Failed to get config directory")?;
+        let path = Self::config_file_path().ok_or("Failed to get config directory")?;
 
         if !path.exists() {
             tracing::debug!("No wizard state found, starting fresh");
@@ -90,7 +87,7 @@ impl WizardPersistence {
 
     /// Mark wizard as completed and save
     pub fn mark_completed() -> Result<(), Box<dyn std::error::Error>> {
-        let mut state = WizardState::completed();
+        let state = WizardState::completed();
         Self::save(&state)
     }
 

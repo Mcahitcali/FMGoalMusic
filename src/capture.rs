@@ -41,7 +41,12 @@ pub struct CaptureRegion {
 
 impl CaptureRegion {
     pub fn new(x: u32, y: u32, width: u32, height: u32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub fn from_array(arr: [u32; 4]) -> Self {
@@ -56,14 +61,23 @@ impl CaptureManager {
     /// # Arguments
     /// * `region` - Screen region to capture
     /// * `monitor_index` - Monitor index (0 = primary, 1 = second, etc.)
-    pub fn new(region: CaptureRegion, monitor_index: usize) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        region: CaptureRegion,
+        monitor_index: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         tracing::info!("Initializing screen capturer...");
-        tracing::info!("  Region: x={}, y={}, w={}, h={}", region.x, region.y, region.width, region.height);
+        tracing::info!(
+            "  Region: x={}, y={}, w={}, h={}",
+            region.x,
+            region.y,
+            region.width,
+            region.height
+        );
         tracing::info!("  Monitor index: {}", monitor_index);
 
         // Get all available monitors
-        let monitors = Monitor::all()
-            .map_err(|e| format!("Failed to enumerate monitors: {}", e))?;
+        let monitors =
+            Monitor::all().map_err(|e| format!("Failed to enumerate monitors: {}", e))?;
 
         if monitors.is_empty() {
             return Err("No monitors found".into());
@@ -72,10 +86,14 @@ impl CaptureManager {
         tracing::info!("  Available monitors: {}", monitors.len());
 
         // Get monitor by index, fallback to primary (0) if index out of bounds
-        let monitor = monitors.into_iter()
+        let monitor = monitors
+            .into_iter()
             .nth(monitor_index)
             .or_else(|| {
-                tracing::warn!("  WARNING: Monitor index {} not found, falling back to primary monitor (0)", monitor_index);
+                tracing::warn!(
+                    "  WARNING: Monitor index {} not found, falling back to primary monitor (0)",
+                    monitor_index
+                );
                 Monitor::all().ok()?.into_iter().next()
             })
             .ok_or("Failed to get monitor")?;
@@ -86,7 +104,12 @@ impl CaptureManager {
         let monitor_name = monitor.name().unwrap_or_else(|_| "Unknown".to_string());
 
         tracing::info!("✓ Screen capturer initialized");
-        tracing::info!("  Monitor: {}x{} ({})", monitor_width, monitor_height, monitor_name);
+        tracing::info!(
+            "  Monitor: {}x{} ({})",
+            monitor_width,
+            monitor_height,
+            monitor_name
+        );
 
         // Validate region is within monitor bounds
         if monitor_width == 0 || monitor_height == 0 {
@@ -99,9 +122,9 @@ impl CaptureManager {
                 \n\
                 Please select a region within your screen.\n\
                 Your monitor size: {}x{}",
-                region.x, region.y, monitor_width, monitor_height,
-                monitor_width, monitor_height
-            ).into());
+                region.x, region.y, monitor_width, monitor_height, monitor_width, monitor_height
+            )
+            .into());
         }
 
         if region.x + region.width > monitor_width || region.y + region.height > monitor_height {
@@ -112,19 +135,23 @@ impl CaptureManager {
                 Monitor size: {}x{}\n\
                 \n\
                 Please select a smaller region or one that fits within your screen.",
-                region.x, region.y, region.width, region.height,
-                monitor_width, monitor_height,
-                region.x + region.width, region.y + region.height,
-                monitor_width, monitor_height
-            ).into());
+                region.x,
+                region.y,
+                region.width,
+                region.height,
+                monitor_width,
+                monitor_height,
+                region.x + region.width,
+                region.y + region.height,
+                monitor_width,
+                monitor_height
+            )
+            .into());
         }
 
         tracing::info!("  ✓ Region validated: within bounds");
 
-        Ok(Self {
-            monitor,
-            region,
-        })
+        Ok(Self { monitor, region })
     }
 
     /// Capture the configured screen region
@@ -143,26 +170,34 @@ impl CaptureManager {
     /// # Permissions
     /// - macOS: Requires Screen Recording permission
     ///   If permission is denied, this will return an error with instructions
-    pub fn capture_region(&mut self) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, Box<dyn std::error::Error>> {
+    pub fn capture_region(
+        &mut self,
+    ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, Box<dyn std::error::Error>> {
         // Capture ONLY the configured region using xcap's capture_region()
         // This is more efficient than capturing full screen and cropping
         // Platform-specific implementations:
         // - macOS: ScreenCaptureKit or Core Graphics
         // - Windows: Windows.Graphics.Capture API (DirectX)
         // - Linux: X11 or Wayland
-        let image = self.monitor.capture_region(
-            self.region.x,
-            self.region.y,
-            self.region.width,
-            self.region.height,
-        ).map_err(|e| -> Box<dyn std::error::Error> {
-            // Provide helpful error messages based on the error type
-            let error_msg = format!("{}", e);
+        let image = self
+            .monitor
+            .capture_region(
+                self.region.x,
+                self.region.y,
+                self.region.width,
+                self.region.height,
+            )
+            .map_err(|e| -> Box<dyn std::error::Error> {
+                // Provide helpful error messages based on the error type
+                let error_msg = format!("{}", e);
 
-            #[cfg(target_os = "macos")]
-            if error_msg.contains("permission") || error_msg.contains("denied") || error_msg.contains("authorization") {
-                return format!(
-                    "Screen Recording permission denied.\n\
+                #[cfg(target_os = "macos")]
+                if error_msg.contains("permission")
+                    || error_msg.contains("denied")
+                    || error_msg.contains("authorization")
+                {
+                    return format!(
+                        "Screen Recording permission denied.\n\
                     \n\
                     To grant permission on macOS:\n\
                     1. Open System Preferences/Settings > Privacy & Security\n\
@@ -170,12 +205,14 @@ impl CaptureManager {
                     3. Enable permission for this application\n\
                     4. Restart the application\n\
                     \n\
-                    Original error: {}", e
-                ).into();
-            }
+                    Original error: {}",
+                        e
+                    )
+                    .into();
+                }
 
-            format!("Failed to capture screen region: {}", e).into()
-        })?;
+                format!("Failed to capture screen region: {}", e).into()
+            })?;
 
         Ok(image)
     }

@@ -1,7 +1,6 @@
 /// Wizard state management
 ///
 /// Tracks the current state and progress through the wizard.
-
 use super::steps::WizardStep;
 use std::collections::HashSet;
 

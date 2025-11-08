@@ -52,7 +52,10 @@ mod tests {
     #[test]
     fn test_limiter_duration() {
         let limiter = LimiterEffect::new(5_000);
-        assert_eq!(limiter.limit_duration(), std::time::Duration::from_millis(5_000));
+        assert_eq!(
+            limiter.limit_duration(),
+            std::time::Duration::from_millis(5_000)
+        );
     }
 
     #[test]

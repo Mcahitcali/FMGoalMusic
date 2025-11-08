@@ -1,13 +1,12 @@
 /// GUI Model for MVU pattern
 ///
 /// Contains all GUI-specific state separated from application logic.
-
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::thread;
 
-use crossbeam_channel::{Sender, Receiver};
+use crossbeam_channel::{Receiver, Sender};
 use image::ImageBuffer;
 use parking_lot::Mutex;
 
@@ -65,7 +64,8 @@ pub struct Model {
     // Screen and capture
     pub screen_resolution: Option<(u32, u32)>,
     pub capture_preview: CapturePreview,
-    pub latest_capture: Arc<Mutex<Option<(ImageBuffer<image::Rgba<u8>, Vec<u8>>, std::time::Instant)>>>,
+    pub latest_capture:
+        Arc<Mutex<Option<(ImageBuffer<image::Rgba<u8>, Vec<u8>>, std::time::Instant)>>>,
     pub capture_dirty: Arc<AtomicBool>,
 
     // Audio caching

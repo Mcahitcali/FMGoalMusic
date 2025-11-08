@@ -1,7 +1,6 @@
 /// Detection process state machine
 ///
 /// Represents the lifecycle of the detection process with clear state transitions.
-
 use std::time::Instant;
 
 /// State of the detection process

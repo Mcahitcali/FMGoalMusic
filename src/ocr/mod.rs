@@ -1,3 +1,4 @@
+mod detection;
 /// OCR module for goal detection in Football Manager
 ///
 /// This module provides OCR-based goal detection from screen captures.
@@ -17,14 +18,12 @@
 /// - `new_with_options()`: Initialize with custom settings
 /// - `detect_goal()`: Simple goal detection
 /// - `detect_goal_with_team()`: Goal detection with team name extraction
-
 mod preprocessing;
-mod detection;
 pub mod text_extraction;
 
+use detection::TesseractDetector;
 use image::{ImageBuffer, Rgba};
 use preprocessing::ImagePreprocessor;
-use detection::TesseractDetector;
 
 /// OCR manager for goal detection
 ///
@@ -79,12 +78,22 @@ impl OcrManager {
         let preprocessor = ImagePreprocessor::new(threshold, enable_morph_open);
         let detector = TesseractDetector::new()?;
 
-        tracing::info!("  Threshold: {}", if threshold == 0 {
-            "Automatic (Otsu)".to_string()
-        } else {
-            format!("Manual ({})", threshold)
-        });
-        tracing::info!("  Morphological opening: {}", if enable_morph_open { "Enabled" } else { "Disabled" });
+        tracing::info!(
+            "  Threshold: {}",
+            if threshold == 0 {
+                "Automatic (Otsu)".to_string()
+            } else {
+                format!("Manual ({})", threshold)
+            }
+        );
+        tracing::info!(
+            "  Morphological opening: {}",
+            if enable_morph_open {
+                "Enabled"
+            } else {
+                "Disabled"
+            }
+        );
 
         Ok(Self {
             preprocessor,
@@ -190,8 +199,7 @@ mod tests {
 
     #[test]
     fn test_detect_goal_empty_image() {
-        let mut ocr = OcrManager::new_with_options(0, false)
-            .expect("Failed to create OCR manager");
+        let mut ocr = OcrManager::new_with_options(0, false).expect("Failed to create OCR manager");
 
         let img = RgbaImage::from_pixel(200, 100, image::Rgba([0, 0, 0, 255]));
 
@@ -203,8 +211,7 @@ mod tests {
 
     #[test]
     fn test_detect_goal_white_image() {
-        let mut ocr = OcrManager::new_with_options(0, false)
-            .expect("Failed to create OCR manager");
+        let mut ocr = OcrManager::new_with_options(0, false).expect("Failed to create OCR manager");
 
         let img = RgbaImage::from_pixel(200, 100, image::Rgba([255, 255, 255, 255]));
 
@@ -216,8 +223,7 @@ mod tests {
 
     #[test]
     fn test_detect_goal_with_team_empty() {
-        let mut ocr = OcrManager::new_with_options(0, false)
-            .expect("Failed to create OCR manager");
+        let mut ocr = OcrManager::new_with_options(0, false).expect("Failed to create OCR manager");
 
         let img = RgbaImage::from_pixel(200, 100, image::Rgba([0, 0, 0, 255]));
 
