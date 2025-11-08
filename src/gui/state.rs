@@ -1,5 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppTab {
+    Dashboard,
     Library,
     TeamSelection,
     Detection,
@@ -8,7 +9,8 @@ pub enum AppTab {
 }
 
 impl AppTab {
-    pub const ALL: [AppTab; 5] = [
+    pub const ALL: [AppTab; 6] = [
+        AppTab::Dashboard,
         AppTab::Library,
         AppTab::TeamSelection,
         AppTab::Detection,
@@ -18,6 +20,7 @@ impl AppTab {
 
     pub fn label(self) -> &'static str {
         match self {
+            AppTab::Dashboard => "🏟️ Dashboard",
             AppTab::Library => "🎵 Library",
             AppTab::TeamSelection => "⚽ Team Selection",
             AppTab::Detection => "🛰 Detection",
@@ -28,6 +31,7 @@ impl AppTab {
 
     pub fn title(self) -> &'static str {
         match self {
+            AppTab::Dashboard => "Dashboard",
             AppTab::Library => "Library",
             AppTab::TeamSelection => "Team Selection",
             AppTab::Detection => "Detection",
@@ -38,6 +42,7 @@ impl AppTab {
 
     pub fn icon(self) -> &'static str {
         match self {
+            AppTab::Dashboard => "🏟️",
             AppTab::Library => "🎵",
             AppTab::TeamSelection => "⚽",
             AppTab::Detection => "🛰",

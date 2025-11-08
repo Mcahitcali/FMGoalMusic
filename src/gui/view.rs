@@ -74,6 +74,110 @@ impl RegionSelection {
         }
     }
 
+    fn render_dashboard_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let team_callout = div()
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(div().text_lg().font_semibold().child("Team Selection"))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Pick your team(s) to tailor detections."),
+            )
+            .child(
+                Button::new("dash-open-team-selection")
+                    .primary()
+                    .label("Configure")
+                    .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                        this.active_tab = AppTab::TeamSelection;
+                    })),
+            );
+
+        let goal_music = div()
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(div().text_lg().font_semibold().child("Goal Music"))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Manage celebration tracks for goals."),
+            )
+            .child(
+                Button::new("dash-open-library-1")
+                    .ghost()
+                    .label("Browse Library")
+                    .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                        this.active_tab = AppTab::Library;
+                    })),
+            );
+
+        let other_music = div()
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(div().text_lg().font_semibold().child("Other Music"))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Optional crowd or ambient layers."),
+            )
+            .child(
+                Button::new("dash-open-library-2")
+                    .ghost()
+                    .label("Browse Library")
+                    .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                        this.active_tab = AppTab::Library;
+                    })),
+            );
+
+        // Header with title (left) and status chip (right)
+        let header = {
+            let state = self.controller.state();
+            let guard = state.lock();
+            let process_state = guard.process_state;
+            drop(guard);
+
+            div()
+                .flex()
+                .justify_between()
+                .items_center()
+                .child(div().text_xl().font_semibold().child("Dashboard"))
+                .child(self.render_status_chip(process_state, cx))
+        };
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(header)
+            .child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap_4()
+                    .child(div().flex_grow().min_w(px(320.0)).child(team_callout))
+                    .child(div().flex_grow().min_w(px(320.0)).child(goal_music))
+                    .child(div().flex_grow().min_w(px(320.0)).child(other_music)),
+            )
+    }
+
     fn display_size(&self) -> (f32, f32) {
         (
             self.physical_size.0 as f32 * self.render_scale,
@@ -369,7 +473,7 @@ impl MainView {
         let mut view = Self {
             controller,
             focus_handle,
-            active_tab: AppTab::Library,
+            active_tab: AppTab::Dashboard,
             status_text,
             active_league: active_league.clone(),
             music_volume_slider,
@@ -1010,11 +1114,11 @@ impl MainView {
         }
         let active_league = self.active_league.clone();
 
-        let league_sidebar = div()
+        // Leagues rendered horizontally
+        let leagues_row = div()
             .flex()
             .flex_col()
             .gap_2()
-            .min_w(px(220.0))
             .child(
                 div()
                     .text_sm()
@@ -1024,8 +1128,8 @@ impl MainView {
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .gap_1()
+                    .flex_wrap()
+                    .gap_2()
                     .children(leagues.iter().enumerate().map(|(idx, league)| {
                         let selected = active_league
                             .as_ref()
@@ -1108,17 +1212,21 @@ impl MainView {
                 cx.notify();
             }));
 
+        // Main column with leagues, divider, teams box, and add-team section
         div()
             .flex()
-            .flex_wrap()
+            .flex_col()
             .gap_4()
-            .child(league_sidebar)
+            .flex_grow()
+            .child(leagues_row)
+            .child(div().h(px(1.0)).w_full().bg(cx.theme().border))
             .child(
                 div()
-                    .flex()
-                    .flex_col()
-                    .gap_4()
-                    .flex_grow()
+                    .bg(cx.theme().list)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded_lg()
+                    .p_3()
                     .child(
                         div()
                             .flex()
@@ -1146,9 +1254,9 @@ impl MainView {
                                     .child(clear_button),
                             ),
                     )
-                    .child(team_grid)
-                    .child(self.render_add_team_section(cx, &leagues)),
+                    .child(team_grid),
             )
+            .child(self.render_add_team_section(cx, &leagues))
     }
 
     fn submit_team_form(
@@ -1250,7 +1358,7 @@ impl MainView {
             .child(div().text_lg().font_semibold().child("➕ Add Custom Team"))
             .child(toggle_button);
 
-        let mut container = div()
+        let mut container_content = div()
             .flex()
             .flex_col()
             .gap_2()
@@ -1407,8 +1515,22 @@ impl MainView {
                 );
             }
 
-            container = container.child(form);
+            container_content = container_content.child(form);
         }
+
+        // Make the entire container clickable when form is collapsed
+        let container = if !self.add_team_form.expanded {
+            Button::new("add-team-container")
+                .ghost()
+                .w_full()
+                .child(container_content)
+                .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                    this.add_team_form.expanded = !this.add_team_form.expanded;
+                }))
+                .into_any_element()
+        } else {
+            container_content.into_any_element()
+        };
 
         container
     }
@@ -2280,32 +2402,36 @@ impl MainView {
         process_state: ProcessState,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let (label, bg, fg) = match process_state {
-            ProcessState::Running { .. } => {
-                ("Running", cx.theme().success, cx.theme().success_foreground)
-            }
-            ProcessState::Starting => (
-                "Starting…",
-                cx.theme().warning,
-                cx.theme().warning_foreground,
-            ),
-            ProcessState::Stopping => (
-                "Stopping…",
-                cx.theme().warning,
-                cx.theme().warning_foreground,
-            ),
-            ProcessState::Stopped => ("Stopped", cx.theme().danger, cx.theme().danger_foreground),
-        };
-
-        div()
-            .px_3()
-            .py_1()
-            .rounded_full()
-            .text_sm()
-            .font_semibold()
-            .bg(bg)
-            .text_color(fg)
-            .child(label)
+        match process_state {
+            ProcessState::Running { .. } => div()
+                .px_3()
+                .py_1()
+                .rounded_full()
+                .text_sm()
+                .font_semibold()
+                .bg(cx.theme().success)
+                .text_color(cx.theme().success_foreground)
+                .child("Running"),
+            ProcessState::Stopped => div()
+                .px_3()
+                .py_1()
+                .rounded_full()
+                .text_sm()
+                .font_semibold()
+                .bg(cx.theme().danger)
+                .text_color(cx.theme().danger_foreground)
+                .child("Stopped"),
+            // Transitional states are rendered as Idle (gray)
+            ProcessState::Starting | ProcessState::Stopping => div()
+                .px_3()
+                .py_1()
+                .rounded_full()
+                .text_sm()
+                .font_semibold()
+                .bg(cx.theme().muted)
+                .text_color(cx.theme().muted_foreground)
+                .child("Idle"),
+        }
     }
 
     fn add_music_via_dialog(&mut self) -> Result<(), String> {
@@ -2647,6 +2773,7 @@ impl Render for MainView {
         self.status_text = self.controller.status_message().into();
 
         let content = match self.active_tab {
+            AppTab::Dashboard => self.render_dashboard_tab(cx).into_any_element(),
             AppTab::Library => self.render_library_tab(cx).into_any_element(),
             AppTab::TeamSelection => self.render_team_tab(cx).into_any_element(),
             AppTab::Detection => self.render_detection_tab(cx).into_any_element(),
