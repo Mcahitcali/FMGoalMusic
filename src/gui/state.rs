@@ -5,16 +5,18 @@ pub enum AppTab {
     TeamSelection,
     Detection,
     Settings,
+    Shortcuts,
     Help,
 }
 
 impl AppTab {
-    pub const ALL: [AppTab; 6] = [
+    pub const ALL: [AppTab; 7] = [
         AppTab::Dashboard,
         AppTab::Library,
         AppTab::TeamSelection,
         AppTab::Detection,
         AppTab::Settings,
+        AppTab::Shortcuts,
         AppTab::Help,
     ];
 
@@ -25,6 +27,7 @@ impl AppTab {
             AppTab::TeamSelection => "⚽ Team Selection",
             AppTab::Detection => "🛰 Detection",
             AppTab::Settings => "⚙️ Settings",
+            AppTab::Shortcuts => "⌨️ Shortcuts",
             AppTab::Help => "ℹ️ Help",
         }
     }
@@ -36,6 +39,7 @@ impl AppTab {
             AppTab::TeamSelection => "Team Selection",
             AppTab::Detection => "Detection",
             AppTab::Settings => "Settings",
+            AppTab::Shortcuts => "Keyboard Shortcuts",
             AppTab::Help => "Help",
         }
     }
@@ -47,6 +51,7 @@ impl AppTab {
             AppTab::TeamSelection => "⚽",
             AppTab::Detection => "🛰",
             AppTab::Settings => "⚙️",
+            AppTab::Shortcuts => "⌨️",
             AppTab::Help => "ℹ️",
         }
     }

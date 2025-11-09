@@ -508,6 +508,17 @@ impl GuiController {
         Ok(())
     }
 
+    /// Stop currently playing goal celebration music without stopping monitoring
+    pub fn stop_goal_music(&self) -> Result<()> {
+        if let Some(tx) = self.inner.detection_cmd_tx.lock().as_ref() {
+            tx.send(DetectionCommand::StopAudio)
+                .map_err(|e| anyhow::anyhow!("Failed to send stop audio command: {}", e))?;
+            let mut state = self.inner.state.lock();
+            state.status_message = "Goal music stopped".to_string();
+        }
+        Ok(())
+    }
+
     pub fn set_ambiance_enabled(&self, enabled: bool) -> Result<()> {
         {
             let mut state = self.inner.state.lock();

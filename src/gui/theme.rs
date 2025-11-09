@@ -8,11 +8,11 @@ pub fn install(cx: &mut App) {
     // override the hues we care about for the refreshed mid-tone “slate dusk” look.
     let mut colors = *ThemeColor::dark();
     // Core palette
-    colors.background = rgb(0x111111).into();
+    colors.background = rgb(0x211111).into();
     colors.foreground = rgb(0xf5f7fb).into();
-    colors.primary = rgb(0xdf1620).into();
-    colors.primary_hover = rgb(0xf2313a).into();
-    colors.primary_active = rgb(0xb90f17).into();
+    colors.primary = rgb(0xEA2831).into();
+    colors.primary_hover = rgb(0xFF3B44).into();
+    colors.primary_active = rgb(0xC51F27).into();
     colors.primary_foreground = rgb(0xffffff).into();
     // Accents and surfaces
     colors.accent = rgb(0xf48c4c).into();
@@ -33,12 +33,12 @@ pub fn install(cx: &mut App) {
     colors.slider_thumb = colors.primary;
     // Tabs
     colors.tab = rgb(0x1a1a1a).into();
-    colors.tab_active = rgb(0x242424).into();
+    colors.tab_active = rgb(0x252525).into();
     colors.tab_active_foreground = colors.foreground;
     colors.tab_foreground = rgb(0xbfc7d4).into();
     colors.tab_bar = rgb(0x121212).into();
     // Selection and sidebar
-    colors.selection = rgb(0xdf1620).into();
+    colors.selection = colors.primary;
     colors.sidebar = rgb(0x121212).into();
     colors.sidebar_foreground = colors.foreground;
     colors.sidebar_border = colors.border;

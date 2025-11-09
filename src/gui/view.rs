@@ -9,19 +9,15 @@ use gpui::{
     div, img, px, AnyElement, AppContext, Bounds, ClickEvent, Context, CursorStyle, Entity,
     FocusHandle, Focusable, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ObjectFit, ParentElement, Pixels, Point, Render, SharedString,
-    Styled, StyledImage, Subscription, Window,
+    Styled, StyledImage, Subscription, Window, Image as GpuiImage, ImageFormat,
 };
 use gpui_component::{
-    button::{Button, ButtonVariants},
-    input::{Input, InputState},
-    scroll::ScrollbarAxis,
-    select::{Select, SelectEvent, SelectItem, SelectState},
-    slider::{Slider, SliderEvent, SliderState},
-    switch::Switch,
-    ActiveTheme, Disableable, IndexPath, Selectable, Sizable, StyledExt,
+    ActiveTheme, Disableable, IndexPath, Selectable, Sizable, Size, StyledExt, button::{Button, ButtonVariants}, input::{Input, InputState}, scroll::ScrollbarAxis, select::{Select, SelectEvent, SelectItem, SelectState}, slider::{Slider, SliderEvent, SliderState}, switch::Switch
 };
 
+use super::actions::{self, *};
 use super::controller::{GuiController, RegionCapture};
+use super::hotkeys::{ActionId, HotkeyConfig};
 use super::state::AppTab;
 use crate::audio::AudioManager;
 use crate::state::{MusicEntry, ProcessState};
@@ -253,6 +249,7 @@ pub struct MainView {
     monitor_options: Vec<MonitorOption>,
     region_selection: Option<RegionSelection>,
     region_canvas_bounds: Option<Bounds<Pixels>>,
+    hotkey_config: HotkeyConfig,
 }
 
 impl MainView {
@@ -367,6 +364,12 @@ impl MainView {
             cx.new(move |cx| SelectState::new(monitor_data.clone(), monitor_initial_ix, window, cx))
         };
 
+        // Load hotkey configuration
+        let hotkey_config = HotkeyConfig::load().unwrap_or_else(|e| {
+            tracing::warn!("Failed to load hotkey config: {}, using defaults", e);
+            HotkeyConfig::default()
+        });
+
         let mut view = Self {
             controller,
             focus_handle,
@@ -398,6 +401,7 @@ impl MainView {
             monitor_options,
             region_selection: None,
             region_canvas_bounds: None,
+            hotkey_config,
         };
 
         view.register_slider_subscriptions(cx);
@@ -534,6 +538,202 @@ impl MainView {
         self.subscriptions.push(subscription);
     }
 
+    // ============================================================================
+    // Keyboard Shortcut Action Handlers
+    // ============================================================================
+
+    /// Toggle monitoring (start/stop)
+    fn toggle_monitoring(&mut self, _: &ToggleMonitoring, _window: &mut Window, cx: &mut Context<Self>) {
+        let state = self.controller.state();
+        let is_running = matches!(state.lock().process_state, ProcessState::Running { .. });
+
+        if is_running {
+            if let Err(err) = self.controller.stop_monitoring() {
+                self.status_text = format!("{err:#}").into();
+            }
+        } else {
+            if let Err(err) = self.controller.start_monitoring() {
+                self.status_text = format!("{err:#}").into();
+            }
+        }
+        self.refresh_status();
+        cx.notify();
+    }
+
+    /// Preview play/pause music
+    fn preview_play_pause(&mut self, _: &PreviewPlayPause, _window: &mut Window, cx: &mut Context<Self>) {
+        // Only works if we're on the Library tab
+        if self.active_tab != AppTab::Library {
+            return;
+        }
+
+        // Use the existing toggle_music_preview method
+        if let Err(err) = self.toggle_music_preview() {
+            self.status_text = err.into();
+        }
+        cx.notify();
+    }
+
+    /// Stop currently playing goal celebration music
+    fn stop_goal_music(&mut self, _: &StopGoalMusic, _window: &mut Window, cx: &mut Context<Self>) {
+        // Send StopAudio command to detection thread
+        if let Err(err) = self.controller.stop_goal_music() {
+            self.status_text = format!("Failed to stop music: {err:#}").into();
+        } else {
+            self.status_text = "Goal music stopped".into();
+        }
+        cx.notify();
+    }
+
+    /// Navigate to next tab
+    fn next_tab(&mut self, _: &NextTab, _window: &mut Window, cx: &mut Context<Self>) {
+        let current_index = AppTab::ALL.iter().position(|&t| t == self.active_tab).unwrap_or(0);
+        let next_index = (current_index + 1) % AppTab::ALL.len();
+        self.active_tab = AppTab::ALL[next_index];
+        cx.notify();
+    }
+
+    /// Navigate to previous tab
+    fn previous_tab(&mut self, _: &PreviousTab, _window: &mut Window, cx: &mut Context<Self>) {
+        let current_index = AppTab::ALL.iter().position(|&t| t == self.active_tab).unwrap_or(0);
+        let prev_index = if current_index == 0 {
+            AppTab::ALL.len() - 1
+        } else {
+            current_index - 1
+        };
+        self.active_tab = AppTab::ALL[prev_index];
+        cx.notify();
+    }
+
+    /// Open help tab
+    fn open_help(&mut self, _: &OpenHelp, _window: &mut Window, cx: &mut Context<Self>) {
+        self.active_tab = AppTab::Help;
+        cx.notify();
+    }
+
+    /// Open region selector for capturing screen area
+    fn open_region_selector(&mut self, _: &OpenRegionSelector, _window: &mut Window, cx: &mut Context<Self>) {
+        match self.controller.capture_fullscreen_for_selection() {
+            Ok(capture) => {
+                self.region_selection = Some(RegionSelection::from_capture(capture));
+                self.active_tab = AppTab::Detection; // Switch to Detection tab
+                self.status_text = "Select region by dragging on the screen".into();
+            }
+            Err(err) => {
+                self.status_text = format!("Failed to open region selector: {err:#}").into();
+            }
+        }
+        cx.notify();
+    }
+
+    /// Capture preview of current region
+    fn capture_preview(&mut self, _: &CapturePreview, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Err(err) = self.controller.capture_preview() {
+            self.status_text = format!("Preview capture failed: {err:#}").into();
+        } else {
+            self.status_text = "Preview captured successfully".into();
+        }
+        cx.notify();
+    }
+
+    /// Add music file to library
+    fn add_music_file(&mut self, _: &AddMusicFile, _window: &mut Window, cx: &mut Context<Self>) {
+        // Open file dialog
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Audio Files", &["mp3", "wav", "ogg", "flac", "m4a"])
+            .pick_file()
+        {
+            if let Err(err) = self.controller.add_music_file(path.clone()) {
+                self.status_text = format!("Failed to add music: {err:#}").into();
+            } else {
+                self.status_text = format!("Added: {}", path.display()).into();
+                self.active_tab = AppTab::Library; // Switch to library tab
+            }
+        }
+        cx.notify();
+    }
+
+    /// Remove selected music file
+    fn remove_music_file(&mut self, _: &RemoveMusicFile, _window: &mut Window, cx: &mut Context<Self>) {
+        let selected = self.controller.state().lock().selected_music_index;
+        if let Some(idx) = selected {
+            if let Err(err) = self.controller.remove_music(idx) {
+                self.status_text = format!("Failed to remove music: {err:#}").into();
+            } else {
+                self.status_text = "Music removed".into();
+            }
+        } else {
+            self.status_text = "No music selected".into();
+        }
+        cx.notify();
+    }
+
+    /// Increase music volume
+    fn increase_volume(&mut self, _: &IncreaseVolume, window: &mut Window, cx: &mut Context<Self>) {
+        let current_volume = self.controller.state().lock().music_volume;
+        let new_volume = (current_volume + 0.05).min(1.0);
+        if let Err(err) = self.controller.set_music_volume(new_volume) {
+            self.status_text = format!("Failed to adjust volume: {err:#}").into();
+        } else {
+            self.status_text = format!("Music volume: {}%", (new_volume * 100.0).round()).into();
+        }
+        self.refresh_status();
+        cx.notify();
+    }
+
+    /// Decrease music volume
+    fn decrease_volume(&mut self, _: &DecreaseVolume, _window: &mut Window, cx: &mut Context<Self>) {
+        let current_volume = self.controller.state().lock().music_volume;
+        let new_volume = (current_volume - 0.05).max(0.0);
+        if let Err(err) = self.controller.set_music_volume(new_volume) {
+            self.status_text = format!("Failed to adjust volume: {err:#}").into();
+        } else {
+            self.status_text = format!("Music volume: {}%", (new_volume * 100.0).round()).into();
+        }
+        self.refresh_status();
+        cx.notify();
+    }
+
+    /// Increase ambiance volume
+    fn increase_ambiance_volume(&mut self, _: &IncreaseAmbianceVolume, _window: &mut Window, cx: &mut Context<Self>) {
+        let current_volume = self.controller.state().lock().ambiance_volume;
+        let new_volume = (current_volume + 0.05).min(1.0);
+        if let Err(err) = self.controller.set_ambiance_volume(new_volume) {
+            self.status_text = format!("Failed to adjust ambiance volume: {err:#}").into();
+        } else {
+            self.status_text = format!("Ambiance volume: {}%", (new_volume * 100.0).round()).into();
+        }
+        self.refresh_status();
+        cx.notify();
+    }
+
+    /// Decrease ambiance volume
+    fn decrease_ambiance_volume(&mut self, _: &DecreaseAmbianceVolume, _window: &mut Window, cx: &mut Context<Self>) {
+        let current_volume = self.controller.state().lock().ambiance_volume;
+        let new_volume = (current_volume - 0.05).max(0.0);
+        if let Err(err) = self.controller.set_ambiance_volume(new_volume) {
+            self.status_text = format!("Failed to adjust ambiance volume: {err:#}").into();
+        } else {
+            self.status_text = format!("Ambiance volume: {}%", (new_volume * 100.0).round()).into();
+        }
+        self.refresh_status();
+        cx.notify();
+    }
+
+    /// Open settings tab
+    fn open_settings(&mut self, _: &OpenSettings, _window: &mut Window, cx: &mut Context<Self>) {
+        self.active_tab = AppTab::Settings;
+        cx.notify();
+    }
+
+    /// Check for application updates
+    fn check_for_updates(&mut self, _: &CheckForUpdates, _window: &mut Window, cx: &mut Context<Self>) {
+        // Trigger update check (runs in background thread)
+        self.controller.check_for_updates();
+        self.status_text = "Checking for updates...".into();
+        cx.notify();
+    }
+
     fn render_dashboard_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         // Team callout tile
         let team_callout = div()
@@ -616,7 +816,11 @@ impl MainView {
                             .absolute()
                             .inset_0()
                             .rounded_lg()
-                            .bg(cx.theme().primary.opacity(0.08)),
+                            .bg(gpui::linear_gradient(
+                                135.,
+                                gpui::linear_color_stop(cx.theme().primary, 0.0).opacity(0.20),
+                                gpui::linear_color_stop(cx.theme().primary, 1.0).opacity(0.05),
+                            )),
                     )
                     .flex()
                     .items_center()
@@ -666,7 +870,11 @@ impl MainView {
                             .absolute()
                             .inset_0()
                             .rounded_lg()
-                            .bg(cx.theme().primary.opacity(0.05)),
+                            .bg(gpui::linear_gradient(
+                                135.,
+                                gpui::linear_color_stop(gpui::rgb(0xA855F7), 0.0).opacity(0.20),
+                                gpui::linear_color_stop(gpui::rgb(0xA855F7), 1.0).opacity(0.05),
+                            )),
                     )
                     .flex()
                     .items_center()
@@ -712,19 +920,64 @@ impl MainView {
                 .child(self.render_status_chip(process_state, cx))
         };
 
-        div().flex().flex_col().gap_4().child(header).child(
-            div()
-                .flex()
-                .flex_wrap()
-                .gap_5()
-                .child(div().flex_grow().min_w(px(360.0)).child(team_callout))
-                .child(div().flex_grow().min_w(px(360.0)).child(goal_music))
-                .child(div().flex_grow().min_w(px(360.0)).child(other_music)),
-        )
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(header)
+            .child(
+                // Team Selection - Full width
+                div().w_full().child(team_callout)
+            )
+            .child(
+                // Goal Music and Other Music - Side by side, 50% each
+                div()
+                    .flex()
+                    .gap_5()
+                    .child(div().flex_1().child(goal_music))
+                    .child(div().flex_1().child(other_music))
+            )
+    }
+
+    fn render_status_chip(&self, process_state: ProcessState, cx: &mut Context<Self>) -> impl IntoElement {
+        match process_state {
+            ProcessState::Running { .. } => {
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .py_1()
+                    .rounded_full()
+                    .bg(cx.theme().tab_active)
+                    .child(
+                        div()
+                            .w_2()
+                            .h_2()
+                            .rounded_full()
+                            .bg(cx.theme().success)
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(cx.theme().success)
+                            .child("Running")
+                    )
+                    .into_any_element()
+            }
+            _ => div().into_any_element(),
+        }
     }
 
     fn render_png_icon(&self, file: &str, size: f32, alt: &str) -> AnyElement {
-        if Path::new(file).exists() {
+        if let Some(image) = self.get_embedded_png(file) {
+            img(image)
+                .object_fit(ObjectFit::Contain)
+                .w(px(size))
+                .h(px(size))
+                .into_any_element()
+        } else if std::path::Path::new(file).exists() {
             img(file)
                 .object_fit(ObjectFit::Contain)
                 .w(px(size))
@@ -735,6 +988,21 @@ impl MainView {
         }
     }
 
+    fn get_embedded_png(&self, file: &str) -> Option<std::sync::Arc<GpuiImage>> {
+        match file {
+            "assets/icons/dashboard.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/dashboard.png").to_vec()))),
+            "assets/icons/library.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/library.png").to_vec()))),
+            "assets/icons/team.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/team.png").to_vec()))),
+            "assets/icons/detection.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/detection.png").to_vec()))),
+            "assets/icons/settings.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/settings.png").to_vec()))),
+            "assets/icons/help.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/help.png").to_vec()))),
+            "assets/icons/shield.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/shield.png").to_vec()))),
+            "assets/icons/waveform.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/waveform.png").to_vec()))),
+            "assets/icons/music.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/music.png").to_vec()))),
+            _ => None,
+        }
+    }
+
     fn render_tab_icon(&self, tab: AppTab) -> AnyElement {
         match tab {
             AppTab::Dashboard => self.render_png_icon("assets/icons/dashboard.png", 18.0, "🏟️"),
@@ -742,6 +1010,7 @@ impl MainView {
             AppTab::TeamSelection => self.render_png_icon("assets/icons/team.png", 18.0, "⚽"),
             AppTab::Detection => self.render_png_icon("assets/icons/detection.png", 18.0, "🛰"),
             AppTab::Settings => self.render_png_icon("assets/icons/settings.png", 18.0, "⚙️"),
+            AppTab::Shortcuts => self.render_png_icon("assets/icons/keyboard.png", 18.0, "⌨️"),
             AppTab::Help => self.render_png_icon("assets/icons/help.png", 18.0, "ℹ️"),
         }
     }
@@ -750,15 +1019,21 @@ impl MainView {
         let state = self.controller.state();
         let guard = state.lock();
         let process_state = guard.process_state;
-        let detection_count = guard.detection_count;
         let selected_team = guard.selected_team.clone();
         drop(guard);
 
+        // Get keyboard shortcut hint for toggle monitoring
+        let toggle_shortcut = self.hotkey_config.get(ActionId::ToggleMonitoring)
+            .map(|kb| format!(" ({})", kb.format()))
+            .unwrap_or_default();
+
         let control_button = if process_state.is_running() {
             Button::new("stop-detection")
-                .danger()
-                .label("Stop Monitoring")
+                .text_color(gpui::white())
+                .bg(gpui::rgb(0x059669))
+                .label(format!("Stop Monitoring{}", toggle_shortcut))
                 .w_full()
+                .h(px(40.0))
                 .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
                     if let Err(err) = this.controller.stop_monitoring() {
                         this.status_text = format!("{err:#}").into();
@@ -768,9 +1043,11 @@ impl MainView {
                 }))
         } else {
             Button::new("start-detection")
-                .primary()
-                .label("Start Monitoring")
+                .text_color(gpui::white())
+                .bg(gpui::rgb(0x059669))
+                .label(format!("Start Monitoring{}", toggle_shortcut))
                 .w_full()
+                .h(px(40.0))
                 .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
                     if let Err(err) = this.controller.start_monitoring() {
                         this.status_text = format!("{err:#}").into();
@@ -779,15 +1056,7 @@ impl MainView {
                     }
                 }))
         };
-
-        let help_button = Button::new("jump-help")
-            .ghost()
-            .label("Help & Docs")
-            .w_full()
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
-                this.active_tab = AppTab::Help;
-            }));
-
+        
         let team_summary = selected_team
             .map(|team| format!("Watching {}", team.display_name))
             .unwrap_or_else(|| "Watching any team".to_string());
@@ -808,26 +1077,26 @@ impl MainView {
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .child(div().text_lg().font_semibold().child("FM Goal Musics"))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                img("../assets/app.ico")
+                                    .w(px(24.0))
+                                    .h(px(24.0))
+                                    .rounded_full()
+                                    .object_fit(ObjectFit::Contain)
+                            )
+                            .child(div().text_lg().font_black().child("FM Goal Musics"))
+                    )
                     .child(
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child(self.status_text.clone()),
+                            .child("Monitoring: Monitor 1"),
                     ),
-            )
-            .child(self.render_status_chip(process_state, cx))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("Detections today: {}", detection_count)),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(team_summary),
             )
             .child(control_button)
             .child(
@@ -835,24 +1104,18 @@ impl MainView {
                     .flex()
                     .flex_col()
                     .gap_1()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Navigate"),
-                    )
                     .children(AppTab::ALL.iter().enumerate().map(|(idx, tab)| {
                         let tab_value = *tab;
                         Button::new(("sidebar-tab", idx))
                             .ghost()
                             .selected(self.active_tab == tab_value)
-                            .rounded_full()
                             .px_3()
-                            .py_2()
+                            .py_3()
+                            .h(px(40.0))
                             .w_full()
                             .justify_start()
                             .when(self.active_tab == tab_value, |b| {
-                                b.bg(cx.theme().primary.opacity(0.15))
+                                b.bg(gpui::rgb(0x252525))
                             })
                             .on_click(cx.listener(
                                 move |this, _event: &ClickEvent, _window, _cx| {
@@ -871,7 +1134,6 @@ impl MainView {
                             )
                     })),
             )
-            .child(help_button)
     }
 
     fn render_library_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -892,8 +1154,8 @@ impl MainView {
             .gap_4()
             .flex_grow()
             .min_w(px(360.0))
-            .child(self.render_music_collection_panel(cx, &music_list, selected_index))
-            .child(self.render_ambiance_panel(cx, ambiance_enabled, ambiance_path.clone()));
+            .child(self.render_music_collection_panel(cx, &music_list, selected_index));
+        // .child(self.render_ambiance_panel(cx, ambiance_enabled, ambiance_path.clone()));
 
         let inspector = self.render_music_inspector_panel(cx, &music_list, selected_index);
 
@@ -917,20 +1179,25 @@ impl MainView {
             .label("Add Tracks")
             .on_click(cx.listener(|_this, _event: &ClickEvent, window, cx| {
                 cx.defer_in(window, move |this, _window, cx| {
-                    if let Err(err) = this.add_music_via_dialog() {
-                        this.status_text = err.into();
-                    } else {
-                        this.refresh_status();
-                    }
+                    // if let Err(err) = this.add_music_via_dialog() {
+                    //     this.status_text = err.into();
+                    // } else {
+                    //     this.refresh_status();
+                    // }
                     cx.notify();
                 });
             }));
 
+        // Get keyboard shortcut hint for preview play/pause
+        let preview_shortcut = self.hotkey_config.get(ActionId::PreviewPlayPause)
+            .map(|kb| format!(" ({})", kb.format()))
+            .unwrap_or_default();
+
         let preview_button = Button::new("library-preview")
             .label(if self.music_preview_playing {
-                "Stop Preview"
+                format!("Stop Preview{}", preview_shortcut)
             } else {
-                "Preview"
+                format!("Preview{}", preview_shortcut)
             })
             .disabled(selected_index.is_none())
             .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
@@ -1094,109 +1361,6 @@ impl MainView {
             .p_3()
             .child(div().text_lg().font_semibold().child("Selection Details"))
             .child(body)
-    }
-
-    fn render_ambiance_panel(
-        &mut self,
-        cx: &mut Context<Self>,
-        ambiance_enabled: bool,
-        ambiance_path: Option<String>,
-    ) -> impl IntoElement {
-        let ambiance_file = ambiance_path
-            .as_deref()
-            .and_then(|p| {
-                Path::new(p)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-            })
-            .unwrap_or_else(|| "No crowd cheer selected".to_string());
-
-        let toggle = Switch::new("ambiance-enabled")
-            .label("Enable crowd ambiance layer")
-            .checked(ambiance_enabled)
-            .on_click(cx.listener(|this, checked: &bool, _window, cx| {
-                if let Err(err) = this.controller.set_ambiance_enabled(*checked) {
-                    this.status_text = format!("{err:#}").into();
-                } else {
-                    this.refresh_status();
-                }
-                cx.notify();
-            }));
-
-        let add_button = Button::new("ambiance-choose")
-            .label("Choose Clip")
-            .on_click(cx.listener(|_this, _event: &ClickEvent, window, cx| {
-                cx.defer_in(window, move |this, _window, cx| {
-                    if let Err(err) = this.pick_ambiance_file() {
-                        this.status_text = err.into();
-                    } else {
-                        this.refresh_status();
-                    }
-                    cx.notify();
-                });
-            }));
-
-        let preview_button = Button::new("ambiance-preview")
-            .label(if self.ambiance_preview_playing {
-                "Stop Preview"
-            } else {
-                "Preview"
-            })
-            .disabled(ambiance_path.is_none())
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
-                if let Err(err) = this.toggle_ambiance_preview() {
-                    this.status_text = err.into();
-                } else {
-                    this.refresh_status();
-                }
-                cx.notify();
-            }));
-
-        let clear_button = Button::new("ambiance-clear")
-            .ghost()
-            .label("Clear")
-            .disabled(ambiance_path.is_none())
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
-                if let Err(err) = this.controller.set_goal_ambiance_path(None) {
-                    this.status_text = format!("{err:#}").into();
-                } else {
-                    this.refresh_status();
-                }
-                cx.notify();
-            }));
-
-        div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .bg(cx.theme().list)
-            .border_1()
-            .border_color(cx.theme().border)
-            .rounded_lg()
-            .p_3()
-            .child(div().text_lg().font_semibold().child("🌆 Ambiance"))
-            .child(toggle)
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .child(add_button)
-                    .child(preview_button)
-                    .child(clear_button),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("Current clip: {}", ambiance_file)),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Tip: keep ambiance clips short for quick fade-outs."),
-            )
     }
 
     fn render_team_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -2512,83 +2676,210 @@ impl MainView {
         self.ambiance_preview_playing = false;
     }
 
-    fn render_status_chip(
-        &self,
-        process_state: ProcessState,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        match process_state {
-            ProcessState::Running { .. } => div()
-                .px_3()
-                .py_1()
-                .rounded_full()
-                .text_sm()
-                .font_semibold()
-                .bg(cx.theme().success)
-                .text_color(cx.theme().success_foreground)
-                .child("Running"),
-            ProcessState::Stopped => div()
-                .px_3()
-                .py_1()
-                .rounded_full()
-                .text_sm()
-                .font_semibold()
-                .bg(cx.theme().danger)
-                .text_color(cx.theme().danger_foreground)
-                .child("Stopped"),
-            // Transitional states are rendered as Idle (gray)
-            ProcessState::Starting | ProcessState::Stopping => div()
-                .px_3()
-                .py_1()
-                .rounded_full()
-                .text_sm()
-                .font_semibold()
-                .bg(cx.theme().muted)
-                .text_color(cx.theme().muted_foreground)
-                .child("Idle"),
-        }
-    }
+    fn render_shortcuts_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        use std::collections::HashMap;
 
-    fn add_music_via_dialog(&mut self) -> Result<(), String> {
-        let picks = rfd::FileDialog::new()
-            .add_filter("Audio", &["mp3", "wav", "ogg"])
-            .pick_files()
-            .or_else(|| {
-                rfd::FileDialog::new()
-                    .add_filter("Audio", &["mp3", "wav", "ogg"])
-                    .pick_file()
-                    .map(|file| vec![file])
-            });
+        // Group actions by category
+        let mut categories: HashMap<&str, Vec<(ActionId, &str, String)>> = HashMap::new();
 
-        let Some(paths) = picks else {
-            return Ok(());
-        };
+        for action_id in ActionId::all() {
+            let category = action_id.category();
+            let description = action_id.description();
+            let keybinding = self.hotkey_config.get(action_id)
+                .map(|kb| kb.format())
+                .unwrap_or_else(|| "Not set".to_string());
 
-        let mut last_error = None;
-        for path in paths {
-            if let Err(err) = self.controller.add_music_file(path.clone()) {
-                last_error = Some(format!("{err:#}"));
-            }
+            categories
+                .entry(category)
+                .or_insert_with(Vec::new)
+                .push((action_id, description, keybinding));
         }
 
-        if let Some(err) = last_error {
-            Err(err)
-        } else {
-            Ok(())
-        }
-    }
+        // Order categories
+        let category_order = ["Monitoring", "Music Library", "Volume", "Navigation", "Application"];
 
-    fn pick_ambiance_file(&mut self) -> Result<(), String> {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("WAV", &["wav"])
-            .pick_file()
-        else {
-            return Ok(());
-        };
+        let category_cards: Vec<_> = category_order
+            .iter()
+            .filter_map(|category_name| {
+                categories.get(category_name).map(|actions| {
+                    let rows: Vec<_> = actions
+                        .iter()
+                        .map(|(_, description, keybinding)| {
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap_4()
+                                .p_3()
+                                .rounded_md()
+                                .hover(|s| s.bg(cx.theme().accent.opacity(0.05)))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().foreground)
+                                        .child(*description),
+                                )
+                                .child(
+                                    div()
+                                        .px_3()
+                                        .py_1()
+                                        .rounded_md()
+                                        .bg(cx.theme().muted)
+                                        .text_sm()
+                                        .font_semibold()
+                                        .text_color(cx.theme().primary)
+                                        .child(keybinding.clone()),
+                                )
+                        })
+                        .collect();
 
-        self.controller
-            .set_goal_ambiance_path(Some(path))
-            .map_err(|err| format!("{err:#}"))
+                    div()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .rounded_lg()
+                        .p_4()
+                        .flex()
+                        .flex_col()
+                        .gap_3()
+                        .child(
+                            div()
+                                .text_lg()
+                                .font_semibold()
+                                .child(format!("⚡ {}", category_name)),
+                        )
+                        .child(div().flex().flex_col().gap_1().children(rows))
+                })
+            })
+            .collect();
+
+        let header = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .pb_4()
+            .child(
+                div()
+                    .text_2xl()
+                    .font_bold()
+                    .child("⌨️ Keyboard Shortcuts"),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(
+                        "All available keyboard shortcuts. You can customize these by editing the hotkeys.json config file.",
+                    ),
+            );
+
+        // Global hotkeys card (work system-wide, even when app is not focused)
+        let global_hotkeys = super::global_hotkeys::GlobalHotkeySystem::get_hotkey_descriptions();
+        let global_rows: Vec<_> = global_hotkeys
+            .iter()
+            .map(|(combo, desc)| {
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_4()
+                    .p_3()
+                    .rounded_md()
+                    .hover(|s| s.bg(cx.theme().accent.opacity(0.05)))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().foreground)
+                            .child(*desc),
+                    )
+                    .child(
+                        div()
+                            .px_3()
+                            .py_1()
+                            .rounded_md()
+                            .bg(cx.theme().success.opacity(0.15))
+                            .border_1()
+                            .border_color(cx.theme().success)
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(cx.theme().success)
+                            .child(combo.to_string()),
+                    )
+            })
+            .collect();
+
+        let global_card = div()
+            .border_1()
+            .border_color(cx.theme().success)
+            .rounded_lg()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_semibold()
+                            .child("🌍 Global Hotkeys"),
+                    )
+                    .child(
+                        div()
+                            .px_2()
+                            .py_1()
+                            .rounded_md()
+                            .bg(cx.theme().success.opacity(0.15))
+                            .text_xs()
+                            .font_semibold()
+                            .text_color(cx.theme().success)
+                            .child("WORKS EVERYWHERE"),
+                    ),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("These shortcuts work system-wide, even when the app is not focused or you're playing in fullscreen."),
+            )
+            .child(div().flex().flex_col().gap_1().children(global_rows));
+
+        let config_info = div()
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .font_semibold()
+                    .child("📁 Configuration File"),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!(
+                        "Shortcuts are stored in: {}",
+                        HotkeyConfig::config_path()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|_| "unknown".to_string())
+                    )),
+            );
+
+        div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(header)
+            .child(global_card)
+            .children(category_cards)
+            .child(config_info)
     }
 
     fn render_help_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -2605,12 +2896,7 @@ impl MainView {
                 div()
                     .flex()
                     .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("•"),
-                    )
+                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child("•"))
                     .child(div().text_sm().child(*step))
             })
             .collect::<Vec<_>>();
@@ -2893,10 +3179,35 @@ impl Render for MainView {
             AppTab::TeamSelection => self.render_team_tab(cx).into_any_element(),
             AppTab::Detection => self.render_detection_tab(cx).into_any_element(),
             AppTab::Settings => self.render_settings_tab(cx).into_any_element(),
+            AppTab::Shortcuts => self.render_shortcuts_tab(cx).into_any_element(),
             AppTab::Help => self.render_help_tab(cx).into_any_element(),
         };
 
         div()
+            .track_focus(&self.focus_handle)  // Enable focus tracking for keyboard shortcuts
+            .key_context("main_view")         // Set key context for action dispatch
+            // Primary shortcuts
+            .on_action(cx.listener(Self::toggle_monitoring))
+            .on_action(cx.listener(Self::preview_play_pause))
+            .on_action(cx.listener(Self::stop_goal_music))
+            // Navigation shortcuts
+            .on_action(cx.listener(Self::next_tab))
+            .on_action(cx.listener(Self::previous_tab))
+            .on_action(cx.listener(Self::open_help))
+            // Region selector shortcuts
+            .on_action(cx.listener(Self::open_region_selector))
+            .on_action(cx.listener(Self::capture_preview))
+            // Music library shortcuts
+            .on_action(cx.listener(Self::add_music_file))
+            .on_action(cx.listener(Self::remove_music_file))
+            // Volume control shortcuts
+            .on_action(cx.listener(Self::increase_volume))
+            .on_action(cx.listener(Self::decrease_volume))
+            .on_action(cx.listener(Self::increase_ambiance_volume))
+            .on_action(cx.listener(Self::decrease_ambiance_volume))
+            // Application shortcuts
+            .on_action(cx.listener(Self::open_settings))
+            .on_action(cx.listener(Self::check_for_updates))
             .flex()
             .size_full()
             .bg(cx.theme().background)
