@@ -6,7 +6,7 @@ use std::{
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, img, px, AnyElement, AppContext, Bounds, ClickEvent, Context, CursorStyle, Entity,
+    div, img, px, AnyElement, AppContext, Bounds, ClickEvent, Context, CursorStyle, Element, Entity,
     FocusHandle, Focusable, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ObjectFit, ParentElement, Pixels, Point, Render, SharedString,
     Styled, StyledImage, Subscription, Window, Image as GpuiImage, ImageFormat,
@@ -999,6 +999,7 @@ impl MainView {
             "assets/icons/shield.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/shield.png").to_vec()))),
             "assets/icons/waveform.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/waveform.png").to_vec()))),
             "assets/icons/music.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/music.png").to_vec()))),
+            "assets/fmgoalmusic_logo.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/fmgoalmusic_logo.png").to_vec()))),
             _ => None,
         }
     }
@@ -1083,11 +1084,16 @@ impl MainView {
                             .items_center()
                             .gap_2()
                             .child(
-                                img("../assets/app.ico")
-                                    .w(px(24.0))
-                                    .h(px(24.0))
-                                    .rounded_full()
-                                    .object_fit(ObjectFit::Contain)
+                                if let Some(image) = self.get_embedded_png("assets/fmgoalmusic_logo.png") {
+                                    img(image)
+                                        .w(px(24.0))
+                                        .h(px(24.0))
+                                        .rounded_full()
+                                        .object_fit(ObjectFit::Contain)
+                                        .into_any()
+                                } else {
+                                    div().text_lg().child("🎵").into_any()
+                                }
                             )
                             .child(div().text_lg().font_black().child("FM Goal Musics"))
                     )
