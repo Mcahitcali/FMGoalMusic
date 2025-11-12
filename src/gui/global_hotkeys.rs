@@ -8,8 +8,8 @@ use global_hotkey::{
     hotkey::{Code, HotKey, Modifiers},
     GlobalHotKeyEvent, GlobalHotKeyManager,
 };
-use std::sync::Arc;
 use parking_lot::Mutex;
+use std::sync::Arc;
 
 use super::controller::GuiController;
 
@@ -58,16 +58,11 @@ impl GlobalHotkeySystem {
         let platform_modifier = Modifiers::CONTROL;
 
         // Hotkey 1: Cmd/Ctrl + Shift + 1 - Toggle Monitoring
-        let toggle_monitoring = HotKey::new(
-            Some(platform_modifier | Modifiers::SHIFT),
-            Code::Digit1,
-        );
+        let toggle_monitoring =
+            HotKey::new(Some(platform_modifier | Modifiers::SHIFT), Code::Digit1);
 
         // Hotkey 2: Cmd/Ctrl + Shift + S - Stop Goal Music
-        let stop_music = HotKey::new(
-            Some(platform_modifier | Modifiers::SHIFT),
-            Code::KeyS,
-        );
+        let stop_music = HotKey::new(Some(platform_modifier | Modifiers::SHIFT), Code::KeyS);
 
         // Register with the system
         self.manager
@@ -184,17 +179,13 @@ impl Drop for GlobalHotkeySystem {
 }
 
 /// Start listening for global hotkey events in a background thread
-pub fn start_global_hotkey_listener(
-    system: Arc<Mutex<GlobalHotkeySystem>>,
-) -> Result<()> {
+pub fn start_global_hotkey_listener(system: Arc<Mutex<GlobalHotkeySystem>>) -> Result<()> {
     let receiver = GlobalHotKeyEvent::receiver();
 
-    std::thread::spawn(move || {
-        loop {
-            if let Ok(event) = receiver.recv() {
-                let system = system.lock();
-                system.handle_event(event);
-            }
+    std::thread::spawn(move || loop {
+        if let Ok(event) = receiver.recv() {
+            let system = system.lock();
+            system.handle_event(event);
         }
     });
 

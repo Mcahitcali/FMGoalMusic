@@ -11,32 +11,25 @@ actions!(
     [
         // Primary monitoring control
         ToggleMonitoring,
-
         // Music preview control
         PreviewPlayPause,
-
         // Stop currently playing goal celebration music
         StopGoalMusic,
-
         // Navigation
         NextTab,
         PreviousTab,
         OpenHelp,
-
         // Region selection
         OpenRegionSelector,
         CapturePreview,
-
         // Music library
         AddMusicFile,
         RemoveMusicFile,
-
         // Volume control
         IncreaseVolume,
         DecreaseVolume,
         IncreaseAmbianceVolume,
         DecreaseAmbianceVolume,
-
         // Misc
         OpenSettings,
         CheckForUpdates,

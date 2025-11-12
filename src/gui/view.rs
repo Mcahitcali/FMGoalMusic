@@ -6,13 +6,19 @@ use std::{
 
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, img, px, AnyElement, AppContext, Bounds, ClickEvent, Context, CursorStyle, Element, Entity,
-    FocusHandle, Focusable, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, ObjectFit, ParentElement, Pixels, Point, Render, SharedString,
-    Styled, StyledImage, Subscription, Window, Image as GpuiImage, ImageFormat,
+    div, img, px, AnyElement, AppContext, Bounds, ClickEvent, Context, CursorStyle, Element,
+    Entity, FocusHandle, Focusable, Image as GpuiImage, ImageFormat, InteractiveElement,
+    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit,
+    ParentElement, Pixels, Point, Render, SharedString, Styled, StyledImage, Subscription, Window,
 };
 use gpui_component::{
-    ActiveTheme, Disableable, IndexPath, Selectable, Sizable, Size, StyledExt, button::{Button, ButtonVariants}, input::{Input, InputState}, scroll::ScrollbarAxis, select::{Select, SelectEvent, SelectItem, SelectState}, slider::{Slider, SliderEvent, SliderState}, switch::Switch
+    button::{Button, ButtonVariants},
+    input::{Input, InputState},
+    scroll::ScrollbarAxis,
+    select::{Select, SelectEvent, SelectItem, SelectState},
+    slider::{Slider, SliderEvent, SliderState},
+    switch::Switch,
+    ActiveTheme, Disableable, Icon, IconName, IndexPath, Selectable, Sizable, Size, StyledExt,
 };
 
 use super::actions::{self, *};
@@ -40,6 +46,8 @@ struct AddTeamForm {
     team_name_input: Entity<InputState>,
     new_league_input: Entity<InputState>,
     variations_input: Entity<InputState>,
+    logo_path: Option<PathBuf>,
+    logo_preview: Option<Arc<GpuiImage>>,
 }
 
 struct RegionSelection {
@@ -250,9 +258,27 @@ pub struct MainView {
     region_selection: Option<RegionSelection>,
     region_canvas_bounds: Option<Bounds<Pixels>>,
     hotkey_config: HotkeyConfig,
+    search_query: String,
 }
 
 impl MainView {
+    fn try_set_logo_preview(&mut self, path: &Path) -> Result<(), String> {
+        let is_png = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("png"))
+            .unwrap_or(false);
+
+        if !is_png {
+            return Err("Team logo must be a PNG file".to_string());
+        }
+
+        let bytes = fs::read(path).map_err(|_| "Failed to read logo file".to_string())?;
+        let image = GpuiImage::from_bytes(ImageFormat::Png, bytes);
+        self.add_team_form.logo_preview = Some(Arc::new(image));
+        Ok(())
+    }
+
     pub fn new(window: &mut Window, cx: &mut Context<Self>, controller: GuiController) -> Self {
         let focus_handle = cx.focus_handle();
         let status_text: SharedString = controller.status_message().into();
@@ -376,6 +402,7 @@ impl MainView {
             active_tab: AppTab::Dashboard,
             status_text,
             active_league: active_league.clone(),
+            search_query: String::new(),
             music_volume_slider,
             ambiance_volume_slider,
             music_length_slider,
@@ -396,6 +423,8 @@ impl MainView {
                 team_name_input,
                 new_league_input,
                 variations_input,
+                logo_path: None,
+                logo_preview: None,
             },
             monitor_select,
             monitor_options,
@@ -543,7 +572,12 @@ impl MainView {
     // ============================================================================
 
     /// Toggle monitoring (start/stop)
-    fn toggle_monitoring(&mut self, _: &ToggleMonitoring, _window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_monitoring(
+        &mut self,
+        _: &ToggleMonitoring,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let state = self.controller.state();
         let is_running = matches!(state.lock().process_state, ProcessState::Running { .. });
 
@@ -561,7 +595,12 @@ impl MainView {
     }
 
     /// Preview play/pause music
-    fn preview_play_pause(&mut self, _: &PreviewPlayPause, _window: &mut Window, cx: &mut Context<Self>) {
+    fn preview_play_pause(
+        &mut self,
+        _: &PreviewPlayPause,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // Only works if we're on the Library tab
         if self.active_tab != AppTab::Library {
             return;
@@ -587,7 +626,10 @@ impl MainView {
 
     /// Navigate to next tab
     fn next_tab(&mut self, _: &NextTab, _window: &mut Window, cx: &mut Context<Self>) {
-        let current_index = AppTab::ALL.iter().position(|&t| t == self.active_tab).unwrap_or(0);
+        let current_index = AppTab::ALL
+            .iter()
+            .position(|&t| t == self.active_tab)
+            .unwrap_or(0);
         let next_index = (current_index + 1) % AppTab::ALL.len();
         self.active_tab = AppTab::ALL[next_index];
         cx.notify();
@@ -595,7 +637,10 @@ impl MainView {
 
     /// Navigate to previous tab
     fn previous_tab(&mut self, _: &PreviousTab, _window: &mut Window, cx: &mut Context<Self>) {
-        let current_index = AppTab::ALL.iter().position(|&t| t == self.active_tab).unwrap_or(0);
+        let current_index = AppTab::ALL
+            .iter()
+            .position(|&t| t == self.active_tab)
+            .unwrap_or(0);
         let prev_index = if current_index == 0 {
             AppTab::ALL.len() - 1
         } else {
@@ -612,7 +657,12 @@ impl MainView {
     }
 
     /// Open region selector for capturing screen area
-    fn open_region_selector(&mut self, _: &OpenRegionSelector, _window: &mut Window, cx: &mut Context<Self>) {
+    fn open_region_selector(
+        &mut self,
+        _: &OpenRegionSelector,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         match self.controller.capture_fullscreen_for_selection() {
             Ok(capture) => {
                 self.region_selection = Some(RegionSelection::from_capture(capture));
@@ -627,7 +677,12 @@ impl MainView {
     }
 
     /// Capture preview of current region
-    fn capture_preview(&mut self, _: &CapturePreview, _window: &mut Window, cx: &mut Context<Self>) {
+    fn capture_preview(
+        &mut self,
+        _: &CapturePreview,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Err(err) = self.controller.capture_preview() {
             self.status_text = format!("Preview capture failed: {err:#}").into();
         } else {
@@ -654,7 +709,12 @@ impl MainView {
     }
 
     /// Remove selected music file
-    fn remove_music_file(&mut self, _: &RemoveMusicFile, _window: &mut Window, cx: &mut Context<Self>) {
+    fn remove_music_file(
+        &mut self,
+        _: &RemoveMusicFile,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let selected = self.controller.state().lock().selected_music_index;
         if let Some(idx) = selected {
             if let Err(err) = self.controller.remove_music(idx) {
@@ -682,7 +742,12 @@ impl MainView {
     }
 
     /// Decrease music volume
-    fn decrease_volume(&mut self, _: &DecreaseVolume, _window: &mut Window, cx: &mut Context<Self>) {
+    fn decrease_volume(
+        &mut self,
+        _: &DecreaseVolume,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let current_volume = self.controller.state().lock().music_volume;
         let new_volume = (current_volume - 0.05).max(0.0);
         if let Err(err) = self.controller.set_music_volume(new_volume) {
@@ -695,7 +760,12 @@ impl MainView {
     }
 
     /// Increase ambiance volume
-    fn increase_ambiance_volume(&mut self, _: &IncreaseAmbianceVolume, _window: &mut Window, cx: &mut Context<Self>) {
+    fn increase_ambiance_volume(
+        &mut self,
+        _: &IncreaseAmbianceVolume,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let current_volume = self.controller.state().lock().ambiance_volume;
         let new_volume = (current_volume + 0.05).min(1.0);
         if let Err(err) = self.controller.set_ambiance_volume(new_volume) {
@@ -708,7 +778,12 @@ impl MainView {
     }
 
     /// Decrease ambiance volume
-    fn decrease_ambiance_volume(&mut self, _: &DecreaseAmbianceVolume, _window: &mut Window, cx: &mut Context<Self>) {
+    fn decrease_ambiance_volume(
+        &mut self,
+        _: &DecreaseAmbianceVolume,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let current_volume = self.controller.state().lock().ambiance_volume;
         let new_volume = (current_volume - 0.05).max(0.0);
         if let Err(err) = self.controller.set_ambiance_volume(new_volume) {
@@ -727,7 +802,12 @@ impl MainView {
     }
 
     /// Check for application updates
-    fn check_for_updates(&mut self, _: &CheckForUpdates, _window: &mut Window, cx: &mut Context<Self>) {
+    fn check_for_updates(
+        &mut self,
+        _: &CheckForUpdates,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // Trigger update check (runs in background thread)
         self.controller.check_for_updates();
         self.status_text = "Checking for updates...".into();
@@ -775,7 +855,7 @@ impl MainView {
                         Button::new("dash-open-team-selection")
                             .primary()
                             .label("Configure")
-                            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                            .on_click(cx.listener(|this, _event: &ClickEvent, window, cx| {
                                 this.active_tab = AppTab::TeamSelection;
                             })),
                     ),
@@ -845,7 +925,7 @@ impl MainView {
                         Button::new("dash-open-library-1")
                             .ghost()
                             .label("Browse Library →")
-                            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                            .on_click(cx.listener(|this, _event: &ClickEvent, window, cx| {
                                 this.active_tab = AppTab::Library;
                             })),
                     ),
@@ -899,7 +979,7 @@ impl MainView {
                         Button::new("dash-open-library-2")
                             .ghost()
                             .label("Browse Library →")
-                            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                            .on_click(cx.listener(|this, _event: &ClickEvent, window, cx| {
                                 this.active_tab = AppTab::Library;
                             })),
                     ),
@@ -927,7 +1007,7 @@ impl MainView {
             .child(header)
             .child(
                 // Team Selection - Full width
-                div().w_full().child(team_callout)
+                div().w_full().child(team_callout),
             )
             .child(
                 // Goal Music and Other Music - Side by side, 50% each
@@ -935,38 +1015,59 @@ impl MainView {
                     .flex()
                     .gap_5()
                     .child(div().flex_1().child(goal_music))
-                    .child(div().flex_1().child(other_music))
+                    .child(div().flex_1().child(other_music)),
             )
     }
 
-    fn render_status_chip(&self, process_state: ProcessState, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_status_chip(
+        &self,
+        process_state: ProcessState,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         match process_state {
-            ProcessState::Running { .. } => {
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py_1()
-                    .rounded_full()
-                    .bg(cx.theme().tab_active)
-                    .child(
-                        div()
-                            .w_2()
-                            .h_2()
-                            .rounded_full()
-                            .bg(cx.theme().success)
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_semibold()
-                            .text_color(cx.theme().success)
-                            .child("Running")
-                    )
-                    .into_any_element()
-            }
+            ProcessState::Running { .. } => div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_3()
+                .py_1()
+                .rounded_full()
+                .bg(cx.theme().tab_active)
+                .child(div().w_2().h_2().rounded_full().bg(cx.theme().success))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_semibold()
+                        .text_color(cx.theme().success)
+                        .child("Running"),
+                )
+                .into_any_element(),
             _ => div().into_any_element(),
+        }
+    }
+
+    fn get_audio_duration(&self, path: &str) -> String {
+        use rodio::{Decoder, Source};
+        use std::fs::File;
+        use std::io::BufReader;
+
+        let file = match File::open(path) {
+            Ok(f) => f,
+            Err(_) => return "?:??".to_string(),
+        };
+
+        let source = match Decoder::new(BufReader::new(file)) {
+            Ok(s) => s,
+            Err(_) => return "?:??".to_string(),
+        };
+
+        if let Some(duration) = source.total_duration() {
+            let total_secs = duration.as_secs();
+            let minutes = total_secs / 60;
+            let seconds = total_secs % 60;
+            format!("{}:{:02}", minutes, seconds)
+        } else {
+            "?:??".to_string()
         }
     }
 
@@ -988,18 +1089,320 @@ impl MainView {
         }
     }
 
+    fn render_team_logo(
+        &self,
+        team_key: &str,
+        league: &str,
+        size: f32,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        // Try to load logo from user config directory
+        let logo_path = if let Some(base) = dirs::config_dir() {
+            base.join("FMGoalMusic")
+                .join("teams")
+                .join(league)
+                .join(format!("{}.png", team_key))
+        } else {
+            std::path::PathBuf::new()
+        };
+
+        tracing::debug!(
+            "[logo] Attempting to load logo for team: {} (league: {})",
+            team_key,
+            league
+        );
+        tracing::debug!("[logo] Logo path: {}", logo_path.display());
+        tracing::debug!("[logo] Logo exists: {}", logo_path.exists());
+
+        if logo_path.exists() {
+            let path_str = logo_path.to_string_lossy().to_string();
+            tracing::info!("[logo] Successfully loading logo from: {}", path_str);
+
+            // Read the image file and load it as GPUI image
+            if let Ok(image_data) = std::fs::read(&logo_path) {
+                let gpui_image = GpuiImage::from_bytes(ImageFormat::Png, image_data);
+                img(Arc::new(gpui_image))
+                    .object_fit(ObjectFit::Contain)
+                    .w(px(size))
+                    .h(px(size))
+                    .into_any_element()
+            } else {
+                tracing::error!("[logo] Failed to read logo file: {}", path_str);
+                // Fallback to initial
+                let initial = team_key
+                    .chars()
+                    .find(|c| c.is_alphabetic())
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "?".to_string());
+
+                div()
+                    .w(px(size))
+                    .h(px(size))
+                    .bg(cx.theme().muted)
+                    .rounded_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(div().text_2xl().child(initial))
+                    .into_any_element()
+            }
+        } else {
+            tracing::warn!("[logo] Logo not found for {} in {}", team_key, league);
+            // Fallback: show first letter of team key in a circle
+            let initial = team_key
+                .chars()
+                .find(|c| c.is_alphabetic())
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "?".to_string());
+
+            div()
+                .w(px(size))
+                .h(px(size))
+                .bg(cx.theme().muted)
+                .rounded_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(div().text_2xl().child(initial))
+                .into_any_element()
+        }
+    }
+
+    fn render_team_card(
+        &self,
+        cx: &mut Context<Self>,
+        team_key: &str,
+        team_name: &str,
+        is_selected: bool,
+        idx: usize,
+        league: &str,
+    ) -> impl IntoElement {
+        let handle_click = cx.listener({
+            let key = team_key.to_string();
+            let league = league.to_string();
+            move |this, event: &MouseDownEvent, _window, cx| {
+                // Toggle selection: if already selected, deselect; otherwise select
+                if is_selected {
+                    if let Err(err) = this.controller.clear_team_selection() {
+                        this.status_text = format!("{err:#}").into();
+                    }
+                } else {
+                    if let Err(err) = this.controller.select_team(&league, &key) {
+                        this.status_text = format!("{err:#}").into();
+                    }
+                }
+                this.refresh_status();
+                cx.notify();
+            }
+        });
+
+        div()
+            .border_1()
+            .border_color(if is_selected {
+                cx.theme().accent
+            } else {
+                cx.theme().border
+            })
+            .rounded_lg()
+            .p_3()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap_2()
+            .cursor_pointer()
+            .on_mouse_down(MouseButton::Left, handle_click)
+            .child(
+                self.render_team_logo(team_key, league, 64.0, cx), // 64x64px logo
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(cx.theme().foreground)
+                    .child(team_name.to_string()),
+            )
+            .when(is_selected, |this| {
+                this.child(
+                    div()
+                        .w(px(6.0))
+                        .h(px(6.0))
+                        .rounded_full()
+                        .bg(cx.theme().accent)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(div().text_xs().text_color(gpui::white()).child("✓")),
+                )
+            })
+    }
+
+    fn render_league_sidebar(
+        &mut self,
+        cx: &mut Context<Self>,
+        leagues: &[String],
+        active_league: Option<String>,
+    ) -> impl IntoElement {
+        div()
+            .w(px(200.0))
+            .h_full()
+            .border_r_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background)
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_3()
+            // "All Leagues" button
+            .child(
+                Button::new("all-leagues")
+                    .ghost()
+                    .selected(active_league.is_none())
+                    .flex_1()
+                    .label("All Leagues")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+                            this.active_league = None;
+                            this.refresh_status();
+                            cx.notify();
+                        }),
+                    ),
+            )
+            // Search box for teams
+            .child(
+                Button::new("search-box")
+                    .ghost()
+                    .flex_1()
+                    .label(if self.search_query.is_empty() {
+                        "🔍 Search teams...".to_string()
+                    } else {
+                        format!("🔍 {}", self.search_query)
+                    })
+                    .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+                        // TODO: Open search dialog or focus input
+                    })),
+            )
+            // League list
+            .children(leagues.iter().enumerate().map(|(idx, league)| {
+                let selected = active_league
+                    .as_ref()
+                    .map(|active| active == league)
+                    .unwrap_or(false);
+
+                Button::new(("league", idx))
+                    .ghost()
+                    .selected(selected)
+                    .flex_1()
+                    .label(league.clone())
+                    .on_click(cx.listener({
+                        let league_clone = league.clone();
+                        move |this, event: &ClickEvent, window, cx| {
+                            this.active_league = Some(league_clone.clone());
+                            this.refresh_status();
+                            cx.notify();
+                        }
+                    }))
+            }))
+    }
+
+    fn render_add_team_placeholder(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .border_1()
+            .border_dashed()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_3()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .cursor_pointer()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _event: &MouseDownEvent, _window, cx| {
+                    this.add_team_form.expanded = true;
+                    cx.notify();
+                }),
+            )
+            .child(
+                div()
+                    .w(px(12.0))
+                    .h(px(12.0))
+                    .rounded_full()
+                    .bg(cx.theme().muted)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .text_2xl()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("+"),
+                    ),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Add Custom Team"),
+            )
+    }
+
     fn get_embedded_png(&self, file: &str) -> Option<std::sync::Arc<GpuiImage>> {
         match file {
-            "assets/icons/dashboard.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/dashboard.png").to_vec()))),
-            "assets/icons/library.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/library.png").to_vec()))),
-            "assets/icons/team.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/team.png").to_vec()))),
-            "assets/icons/detection.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/detection.png").to_vec()))),
-            "assets/icons/settings.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/settings.png").to_vec()))),
-            "assets/icons/help.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/help.png").to_vec()))),
-            "assets/icons/shield.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/shield.png").to_vec()))),
-            "assets/icons/waveform.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/waveform.png").to_vec()))),
-            "assets/icons/music.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/icons/music.png").to_vec()))),
-            "assets/fmgoalmusic_logo.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(ImageFormat::Png, include_bytes!("../../assets/fmgoalmusic_logo.png").to_vec()))),
+            "assets/icons/dashboard.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/dashboard.png").to_vec(),
+            ))),
+            "assets/icons/library.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/library.png").to_vec(),
+            ))),
+            "assets/icons/team.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/team.png").to_vec(),
+            ))),
+            "assets/icons/detection.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/detection.png").to_vec(),
+            ))),
+            "assets/icons/settings.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/settings.png").to_vec(),
+            ))),
+            "assets/icons/help.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/help.png").to_vec(),
+            ))),
+            "assets/icons/shield.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/shield.png").to_vec(),
+            ))),
+            "assets/icons/waveform.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/waveform.png").to_vec(),
+            ))),
+            "assets/icons/music.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/music.png").to_vec(),
+            ))),
+            "assets/fmgoalmusic_logo.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/fmgoalmusic_logo.png").to_vec(),
+            ))),
+            "assets/icons/play.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/play.png").to_vec(),
+            ))),
+            "assets/icons/pause.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/pause.png").to_vec(),
+            ))),
+            "assets/icons/trash.png" => Some(std::sync::Arc::new(GpuiImage::from_bytes(
+                ImageFormat::Png,
+                include_bytes!("../../assets/icons/trash.png").to_vec(),
+            ))),
             _ => None,
         }
     }
@@ -1024,7 +1427,9 @@ impl MainView {
         drop(guard);
 
         // Get keyboard shortcut hint for toggle monitoring
-        let toggle_shortcut = self.hotkey_config.get(ActionId::ToggleMonitoring)
+        let toggle_shortcut = self
+            .hotkey_config
+            .get(ActionId::ToggleMonitoring)
             .map(|kb| format!(" ({})", kb.format()))
             .unwrap_or_default();
 
@@ -1035,7 +1440,7 @@ impl MainView {
                 .label(format!("Stop Monitoring{}", toggle_shortcut))
                 .w_full()
                 .h(px(40.0))
-                .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                .on_click(cx.listener(|this, _event: &ClickEvent, window, cx| {
                     if let Err(err) = this.controller.stop_monitoring() {
                         this.status_text = format!("{err:#}").into();
                     } else {
@@ -1049,7 +1454,7 @@ impl MainView {
                 .label(format!("Start Monitoring{}", toggle_shortcut))
                 .w_full()
                 .h(px(40.0))
-                .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+                .on_click(cx.listener(|this, _event: &ClickEvent, window, cx| {
                     if let Err(err) = this.controller.start_monitoring() {
                         this.status_text = format!("{err:#}").into();
                     } else {
@@ -1057,7 +1462,7 @@ impl MainView {
                     }
                 }))
         };
-        
+
         let team_summary = selected_team
             .map(|team| format!("Watching {}", team.display_name))
             .unwrap_or_else(|| "Watching any team".to_string());
@@ -1084,7 +1489,9 @@ impl MainView {
                             .items_center()
                             .gap_2()
                             .child(
-                                if let Some(image) = self.get_embedded_png("assets/fmgoalmusic_logo.png") {
+                                if let Some(image) =
+                                    self.get_embedded_png("assets/fmgoalmusic_logo.png")
+                                {
                                     img(image)
                                         .w(px(24.0))
                                         .h(px(24.0))
@@ -1093,9 +1500,9 @@ impl MainView {
                                         .into_any()
                                 } else {
                                     div().text_lg().child("🎵").into_any()
-                                }
+                                },
                             )
-                            .child(div().text_lg().font_black().child("FM Goal Musics"))
+                            .child(div().text_lg().font_black().child("FM Goal Musics")),
                     )
                     .child(
                         div()
@@ -1120,9 +1527,7 @@ impl MainView {
                             .h(px(40.0))
                             .w_full()
                             .justify_start()
-                            .when(self.active_tab == tab_value, |b| {
-                                b.bg(gpui::rgb(0x252525))
-                            })
+                            .when(self.active_tab == tab_value, |b| b.bg(gpui::rgb(0x252525)))
                             .on_click(cx.listener(
                                 move |this, _event: &ClickEvent, _window, _cx| {
                                     this.active_tab = tab_value;
@@ -1154,24 +1559,15 @@ impl MainView {
             )
         };
 
-        let list_column = div()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .flex_grow()
-            .min_w(px(360.0))
-            .child(self.render_music_collection_panel(cx, &music_list, selected_index));
-        // .child(self.render_ambiance_panel(cx, ambiance_enabled, ambiance_path.clone()));
-
-        let inspector = self.render_music_inspector_panel(cx, &music_list, selected_index);
+        let header = div().text_xl().font_semibold().child("Library");
 
         div()
             .flex()
-            .flex_wrap()
+            .flex_col()
             .gap_4()
-            .items_start()
-            .child(list_column)
-            .child(inspector)
+            .child(header)
+            .child(self.render_music_collection_panel(cx, &music_list, selected_index))
+            .child(self.render_ambiance_panel(cx, ambiance_enabled, ambiance_path))
     }
 
     fn render_music_collection_panel(
@@ -1180,133 +1576,327 @@ impl MainView {
         music_list: &[MusicEntry],
         selected_index: Option<usize>,
     ) -> impl IntoElement {
-        let add_button = Button::new("library-add")
-            .primary()
-            .label("Add Tracks")
-            .on_click(cx.listener(|_this, _event: &ClickEvent, window, cx| {
-                cx.defer_in(window, move |this, _window, cx| {
-                    // if let Err(err) = this.add_music_via_dialog() {
-                    //     this.status_text = err.into();
-                    // } else {
-                    //     this.refresh_status();
-                    // }
-                    cx.notify();
-                });
-            }));
-
-        // Get keyboard shortcut hint for preview play/pause
-        let preview_shortcut = self.hotkey_config.get(ActionId::PreviewPlayPause)
-            .map(|kb| format!(" ({})", kb.format()))
-            .unwrap_or_default();
-
-        let preview_button = Button::new("library-preview")
-            .label(if self.music_preview_playing {
-                format!("Stop Preview{}", preview_shortcut)
-            } else {
-                format!("Preview{}", preview_shortcut)
-            })
-            .disabled(selected_index.is_none())
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
-                if let Err(err) = this.toggle_music_preview() {
-                    this.status_text = err.into();
-                } else {
-                    this.refresh_status();
-                }
-                cx.notify();
-            }));
-
-        let remove_button = Button::new("library-remove")
-            .danger()
-            .label("Remove")
-            .disabled(selected_index.is_none())
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
-                let selected = {
-                    let state = this.controller.state();
-                    let guard = state.lock();
-                    guard.selected_music_index
-                };
-                if let Some(idx) = selected {
-                    if let Err(err) = this.controller.remove_music(idx) {
-                        this.status_text = format!("{err:#}").into();
-                    } else {
-                        this.refresh_status();
-                    }
-                    cx.notify();
-                }
-            }));
-
-        let clear_button = Button::new("library-clear-selection")
-            .ghost()
-            .label("Clear Selection")
-            .disabled(selected_index.is_none())
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
-                this.controller.select_music(None);
-                this.refresh_status();
-                cx.notify();
-            }));
-
-        let toolbar = div()
+        let header_row = div()
             .flex()
-            .flex_wrap()
-            .gap_2()
-            .child(add_button)
-            .child(preview_button)
-            .child(remove_button)
-            .child(clear_button);
+            .items_center()
+            .justify_between()
+            .child(div().text_lg().font_semibold().child("Goal Music"))
+            .child(
+                Button::new("library-add-goal")
+                    .primary()
+                    .child(div().mr_1p5().child("+"))
+                    .label("Add Music")
+                    .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Audio Files", &["mp3", "wav", "ogg", "flac", "m4a"])
+                            .pick_file()
+                        {
+                            if let Err(err) = this.controller.add_music_file(path) {
+                                this.status_text = format!("{err:#}").into();
+                            } else {
+                                this.refresh_status();
+                            }
+                        }
+                        cx.notify();
+                    })),
+            );
 
         let list_body = if music_list.is_empty() {
             div()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child("No celebration tracks yet. Add MP3/WAV files to get started.")
+                .child(
+                    div()
+                        .h(px(140.0))
+                        .rounded_lg()
+                        .bg(cx.theme().tab_active)
+                        .relative()
+                        .child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .rounded_lg()
+                                .bg(gpui::linear_gradient(
+                                    135.,
+                                    gpui::linear_color_stop(cx.theme().primary, 0.0).opacity(0.20),
+                                    gpui::linear_color_stop(cx.theme().primary, 1.0).opacity(0.05),
+                                )),
+                        )
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(self.render_png_icon("assets/icons/waveform.png", 32.0, "🔈")),
+                )
+                .child(
+                    div()
+                        .pt_3()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(
+                            "No celebration tracks yet. Use Add Music to include MP3/WAV files.",
+                        ),
+                )
                 .into_any_element()
         } else {
             div()
                 .flex()
                 .flex_col()
-                .gap_1()
+                .gap_2()
                 .children(music_list.iter().enumerate().map(|(idx, entry)| {
-                    let shortcut = entry.shortcut.clone().unwrap_or_default();
-                    let label = if shortcut.is_empty() {
-                        entry.name.clone()
-                    } else {
-                        format!("{} · {}", entry.name, shortcut)
-                    };
-                    Button::new(("music-row", idx))
-                        .ghost()
-                        .label(label)
-                        .selected(selected_index == Some(idx))
-                        .on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
-                            this.controller.select_music(Some(idx));
-                            this.refresh_status();
-                            cx.notify();
-                        }))
+                    let duration = self.get_audio_duration(entry.path.to_str().unwrap_or(""));
+
+                    // Check if this music is currently being previewed
+                    let is_previewing = self
+                        .music_preview
+                        .as_ref()
+                        .map(|preview| preview.path == entry.path)
+                        .unwrap_or(false)
+                        && self.music_preview_playing;
+
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .p_4()
+                        .rounded_lg()
+                        .bg(cx.theme().tab_active)
+                        .cursor_pointer()
+                        .when(selected_index == Some(idx), |this| {
+                            this.border_1().border_color(cx.theme().primary)
+                        })
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _event: &MouseDownEvent, _window, cx| {
+                                this.controller.select_music(Some(idx));
+                                this.refresh_status();
+                                cx.notify();
+                            }),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .flex_1()
+                                .overflow_hidden()
+                                .child(
+                                    div()
+                                        .text_base()
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .text_color(cx.theme().foreground)
+                                        .overflow_hidden()
+                                        .whitespace_nowrap()
+                                        .text_ellipsis()
+                                        .child(entry.name.clone()),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(duration),
+                                ),
+                        )
+                        .child(
+                            Button::new(("music-preview", idx))
+                                .ghost()
+                                .child(if is_previewing {
+                                    self.render_png_icon("assets/icons/pause.png", 20.0, "⏸")
+                                } else {
+                                    self.render_png_icon("assets/icons/play.png", 20.0, "▶")
+                                })
+                                .on_click(cx.listener(
+                                    move |this, _event: &ClickEvent, _window, cx| {
+                                        this.controller.select_music(Some(idx));
+                                        if let Err(err) = this.toggle_music_preview() {
+                                            this.status_text = err.into();
+                                        } else {
+                                            this.refresh_status();
+                                        }
+                                        cx.notify();
+                                    },
+                                )),
+                        )
+                        .child(
+                            Button::new(("music-remove", idx))
+                                .ghost()
+                                .child(self.render_png_icon("assets/icons/trash.png", 20.0, "🗑"))
+                                .on_click(cx.listener(
+                                    move |this, _event: &ClickEvent, _window, cx| {
+                                        if let Err(err) = this.controller.remove_music(idx) {
+                                            this.status_text = format!("{err:#}").into();
+                                        } else {
+                                            this.refresh_status();
+                                        }
+                                        cx.notify();
+                                    },
+                                )),
+                        )
+                        .into_any_element()
                 }))
                 .into_any_element()
         };
 
         div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .bg(cx.theme().list)
+            .bg(cx.theme().group_box)
             .border_1()
             .border_color(cx.theme().border)
             .rounded_lg()
-            .p_3()
+            .p_5()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(header_row)
+            .child(list_body)
+    }
+
+    fn render_ambiance_panel(
+        &mut self,
+        cx: &mut Context<Self>,
+        _ambiance_enabled: bool,
+        ambiance_path: Option<String>,
+    ) -> impl IntoElement {
+        let header_row = div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .child(div().text_lg().font_semibold().child("Ambience Music"))
             .child(
-                div()
-                    .text_lg()
-                    .font_semibold()
-                    .child("🎵 Celebration Tracks"),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Files are converted to WAV and stored under config/musics."),
-            )
-            .child(toolbar)
+                Button::new("library-add-ambiance")
+                    .primary()
+                    .child(div().mr_1p5().child("+"))
+                    .label("Add Music")
+                    .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Audio", &["wav"]) // ambiance uses wav in current pipeline
+                            .pick_file()
+                        {
+                            if let Err(err) = this.controller.set_goal_ambiance_path(Some(path)) {
+                                this.status_text = format!("{err:#}").into();
+                            } else {
+                                this.refresh_status();
+                            }
+                        }
+                        cx.notify();
+                    })),
+            );
+
+        let list_body = if let Some(path) = ambiance_path {
+            let display = std::path::Path::new(&path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+
+            let duration = self.get_audio_duration(&path);
+
+            // Check if ambiance is currently being previewed
+            let is_previewing = self.ambiance_preview_playing;
+
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .p_4()
+                .rounded_lg()
+                .bg(cx.theme().tab_active)
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .flex_1()
+                        .overflow_hidden()
+                        .child(
+                            div()
+                                .text_base()
+                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_color(cx.theme().foreground)
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .child(display),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(duration),
+                        ),
+                )
+                .child(
+                    Button::new("ambience-preview")
+                        .ghost()
+                        .child(if is_previewing {
+                            self.render_png_icon("assets/icons/pause.png", 20.0, "⏸")
+                        } else {
+                            self.render_png_icon("assets/icons/play.png", 20.0, "▶")
+                        })
+                        .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+                            if let Err(err) = this.toggle_ambiance_preview() {
+                                this.status_text = err.into();
+                            } else {
+                                this.refresh_status();
+                            }
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    Button::new("ambience-remove")
+                        .ghost()
+                        .child(self.render_png_icon("assets/icons/trash.png", 20.0, "🗑"))
+                        .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+                            if let Err(err) = this.controller.set_goal_ambiance_path(None) {
+                                this.status_text = format!("{err:#}").into();
+                            } else {
+                                this.refresh_status();
+                            }
+                            cx.notify();
+                        })),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .child(
+                    div()
+                        .h(px(140.0))
+                        .rounded_lg()
+                        .bg(cx.theme().tab)
+                        .relative()
+                        .child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .rounded_lg()
+                                .bg(gpui::linear_gradient(
+                                    135.,
+                                    gpui::linear_color_stop(gpui::rgb(0xA855F7), 0.0).opacity(0.20),
+                                    gpui::linear_color_stop(gpui::rgb(0xA855F7), 1.0).opacity(0.05),
+                                )),
+                        )
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(self.render_png_icon("assets/icons/music.png", 32.0, "🎵")),
+                )
+                .child(
+                    div()
+                        .pt_3()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(
+                            "No ambience selected. Use Add Music to choose a crowd cheer sound.",
+                        ),
+                )
+                .into_any_element()
+        };
+
+        div()
+            .bg(cx.theme().group_box)
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_5()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(header_row)
             .child(list_body)
     }
 
@@ -1436,51 +2026,70 @@ impl MainView {
                     })),
             );
 
-        let team_grid = if let Some(ref league) = active_league {
-            if let Some(teams) = database.get_teams(league) {
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_2()
-                    .children(teams.into_iter().enumerate().map(|(idx, (key, team))| {
-                        let is_selected = selected_team
-                            .as_ref()
-                            .map(|st| st.team_key == key)
-                            .unwrap_or(false);
-                        Button::new(("team-card", idx))
-                            .ghost()
-                            .selected(is_selected)
-                            .label(team.display_name.clone())
-                            .on_click(cx.listener({
-                                let league = league.clone();
-                                let key = key.clone();
-                                move |this, _event: &ClickEvent, _window, cx| {
-                                    if let Err(err) = this.controller.select_team(&league, &key) {
-                                        this.status_text = format!("{err:#}").into();
-                                    } else {
-                                        this.refresh_status();
-                                    }
-                                    cx.notify();
-                                }
-                            }))
-                    }))
+        let team_grid =
+            if let Some(ref league) = active_league {
+                if let Some(teams) = database.get_teams(league) {
+                    // Filter teams by search query
+                    let filtered_teams = if self.search_query.trim().is_empty() {
+                        teams
+                    } else {
+                        teams
+                            .iter()
+                            .filter(|(key, team)| {
+                                team.display_name
+                                    .to_lowercase()
+                                    .contains(&self.search_query.to_lowercase())
+                                    || team.variations.iter().any(|v| {
+                                        v.to_lowercase().contains(&self.search_query.to_lowercase())
+                                    })
+                                    || key
+                                        .to_lowercase()
+                                        .contains(&self.search_query.to_lowercase())
+                            })
+                            .cloned()
+                            .collect::<Vec<_>>()
+                    };
+
+                    div()
+                        .grid()
+                        .grid_cols(3) // 3-column grid
+                        .gap_4()
+                        .children(filtered_teams.into_iter().enumerate().map(
+                            |(idx, (key, team))| {
+                                let is_selected = selected_team
+                                    .as_ref()
+                                    .map(|st| st.league == *league && st.team_key == key)
+                                    .unwrap_or(false);
+                                self.render_team_card(
+                                    cx,
+                                    &key,
+                                    &team.display_name,
+                                    is_selected,
+                                    idx,
+                                    league,
+                                )
+                            },
+                        ))
+                        .child(self.render_add_team_placeholder(cx)) // Add Custom Team placeholder
+                } else {
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("No teams found for this league.")
+                }
             } else {
                 div()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child("No teams found for this league.")
-            }
-        } else {
-            div()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child("Pick a league to browse teams.")
-        };
+                    .child("Pick a league to browse teams.")
+            };
 
         let selection_summary = selected_team
             .as_ref()
             .map(|team| format!("Selected: {} ({})", team.display_name, team.league))
-            .unwrap_or_else(|| "No team selected — celebrations trigger for all goals.".into());
+            .unwrap_or_else(|| {
+                "No team selected — celebrations trigger for all goals.".to_string()
+            });
 
         let clear_button = Button::new("clear-team")
             .ghost()
@@ -1494,7 +2103,6 @@ impl MainView {
                 }
                 this.active_league = None;
                 this.add_team_form.selected_league = None;
-                cx.notify();
             }));
 
         // Main column with leagues, divider, teams box, and add-team section
@@ -1594,6 +2202,7 @@ impl MainView {
                 team_name.clone(),
                 variations,
                 create_new,
+                self.add_team_form.logo_path.clone(),
             )
             .map_err(|err| format!("{err:#}"))?;
 
@@ -1616,6 +2225,8 @@ impl MainView {
         self.add_team_form
             .variations_input
             .update(cx, |state, cx| state.set_value("", window, cx));
+        self.add_team_form.logo_path = None;
+        self.add_team_form.logo_preview = None;
     }
 
     fn render_add_team_section(
@@ -1632,7 +2243,7 @@ impl MainView {
         let toggle_button = Button::new("toggle-add-team")
             .ghost()
             .label(toggle_label)
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+            .on_click(cx.listener(|this, _event: &ClickEvent, window, cx| {
                 this.add_team_form.expanded = !this.add_team_form.expanded;
             }));
 
@@ -1737,6 +2348,104 @@ impl MainView {
                         .h(px(140.0)),
                 );
 
+            let logo_file_name = self
+                .add_team_form
+                .logo_path
+                .as_ref()
+                .and_then(|path| {
+                    path.file_name()
+                        .map(|name| name.to_string_lossy().to_string())
+                })
+                .unwrap_or_else(|| "No logo selected".to_string());
+
+            let select_logo_button = Button::new("select-team-logo")
+                .ghost()
+                .label("Select Logo")
+                .on_click(cx.listener(|this, _event: &ClickEvent, _window, context| {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("PNG Images", &["png"])
+                        .pick_file()
+                    {
+                        match this.try_set_logo_preview(&path) {
+                            Ok(()) => {
+                                this.add_team_form.logo_path = Some(path.clone());
+                                this.add_team_form.error = None;
+                                this.status_text = "Team logo updated".into();
+                            }
+                            Err(err) => {
+                                this.add_team_form.logo_path = None;
+                                this.add_team_form.logo_preview = None;
+                                this.add_team_form.error = Some(err);
+                                this.status_text = "Failed to load logo".into();
+                            }
+                        }
+                        context.notify();
+                    }
+                }));
+
+            let clear_logo_button = Button::new("clear-team-logo")
+                .ghost()
+                .label("Clear Logo")
+                .disabled(self.add_team_form.logo_path.is_none())
+                .on_click(cx.listener(|this, _event: &ClickEvent, _window, context| {
+                    this.add_team_form.logo_path = None;
+                    this.add_team_form.logo_preview = None;
+                    this.add_team_form.error = None;
+                    this.status_text = "Logo cleared".into();
+                    context.notify();
+                }));
+
+            let logo_input = div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Team logo (PNG)"),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(select_logo_button)
+                        .child(clear_logo_button)
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(logo_file_name),
+                        ),
+                )
+                .child(match &self.add_team_form.logo_preview {
+                    Some(preview) => div()
+                        .mt_2()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            img(preview.clone())
+                                .object_fit(ObjectFit::Contain)
+                                .w(px(80.0))
+                                .h(px(80.0)),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Preview"),
+                        )
+                        .into_any_element(),
+                    None => div()
+                        .mt_2()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("PNG format is required for logos.")
+                        .into_any_element(),
+                });
+
             let team_name_filled = {
                 let value = self.add_team_form.team_name_input.read(cx).value();
                 !value.trim().is_empty()
@@ -1777,6 +2486,7 @@ impl MainView {
                 .child(league_selector)
                 .child(team_input)
                 .child(variations_input)
+                .child(logo_input)
                 .child(
                     div()
                         .flex()
@@ -1821,30 +2531,29 @@ impl MainView {
     }
 
     fn render_detection_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let (region, monitor_index, morph_open, preview_path) = {
+        let (region, monitor_index, preview_path, preview_generation) = {
             let state = self.controller.state();
             let guard = state.lock();
             (
                 guard.capture_region,
                 guard.selected_monitor_index,
-                guard.enable_morph_open,
                 guard.preview_image_path.clone(),
+                guard.preview_generation,
             )
         };
 
-        let mut panel = div()
+        let mut content = div()
             .flex()
             .flex_col()
             .gap_4()
-            .child(self.render_capture_section(region, monitor_index, cx))
-            .child(self.render_detection_section(morph_open, cx))
-            .child(self.render_preview_panel(preview_path, cx));
+            .child(self.render_capture_region_card(region, monitor_index, preview_path.clone(), preview_generation, cx))
+            .child(self.render_detection_settings_card(cx));
 
-        if let Some(selector) = self.render_region_selector(cx) {
-            panel = panel.child(selector);
+        if let Some(selector) = self.render_region_modal(cx) {
+            content = content.child(selector);
         }
 
-        panel
+        content
     }
 
     fn render_settings_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1879,144 +2588,253 @@ impl MainView {
             )
     }
 
-    fn render_capture_section(
+    fn render_capture_region_card(
         &mut self,
         region: [u32; 4],
-        monitor_index: usize,
+        _monitor_index: usize,
+        preview_path: Option<PathBuf>,
+        preview_generation: u32,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let region_controls = ["X", "Y", "Width", "Height"]
-            .iter()
-            .enumerate()
-            .map(|(idx, label)| {
-                let value = region[idx];
-                let idx_copy = idx;
-                let decrease = Button::new(("region-dec", idx))
-                    .ghost()
-                    .label("-10")
-                    .on_click(cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
-                        if let Err(err) = this.controller.adjust_capture_region(idx_copy, -10) {
-                            this.status_text = format!("{err:#}").into();
-                        } else {
-                            this.refresh_status();
-                        }
-                    }));
-                let idx_copy = idx;
-                let increase = Button::new(("region-inc", idx))
-                    .ghost()
-                    .label("+10")
-                    .on_click(cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
-                        if let Err(err) = this.controller.adjust_capture_region(idx_copy, 10) {
-                            this.status_text = format!("{err:#}").into();
-                        } else {
-                            this.refresh_status();
-                        }
-                    }));
+        // Helper function to create a coordinate input field
+        let create_input_field = |idx: usize, label: String, value: u32, cx: &mut Context<Self>| {
+            let idx_dec = idx;
+            let idx_inc = idx;
 
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(*label),
-                    )
-                    .child(div().text_lg().child(value.to_string()))
-                    .child(div().flex().gap_1().child(decrease).child(increase))
-            })
-            .collect::<Vec<_>>();
+            let decrease = Button::new(("region-dec", idx))
+                .ghost()
+                .w(px(32.0))
+                .h(px(32.0))
+                .label("−")
+                .on_click(cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
+                    if let Err(err) = this.controller.adjust_capture_region(idx_dec, -10) {
+                        this.status_text = format!("{err:#}").into();
+                    } else {
+                        this.refresh_status();
+                    }
+                }));
+
+            let increase = Button::new(("region-inc", idx))
+                .ghost()
+                .w(px(32.0))
+                .h(px(32.0))
+                .label("+")
+                .on_click(cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
+                    if let Err(err) = this.controller.adjust_capture_region(idx_inc, 10) {
+                        this.status_text = format!("{err:#}").into();
+                    } else {
+                        this.refresh_status();
+                    }
+                }));
+
+            div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .flex_1()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_medium()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(label),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .w_full()
+                        .px(px(16.0))
+                        .py(px(12.0))
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .bg(cx.theme().background)
+                        .child(
+                            div()
+                                .flex_1()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(
+                                    div()
+                                        .text_xl()
+                                        .font_semibold()
+                                        .text_color(cx.theme().foreground)
+                                        .child(value.to_string()),
+                                ),
+                        )
+                        .child(decrease)
+                        .child(increase),
+                )
+        };
+
+        // Create input fields
+        let x_input = create_input_field(0, "X".to_string(), region[0], cx);
+        let y_input = create_input_field(1, "Y".to_string(), region[1], cx);
+        let width_input = create_input_field(2, "Width".to_string(), region[2], cx);
+        let height_input = create_input_field(3, "Height".to_string(), region[3], cx);
+
+        let select_region_button = Button::new("select-region")
+            .primary()
+            .label("Select Region")
+            .flex_1()
+            .on_click(cx.listener(|this, _event: &ClickEvent, _window, context| {
+                match this.controller.capture_fullscreen_for_selection() {
+                    Ok(capture) => {
+                        this.region_selection = Some(RegionSelection::from_capture(capture));
+                        this.status_text =
+                            "Drag on the screenshot to define the capture area.".into();
+                    }
+                    Err(err) => {
+                        this.status_text = format!("{err:#}").into();
+                    }
+                }
+                context.notify();
+            }));
+
+        let capture_preview_button = Button::new("capture-preview")
+            .ghost()
+            .label("Capture Preview")
+            .flex_1()
+            .on_click(cx.listener(|this, _event: &ClickEvent, _window, context| {
+                if let Err(err) = this.controller.capture_preview() {
+                    this.status_text = format!("{err:#}").into();
+                } else {
+                    this.status_text = "Preview updated".into();
+                }
+                context.notify();
+            }));
 
         let reset_button = Button::new("reset-region")
             .ghost()
-            .label("Reset Region")
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+            .label("Reset")
+            .on_click(cx.listener(|this, _event: &ClickEvent, _window, context| {
                 let defaults = [0, 900, 1024, 50];
                 if let Err(err) = this.controller.reset_capture_region(defaults) {
                     this.status_text = format!("{err:#}").into();
                 } else {
                     this.refresh_status();
                 }
+                context.notify();
             }));
 
         let monitor_dropdown = Select::new(&self.monitor_select)
             .small()
             .placeholder("Choose monitor")
-            .menu_width(px(260.0));
+            .menu_width(px(300.0));
 
-        let select_region_button = Button::new("select-region")
-            .primary()
-            .label("Select Region")
-            .on_click(cx.listener(|_this, _event: &ClickEvent, window, cx| {
-                cx.defer_in(window, move |this, _window, cx| {
-                    match this.controller.capture_fullscreen_for_selection() {
-                        Ok(capture) => {
-                            this.region_selection = Some(RegionSelection::from_capture(capture));
-                            this.status_text =
-                                "Drag on the screenshot to define the capture area.".into();
-                        }
-                        Err(err) => {
-                            this.status_text = format!("{err:#}").into();
-                        }
-                    }
-                    cx.notify();
-                });
-            }));
+        let preview_section = self.render_preview_section(preview_path, preview_generation, cx);
 
         div()
+            .bg(cx.theme().group_box)
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_xl()
+            .p_6()
             .flex()
             .flex_col()
-            .gap_2()
-            .child(div().text_lg().font_semibold().child("🖥️ Capture Region"))
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(
-                    "Fine-tune the OCR region. Keep it tight around “GOAL FOR” to reduce noise.",
-                ),
-            )
-            .child(div().flex().gap_4().children(region_controls))
+            .gap_5()
+            // Header
             .child(
                 div()
                     .flex()
-                    .flex_wrap()
-                    .gap_2()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_xl()
+                            .font_semibold()
+                            .text_color(cx.theme().foreground)
+                            .child("📐 Capture Region"),
+                    ),
+            )
+            // Coordinate inputs grid (2x2)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_4()
+                    // First row: X and Y
+                    .child(
+                        div()
+                            .flex()
+                            .gap_4()
+                            .child(x_input)
+                            .child(y_input),
+                    )
+                    // Second row: Width and Height
+                    .child(
+                        div()
+                            .flex()
+                            .gap_4()
+                            .child(width_input)
+                            .child(height_input),
+                    ),
+            )
+            // Action buttons
+            .child(
+                div()
+                    .flex()
+                    .gap_3()
                     .child(select_region_button)
+                    .child(capture_preview_button),
+            )
+            // Active Monitor section
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap_3()
                     .child(
                         div()
                             .flex()
                             .flex_col()
-                            .gap_1()
-                            .min_w(px(200.0))
+                            .gap_2()
+                            .flex_1()
                             .child(
                                 div()
                                     .text_sm()
+                                    .font_medium()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child("Active monitor"),
+                                    .child("Active Monitor"),
                             )
                             .child(monitor_dropdown),
                     )
-                    .child(reset_button)
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!(
-                                "Monitoring Display {} of {}",
-                                monitor_index + 1,
-                                self.monitor_options.len().max(1)
-                            )),
-                    ),
+                    .child(reset_button),
             )
+            // Preview section
+            .child(preview_section)
     }
 
-    fn render_detection_section(
-        &mut self,
-        morph_open: bool,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn render_detection_settings_card(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .bg(cx.theme().group_box)
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_xl()
+            .p_5()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(
+                div()
+                    .text_lg()
+                    .font_semibold()
+                    .child("🎯 Detection Settings"),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Adjust sensitivity to match your scoreboard’s typography."),
+            )
+            .child(self.render_detection_sliders(cx))
+    }
+
+    fn render_detection_sliders(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let ocr_value = self.slider_value(&self.ocr_slider, cx);
         let debounce_value = self.slider_value(&self.debounce_slider, cx);
         let ocr_label = if ocr_value <= 0.5 {
@@ -2027,116 +2845,132 @@ impl MainView {
 
         let debounce_label = format!("{:.1}s", debounce_value / 1000.0);
 
-        let morph_switch = Switch::new("morph-open")
-            .label("Enable morphological opening (reduces bold UI noise)")
-            .checked(morph_open)
-            .on_click(cx.listener(|this, checked: &bool, _window, _cx| {
-                if let Err(err) = this.controller.set_morph_open(*checked) {
-                    this.status_text = format!("{err:#}").into();
-                } else {
-                    this.refresh_status();
-                }
-            }));
-
         div()
             .flex()
             .flex_col()
-            .gap_2()
-            .child(div().text_lg().font_semibold().child("🔍 Detection"))
-            .child(morph_switch)
+            .gap_4()
             .child(
                 div()
                     .flex()
-                    .justify_between()
+                    .flex_col()
+                    .gap_1()
                     .child(div().text_sm().font_semibold().child("OCR Threshold"))
                     .child(
                         div()
+                            .flex()
+                            .justify_between()
+                            .items_center()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child(ocr_label),
+                            .child("Auto (Otsu) when below 0.5"),
+                    )
+                    .child(
+                        div().flex().gap_2().child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(Slider::new(&self.ocr_slider))
+                                .child(
+                                    div()
+                                        .min_w(px(52.0))
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(ocr_label),
+                                ),
+                        ),
                     ),
             )
-            .child(Slider::new(&self.ocr_slider))
             .child(
                 div()
                     .flex()
-                    .justify_between()
-                    .child(div().text_sm().font_semibold().child("Goal debounce"))
+                    .flex_col()
+                    .gap_1()
+                    .child(div().text_sm().font_semibold().child("Goal Debounce"))
                     .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(debounce_label),
+                        div().flex().gap_2().child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(Slider::new(&self.debounce_slider))
+                                .child(
+                                    div()
+                                        .min_w(px(52.0))
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(debounce_label),
+                                ),
+                        ),
                     ),
             )
-            .child(Slider::new(&self.debounce_slider))
+            .into_any_element()
     }
 
-    fn render_preview_panel(
+    fn render_preview_section(
         &mut self,
         preview_path: Option<PathBuf>,
+        preview_generation: u32,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let capture_button = Button::new("capture-preview")
-            .primary()
-            .label("Capture Preview")
-            .on_click(cx.listener(|_this, _event: &ClickEvent, window, cx| {
-                cx.defer_in(window, move |this, _window, _cx| {
-                    if let Err(err) = this.controller.capture_preview() {
-                        this.status_text = format!("{err:#}").into();
-                    } else {
-                        this.refresh_status();
-                    }
-                });
-            }));
-
-        let preview_display = if let Some(path) = preview_path {
+    ) -> AnyElement {
+        let preview_content = if let Some(path) = preview_path {
             img(path)
-                .object_fit(ObjectFit::Cover)
+                .id(("preview-img", preview_generation))
+                .object_fit(ObjectFit::Contain)
                 .w_full()
-                .h(px(220.0))
+                .h(px(280.0))
                 .rounded_lg()
                 .into_any_element()
         } else {
             div()
                 .flex()
+                .flex_col()
                 .items_center()
                 .justify_center()
-                .h(px(220.0))
-                .rounded_lg()
-                .bg(cx.theme().list)
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child("Capture a preview to verify the monitored region.")
+                .gap_3()
+                .h(px(280.0))
+                .child(
+                    div()
+                        .text_3xl()
+                        .text_color(cx.theme().muted_foreground.opacity(0.4))
+                        .child("🖼️"),
+                )
+                .child(
+                    div()
+                        .text_base()
+                        .font_semibold()
+                        .text_color(cx.theme().foreground)
+                        .child("Region Preview Area"),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Define a region to see a preview"),
+                )
                 .into_any_element()
         };
 
         div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .items_center()
-                    .child(div().text_lg().font_semibold().child("👁️ Region Preview"))
-                    .child(capture_button),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(
-                        "Use preview to confirm your capture window aligns with the scoreboard.",
-                    ),
-            )
-            .child(preview_display)
+            .border_2()
+            .border_dashed()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .bg(cx.theme().background.opacity(0.3))
+            .overflow_hidden()
+            .child(preview_content)
+            .into_any_element()
     }
 
-    fn render_region_selector(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn render_region_modal(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let selection = self.region_selection.as_ref()?;
         let (display_w, display_h) = selection.display_size();
+        let primary_color = cx.theme().primary;
+        let highlight_color = primary_color.opacity(0.15);
+        let border_color = cx.theme().border;
+        let overlay_background = cx.theme().background.opacity(0.85);
+        let sidebar_background = cx.theme().sidebar;
+        let muted_color = cx.theme().muted_foreground;
         let overlay: AnyElement = selection
             .overlay_rect()
             .map(|(x, y, w, h)| {
@@ -2147,8 +2981,8 @@ impl MainView {
                     .w(px(w))
                     .h(px(h))
                     .border_2()
-                    .border_color(cx.theme().primary)
-                    .bg(cx.theme().primary.opacity(0.15))
+                    .border_color(primary_color)
+                    .bg(highlight_color)
                     .into_any_element()
             })
             .unwrap_or_else(|| div().into_any_element());
@@ -2188,7 +3022,7 @@ impl MainView {
         let apply_button = Button::new("apply-region")
             .primary()
             .label("Apply Selection")
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+            .on_click(cx.listener(|this, _event: &ClickEvent, _window, context| {
                 let mut applied = false;
                 if let Some(selection) = this.region_selection.as_ref() {
                     if let Some(region) = selection.logical_rect() {
@@ -2208,42 +3042,49 @@ impl MainView {
                     this.region_selection = None;
                     this.region_canvas_bounds = None;
                 }
-                cx.notify();
+                context.notify();
             }));
 
         let cancel_button = Button::new("cancel-region-selector")
             .ghost()
             .label("Cancel")
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+            .on_click(cx.listener(|this, _event: &ClickEvent, _window, context| {
                 this.region_selection = None;
                 this.region_canvas_bounds = None;
-                cx.notify();
+                context.notify();
             }));
 
         Some(
             div()
+                .absolute()
+                .inset_0()
                 .flex()
-                .flex_col()
-                .gap_3()
-                .border_1()
-                .border_color(cx.theme().border)
-                .rounded_lg()
-                .p_4()
-                .child(div().text_lg().font_semibold().child("📐 Region Selection"))
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("Drag across the screenshot to capture the exact scoreboard area."),
-                )
-                .child(canvas)
+                .items_center()
+                .justify_center()
+                .bg(overlay_background)
                 .child(
                     div()
                         .flex()
-                        .justify_end()
-                        .gap_2()
-                        .child(cancel_button)
-                        .child(apply_button),
+                        .flex_col()
+                        .gap_3()
+                        .p_5()
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(border_color)
+                        .bg(sidebar_background)
+                        .child(div().text_lg().font_semibold().child("📐 Region Selection"))
+                        .child(div().text_sm().text_color(muted_color).child(
+                            "Drag across the screenshot to capture the exact scoreboard area.",
+                        ))
+                        .child(canvas)
+                        .child(
+                            div()
+                                .flex()
+                                .justify_end()
+                                .gap_2()
+                                .child(cancel_button)
+                                .child(apply_button),
+                        ),
                 )
                 .into_any_element(),
         )
@@ -2373,7 +3214,7 @@ impl MainView {
 
         let manual_check = Button::new("manual-update-check")
             .label("Check for updates now")
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
+            .on_click(cx.listener(|this, _event: &ClickEvent, window, cx| {
                 this.controller.check_for_updates();
                 this.refresh_status();
             }));
@@ -2691,18 +3532,27 @@ impl MainView {
         for action_id in ActionId::all() {
             let category = action_id.category();
             let description = action_id.description();
-            let keybinding = self.hotkey_config.get(action_id)
+            let keybinding = self
+                .hotkey_config
+                .get(action_id)
                 .map(|kb| kb.format())
                 .unwrap_or_else(|| "Not set".to_string());
 
-            categories
-                .entry(category)
-                .or_insert_with(Vec::new)
-                .push((action_id, description, keybinding));
+            categories.entry(category).or_insert_with(Vec::new).push((
+                action_id,
+                description,
+                keybinding,
+            ));
         }
 
         // Order categories
-        let category_order = ["Monitoring", "Music Library", "Volume", "Navigation", "Application"];
+        let category_order = [
+            "Monitoring",
+            "Music Library",
+            "Volume",
+            "Navigation",
+            "Application",
+        ];
 
         let category_cards: Vec<_> = category_order
             .iter()
@@ -2902,7 +3752,12 @@ impl MainView {
                 div()
                     .flex()
                     .gap_2()
-                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child("•"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("•"),
+                    )
                     .child(div().text_sm().child(*step))
             })
             .collect::<Vec<_>>();
@@ -3190,8 +4045,8 @@ impl Render for MainView {
         };
 
         div()
-            .track_focus(&self.focus_handle)  // Enable focus tracking for keyboard shortcuts
-            .key_context("main_view")         // Set key context for action dispatch
+            .track_focus(&self.focus_handle) // Enable focus tracking for keyboard shortcuts
+            .key_context("main_view") // Set key context for action dispatch
             // Primary shortcuts
             .on_action(cx.listener(Self::toggle_monitoring))
             .on_action(cx.listener(Self::preview_play_pause))

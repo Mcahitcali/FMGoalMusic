@@ -8,41 +8,41 @@ pub fn install(cx: &mut App) {
     // override the hues we care about for the refreshed mid-tone “slate dusk” look.
     let mut colors = *ThemeColor::dark();
     // Core palette
-    colors.background = rgb(0x211111).into();
-    colors.foreground = rgb(0xf5f7fb).into();
-    colors.primary = rgb(0xEA2831).into();
-    colors.primary_hover = rgb(0xFF3B44).into();
-    colors.primary_active = rgb(0xC51F27).into();
+    colors.background = rgb(0x0f172a).into();
+    colors.foreground = rgb(0xe2e8f0).into();
+    colors.primary = rgb(0x2563eb).into();
+    colors.primary_hover = rgb(0x1d4ed8).into();
+    colors.primary_active = rgb(0x1e40af).into();
     colors.primary_foreground = rgb(0xffffff).into();
     // Accents and surfaces
-    colors.accent = rgb(0xf48c4c).into();
-    colors.accent_foreground = rgb(0x1c1309).into();
-    colors.border = rgb(0x232323).into();
+    colors.accent = rgb(0x38bdf8).into();
+    colors.accent_foreground = rgb(0x082f49).into();
+    colors.border = rgb(0x1e293b).into();
     // Cards / panels
-    colors.group_box = rgb(0x1e1e1e).into();
+    colors.group_box = rgb(0x1e293b).into();
     colors.group_box_foreground = colors.foreground;
-    colors.muted = rgb(0x1a1a1a).into();
-    colors.muted_foreground = rgb(0xb7bfcd).into();
-    colors.list = rgb(0x1e1e1e).into();
-    colors.list_even = rgb(0x242424).into();
-    colors.list_hover = rgb(0x2a2a2a).into();
-    colors.list_active = rgb(0x333333).into();
-    colors.list_head = rgb(0x1f1f1f).into();
+    colors.muted = rgb(0x111c2e).into();
+    colors.muted_foreground = rgb(0x9ca3af).into();
+    colors.list = rgb(0x1b2435).into();
+    colors.list_even = rgb(0x1f2937).into();
+    colors.list_hover = rgb(0x273449).into();
+    colors.list_active = rgb(0x2f3a51).into();
+    colors.list_head = rgb(0x1d2535).into();
     colors.list_active_border = colors.primary;
-    colors.slider_bar = rgb(0x2a2a2a).into();
+    colors.slider_bar = rgb(0x233044).into();
     colors.slider_thumb = colors.primary;
     // Tabs
-    colors.tab = rgb(0x1a1a1a).into();
-    colors.tab_active = rgb(0x252525).into();
+    colors.tab = rgb(0x111827).into();
+    colors.tab_active = rgb(0x1f2937).into();
     colors.tab_active_foreground = colors.foreground;
-    colors.tab_foreground = rgb(0xbfc7d4).into();
-    colors.tab_bar = rgb(0x121212).into();
+    colors.tab_foreground = rgb(0x9ca3af).into();
+    colors.tab_bar = rgb(0x0b1220).into();
     // Selection and sidebar
     colors.selection = colors.primary;
-    colors.sidebar = rgb(0x121212).into();
+    colors.sidebar = rgb(0x0b1220).into();
     colors.sidebar_foreground = colors.foreground;
     colors.sidebar_border = colors.border;
-    colors.switch = rgb(0x2a2a2a).into();
+    colors.switch = rgb(0x1f2937).into();
     // Status tokens
     colors.warning = rgb(0xf6c343).into();
     colors.warning_foreground = rgb(0x281d08).into();

@@ -8,11 +8,13 @@ mod view;
 
 use actions::*;
 use controller::GuiController;
-use global_hotkeys::{GlobalHotkeySystem, start_global_hotkey_listener};
-use gpui::{px, size, App, AppContext, Application, Bounds, KeyBinding, WindowBounds, WindowOptions};
+use global_hotkeys::{start_global_hotkey_listener, GlobalHotkeySystem};
+use gpui::{
+    px, size, App, AppContext, Application, Bounds, KeyBinding, WindowBounds, WindowOptions,
+};
 use hotkeys::{ActionId, HotkeyConfig};
-use std::sync::Arc;
 use parking_lot::Mutex;
+use std::sync::Arc;
 use view::MainView;
 
 /// Register keyboard shortcuts from the hotkey configuration
@@ -25,52 +27,116 @@ fn register_keybindings(cx: &mut App) {
 
         match action_id {
             ActionId::ToggleMonitoring => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), ToggleMonitoring, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    ToggleMonitoring,
+                    Some("main_view"),
+                )]);
             }
             ActionId::PreviewPlayPause => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), PreviewPlayPause, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    PreviewPlayPause,
+                    Some("main_view"),
+                )]);
             }
             ActionId::StopGoalMusic => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), StopGoalMusic, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    StopGoalMusic,
+                    Some("main_view"),
+                )]);
             }
             ActionId::NextTab => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), NextTab, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    NextTab,
+                    Some("main_view"),
+                )]);
             }
             ActionId::PreviousTab => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), PreviousTab, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    PreviousTab,
+                    Some("main_view"),
+                )]);
             }
             ActionId::OpenHelp => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), OpenHelp, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    OpenHelp,
+                    Some("main_view"),
+                )]);
             }
             ActionId::OpenRegionSelector => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), OpenRegionSelector, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    OpenRegionSelector,
+                    Some("main_view"),
+                )]);
             }
             ActionId::CapturePreview => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), CapturePreview, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    CapturePreview,
+                    Some("main_view"),
+                )]);
             }
             ActionId::AddMusicFile => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), AddMusicFile, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    AddMusicFile,
+                    Some("main_view"),
+                )]);
             }
             ActionId::RemoveMusicFile => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), RemoveMusicFile, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    RemoveMusicFile,
+                    Some("main_view"),
+                )]);
             }
             ActionId::IncreaseVolume => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), IncreaseVolume, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    IncreaseVolume,
+                    Some("main_view"),
+                )]);
             }
             ActionId::DecreaseVolume => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), DecreaseVolume, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    DecreaseVolume,
+                    Some("main_view"),
+                )]);
             }
             ActionId::IncreaseAmbianceVolume => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), IncreaseAmbianceVolume, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    IncreaseAmbianceVolume,
+                    Some("main_view"),
+                )]);
             }
             ActionId::DecreaseAmbianceVolume => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), DecreaseAmbianceVolume, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    DecreaseAmbianceVolume,
+                    Some("main_view"),
+                )]);
             }
             ActionId::OpenSettings => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), OpenSettings, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    OpenSettings,
+                    Some("main_view"),
+                )]);
             }
             ActionId::CheckForUpdates => {
-                cx.bind_keys([KeyBinding::new(keystroke.as_str(), CheckForUpdates, Some("main_view"))]);
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    CheckForUpdates,
+                    Some("main_view"),
+                )]);
             }
         }
     }

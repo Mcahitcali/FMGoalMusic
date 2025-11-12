@@ -288,7 +288,11 @@ impl HotkeyConfig {
     }
 
     /// Check if a keybinding conflicts with any existing binding
-    pub fn has_conflict(&self, binding: &Keybinding, exclude: Option<ActionId>) -> Option<ActionId> {
+    pub fn has_conflict(
+        &self,
+        binding: &Keybinding,
+        exclude: Option<ActionId>,
+    ) -> Option<ActionId> {
         for (action, existing) in &self.bindings {
             if Some(*action) == exclude {
                 continue;
@@ -340,14 +344,8 @@ mod tests {
     #[test]
     fn test_default_hotkeys() {
         let config = HotkeyConfig::default();
-        assert_eq!(
-            config.get(ActionId::ToggleMonitoring).unwrap().key,
-            "1"
-        );
-        assert!(config
-            .get(ActionId::ToggleMonitoring)
-            .unwrap()
-            .ctrl_cmd);
+        assert_eq!(config.get(ActionId::ToggleMonitoring).unwrap().key, "1");
+        assert!(config.get(ActionId::ToggleMonitoring).unwrap().ctrl_cmd);
     }
 
     #[test]

@@ -119,9 +119,9 @@ impl GuiController {
     }
 
     pub fn capture_preview(&self) -> Result<PathBuf> {
-        let (region, monitor_index) = {
+        let (region, monitor_index, generation) = {
             let state = self.inner.state.lock();
-            (state.capture_region, state.selected_monitor_index)
+            (state.capture_region, state.selected_monitor_index, state.preview_generation)
         };
 
         let mut capture_manager =
@@ -131,14 +131,29 @@ impl GuiController {
             .capture_region()
             .map_err(|err| anyhow!("Failed to capture preview: {err}"))?;
 
-        let preview_path = preview_image_path()?;
+        // Use generation counter in filename to bust cache
+        let new_generation = generation.wrapping_add(1);
+        let preview_path = preview_image_path_with_generation(new_generation)?;
+
         DynamicImage::ImageRgba8(image)
             .save(&preview_path)
             .map_err(|err| anyhow!("Failed to save preview: {err}"))?;
 
+        // Clean up old preview files
+        if let Ok(old_path) = preview_image_path_with_generation(generation) {
+            let _ = fs::remove_file(old_path); // Ignore errors if file doesn't exist
+        }
+        // Also clean up the one before that (in case of rapid clicks)
+        if generation > 0 {
+            if let Ok(old_path) = preview_image_path_with_generation(generation - 1) {
+                let _ = fs::remove_file(old_path);
+            }
+        }
+
         {
             let mut state = self.inner.state.lock();
             state.preview_image_path = Some(preview_path.clone());
+            state.preview_generation = new_generation;
             state.status_message = "Capture preview updated".into();
         }
 
@@ -301,6 +316,7 @@ impl GuiController {
         team_name: String,
         variations: Vec<String>,
         allow_create_league: bool,
+        logo_path: Option<PathBuf>,
     ) -> Result<SelectedTeam> {
         let mut guard = self.inner.team_database.lock();
         let db = guard
@@ -326,6 +342,10 @@ impl GuiController {
         db.save()
             .map_err(|err| anyhow!("failed to save team database: {err}"))?;
 
+        if let Some(path) = logo_path {
+            self.save_team_logo(&league_name, &team_key, &path)?;
+        }
+
         let selected_team = SelectedTeam {
             league: league_name.clone(),
             team_key: team_key.clone(),
@@ -340,6 +360,58 @@ impl GuiController {
 
         self.save_config()?;
         Ok(selected_team)
+    }
+
+    fn save_team_logo(
+        &self,
+        league_name: &str,
+        team_key: &str,
+        source_path: &PathBuf,
+    ) -> Result<()> {
+        if !source_path.exists() {
+            return Err(anyhow!(format!(
+                "Logo file does not exist: {}",
+                source_path.display()
+            )));
+        }
+
+        let extension_valid = source_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("png"))
+            .unwrap_or(false);
+
+        if !extension_valid {
+            return Err(anyhow!("Team logo must be a PNG file"));
+        }
+
+        let base_dir = config_dir()
+            .ok_or_else(|| anyhow!("Could not determine user config directory"))?
+            .join("FMGoalMusic")
+            .join("teams")
+            .join(league_name);
+
+        fs::create_dir_all(&base_dir)
+            .with_context(|| format!("Failed to create logo directory: {}", base_dir.display()))?;
+
+        let target_path = base_dir.join(format!("{}.png", team_key));
+
+        fs::copy(source_path, &target_path).with_context(|| {
+            format!(
+                "Failed to copy logo from {} to {}",
+                source_path.display(),
+                target_path.display()
+            )
+        })?;
+
+        info!(
+            "[logo] Saved custom team logo for {} ({}) to {}",
+            team_key,
+            league_name,
+            target_path.display()
+        );
+
+        Ok(())
     }
 
     pub fn clear_team_selection(&self) -> Result<()> {
@@ -793,6 +865,13 @@ fn preview_image_path() -> Result<PathBuf> {
     let dir = base.join("FMGoalMusic").join("previews");
     fs::create_dir_all(&dir).context("Failed to create preview directory")?;
     Ok(dir.join("capture_preview.png"))
+}
+
+fn preview_image_path_with_generation(generation: u32) -> Result<PathBuf> {
+    let base = config_dir().ok_or_else(|| anyhow!("Unable to locate config directory"))?;
+    let dir = base.join("FMGoalMusic").join("previews");
+    fs::create_dir_all(&dir).context("Failed to create preview directory")?;
+    Ok(dir.join(format!("capture_preview_{}.png", generation)))
 }
 
 fn region_selection_image_path() -> Result<PathBuf> {
