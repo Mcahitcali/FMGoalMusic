@@ -481,6 +481,7 @@ impl MainView {
 
         view.register_slider_subscriptions(cx);
         view.register_monitor_subscription(cx);
+        view.register_language_subscription(cx);
         view
     }
 
@@ -603,6 +604,22 @@ impl MainView {
             |this, _, event: &SelectEvent<Vec<MonitorOption>>, _cx| {
                 if let SelectEvent::Confirm(Some(index)) = event {
                     if let Err(err) = this.controller.set_monitor_index(*index) {
+                        this.status_text = format!("{err:#}").into();
+                    } else {
+                        this.refresh_status();
+                    }
+                }
+            },
+        );
+        self.subscriptions.push(subscription);
+    }
+
+    fn register_language_subscription(&mut self, cx: &mut Context<Self>) {
+        let subscription = cx.subscribe(
+            &self.language_select,
+            |this, _, event: &SelectEvent<Vec<LanguageOption>>, _cx| {
+                if let SelectEvent::Confirm(Some(lang_option)) = event {
+                    if let Err(err) = this.controller.set_selected_language(*lang_option.value()) {
                         this.status_text = format!("{err:#}").into();
                     } else {
                         this.refresh_status();
@@ -3339,17 +3356,7 @@ impl MainView {
                             .child("Choose language for goal phrase detection."),
                     ),
             )
-            .child(Select::new(&self.language_select).on_change(cx.listener(
-                |this, event: &SelectEvent<Vec<LanguageOption>>, _window, _cx| {
-                    if let Some(selected) = &event.selected_item {
-                        if let Err(err) = this.controller.set_selected_language(*selected.value()) {
-                            this.status_text = format!("{err:#}").into();
-                        } else {
-                            this.refresh_status();
-                        }
-                    }
-                },
-            )))
+            .child(Select::new(&self.language_select))
     }
 
     fn render_custom_phrases_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -3359,14 +3366,10 @@ impl MainView {
             Button::new("add-phrase-btn")
                 .label("Add Phrase")
                 .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
-                    let input_text = this.custom_phrase_input.read(cx).text().to_string();
+                    let input_text = this.custom_phrase_input.read(cx).value().to_string();
                     if !input_text.trim().is_empty() {
                         match this.controller.add_custom_goal_phrase(input_text) {
                             Ok(_) => {
-                                this.custom_phrase_input.update(cx, |state, _cx| {
-                                    // Clear the input by replacing all text
-                                    state.delete_text(0..state.len(), _cx);
-                                });
                                 this.refresh_status();
                             }
                             Err(err) => {
