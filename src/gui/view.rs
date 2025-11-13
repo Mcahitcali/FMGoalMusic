@@ -2877,8 +2877,8 @@ impl MainView {
     }
 
     fn render_detection_sliders(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let ocr_value = self.slider_value(&self.ocr_slider, cx);
-        let debounce_value = self.slider_value(&self.debounce_slider, cx);
+        let ocr_value = self.ocr_threshold_value(&self.ocr_slider, cx);
+        let debounce_value = self.debounce_value(&self.debounce_slider, cx);
         let ocr_label = if ocr_value <= 0.5 {
             "Auto (Otsu)".to_string()
         } else {
@@ -3414,7 +3414,34 @@ impl MainView {
     }
 
     fn slider_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
-        slider.read(cx).value().start()
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            0.0
+        } else {
+            value
+        }
+    }
+
+    fn ocr_threshold_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            guard.ocr_threshold as f32
+        } else {
+            value
+        }
+    }
+
+    fn debounce_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            guard.debounce_ms as f32
+        } else {
+            value
+        }
     }
 
     fn toggle_music_preview(&mut self) -> Result<(), String> {
