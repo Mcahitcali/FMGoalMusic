@@ -234,6 +234,33 @@ impl SelectItem for MonitorOption {
     }
 }
 
+#[derive(Clone)]
+struct LanguageOption {
+    label: SharedString,
+    language: crate::detection::i18n::Language,
+}
+
+impl LanguageOption {
+    fn new(label: impl Into<SharedString>, language: crate::detection::i18n::Language) -> Self {
+        Self {
+            label: label.into(),
+            language,
+        }
+    }
+}
+
+impl SelectItem for LanguageOption {
+    type Value = crate::detection::i18n::Language;
+
+    fn title(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.language
+    }
+}
+
 pub struct MainView {
     controller: GuiController,
     focus_handle: FocusHandle,
@@ -246,7 +273,7 @@ pub struct MainView {
     ambiance_length_slider: Entity<SliderState>,
     ocr_slider: Entity<SliderState>,
     debounce_slider: Entity<SliderState>,
-    language_select: Entity<SelectState<Vec<(String, String)>>>,
+    language_select: Entity<SelectState<Vec<LanguageOption>>>,
     custom_phrase_input: Entity<InputState>,
     subscriptions: Vec<Subscription>,
     music_preview: Option<PreviewSound>,
@@ -356,7 +383,7 @@ impl MainView {
         let languages = GuiController::get_available_languages();
         let language_options = languages
             .into_iter()
-            .map(|(_, name)| (name.clone(), name))
+            .map(|(lang, name)| LanguageOption::new(name, lang))
             .collect::<Vec<_>>();
         let language_select = {
             let lang_data = language_options.clone();
@@ -364,11 +391,8 @@ impl MainView {
         };
 
         // Custom phrase input
-        let custom_phrase_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("Add custom goal phrase...")
-                .clean_on_escape()
-        });
+        let custom_phrase_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Add custom goal phrase"));
 
         let active_league = selected_team.as_ref().map(|team| team.league.clone());
 
@@ -3289,12 +3313,6 @@ impl MainView {
     }
 
     fn render_language_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let current_language = {
-            let state = self.controller.state();
-            let guard = state.lock();
-            guard.selected_language
-        };
-
         div()
             .border_1()
             .border_color(cx.theme().border)
@@ -3308,7 +3326,12 @@ impl MainView {
                     .flex()
                     .justify_between()
                     .items_center()
-                    .child(div().text_lg().font_semibold().child("🌍 Detection Language"))
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_semibold()
+                            .child("🌍 Detection Language"),
+                    )
                     .child(
                         div()
                             .text_sm()
@@ -3317,48 +3340,46 @@ impl MainView {
                     ),
             )
             .child(
-                Select::new("language-select")
-                    .child(Input::new(&self.language_select, true))
-                    .on_change(cx.listener(|this, event: &SelectEvent<Vec<(String, String)>>, _cx| {
-                        if let Some(selected) = &event.selected_item {
-                            // Map language name back to Language enum
-                            let languages = GuiController::get_available_languages();
-                            for (lang, name) in languages {
-                                if name == selected.1 {
-                                    if let Err(err) = this.controller.set_selected_language(lang) {
-                                        this.status_text = format!("{err:#}").into();
-                                    } else {
-                                        this.refresh_status();
-                                    }
-                                    break;
+                Select::new(&self.language_select)
+                    .child(Input::new(&self.language_select))
+                    .on_change(cx.listener(
+                        |this, event: &SelectEvent<Vec<LanguageOption>>, _cx| {
+                            if let Some(selected) = &event.selected_item {
+                                if let Err(err) =
+                                    this.controller.set_selected_language(*selected.value())
+                                {
+                                    this.status_text = format!("{err:#}").into();
+                                } else {
+                                    this.refresh_status();
                                 }
                             }
-                        }
-                    })),
+                        },
+                    )),
             )
     }
 
     fn render_custom_phrases_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let custom_phrases = self.controller.get_custom_goal_phrases();
 
-        let add_phrase_button = Button::new("add-phrase-btn")
-            .label("Add Phrase")
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, _cx| {
-                let input_text = this.custom_phrase_input.read(_cx).text();
-                if !input_text.is_empty() {
-                    match this.controller.add_custom_goal_phrase(input_text.to_string()) {
-                        Ok(_) => {
-                            this.custom_phrase_input.update(_cx, |state, _| {
-                                state.set_text("".to_string());
-                            });
-                            this.refresh_status();
-                        }
-                        Err(err) => {
-                            this.status_text = format!("{err:#}").into();
+        let add_phrase_button =
+            Button::new("add-phrase-btn")
+                .label("Add Phrase")
+                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                    let input_text = this.custom_phrase_input.read(cx).text().to_string();
+                    if !input_text.trim().is_empty() {
+                        match this.controller.add_custom_goal_phrase(input_text) {
+                            Ok(_) => {
+                                this.custom_phrase_input.update(cx, |state, cx| {
+                                    state.clear(cx);
+                                });
+                                this.refresh_status();
+                            }
+                            Err(err) => {
+                                this.status_text = format!("{err:#}").into();
+                            }
                         }
                     }
-                }
-            }));
+                }));
 
         div()
             .border_1()
@@ -3373,7 +3394,12 @@ impl MainView {
                     .flex()
                     .justify_between()
                     .items_center()
-                    .child(div().text_lg().font_semibold().child("✏️ Custom Goal Phrases"))
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_semibold()
+                            .child("✏️ Custom Goal Phrases"),
+                    )
                     .child(
                         div()
                             .text_sm()
@@ -3386,48 +3412,51 @@ impl MainView {
                     .flex()
                     .gap_2()
                     .w_full()
-                    .child(Input::new(&self.custom_phrase_input, true).flex_1())
+                    .child(Input::new(&self.custom_phrase_input).flex_1())
                     .child(add_phrase_button),
             )
-            .child(
-                if custom_phrases.is_empty() {
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("No custom phrases added yet.")
-                        .into_any_element()
-                } else {
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap_2()
-                        .children(custom_phrases.iter().map(|phrase| {
-                            let phrase_clone = phrase.clone();
-                            div()
-                                .flex()
-                                .justify_between()
-                                .items_center()
-                                .px(px(8.0))
-                                .py(px(6.0))
-                                .rounded_md()
-                                .bg(cx.theme().secondary_background)
-                                .child(div().text_sm().child(phrase.clone()))
-                                .child(
-                                    Button::new(("remove-phrase", phrase.clone()))
-                                        .ghost()
-                                        .label("Remove")
-                                        .on_click(cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
-                                            if let Err(err) = this.controller.remove_custom_goal_phrase(&phrase_clone) {
+            .child(if custom_phrases.is_empty() {
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("No custom phrases added yet.")
+                    .into_any_element()
+            } else {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .children(custom_phrases.iter().enumerate().map(|(idx, phrase)| {
+                        let phrase_clone = phrase.clone();
+                        div()
+                            .flex()
+                            .justify_between()
+                            .items_center()
+                            .px(px(8.0))
+                            .py(px(6.0))
+                            .rounded_md()
+                            .bg(cx.theme().muted_background)
+                            .child(div().text_sm().child(phrase.clone()))
+                            .child(
+                                Button::new(("remove-phrase", idx as u32))
+                                    .ghost()
+                                    .label("Remove")
+                                    .on_click(cx.listener(
+                                        move |this, _: &ClickEvent, _window, _cx| {
+                                            if let Err(err) = this
+                                                .controller
+                                                .remove_custom_goal_phrase(&phrase_clone)
+                                            {
                                                 this.status_text = format!("{err:#}").into();
                                             } else {
                                                 this.refresh_status();
                                             }
-                                        })),
-                                )
-                        }))
-                        .into_any_element()
-                },
-            )
+                                        },
+                                    )),
+                            )
+                    }))
+                    .into_any_element()
+            })
     }
 
     fn render_update_section(
