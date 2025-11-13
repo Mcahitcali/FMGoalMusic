@@ -4,6 +4,9 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+// Import Language for i18n support
+use crate::detection::i18n::Language;
+
 fn default_music_volume() -> f32 {
     1.0
 }
@@ -110,6 +113,14 @@ pub struct Config {
     /// Selected monitor index (0 = primary, 1 = second, etc.)
     #[serde(default)]
     pub selected_monitor_index: usize,
+
+    /// Selected language for goal detection
+    #[serde(default = "default_selected_language")]
+    pub selected_language: Language,
+
+    /// Custom goal detection phrases added by the user
+    #[serde(default)]
+    pub custom_goal_phrases: Vec<String>,
 }
 
 fn default_ambiance_enabled() -> bool {
@@ -126,6 +137,10 @@ fn default_ambiance_length() -> u64 {
 
 fn default_auto_check_updates() -> bool {
     true // Enable by default so users discover updates
+}
+
+fn default_selected_language() -> Language {
+    Language::English
 }
 
 impl Default for Config {
@@ -148,6 +163,8 @@ impl Default for Config {
             auto_check_updates: default_auto_check_updates(),
             skipped_version: None,
             selected_monitor_index: 0, // Primary monitor by default
+            selected_language: default_selected_language(),
+            custom_goal_phrases: Vec::new(),
         }
     }
 }

@@ -8,6 +8,9 @@ use super::process_state::ProcessState;
 // Use SelectedTeam from config module
 pub use crate::config::SelectedTeam;
 
+// Import Language for i18n support
+pub use crate::detection::i18n::Language;
+
 /// Music entry with file path and optional keyboard shortcut
 #[derive(Clone, Debug)]
 pub struct MusicEntry {
@@ -55,6 +58,10 @@ pub struct AppState {
     pub selected_monitor_index: usize,
     pub preview_image_path: Option<PathBuf>,
     pub preview_generation: u32,
+
+    // Internationalization
+    pub selected_language: Language,
+    pub custom_goal_phrases: Vec<String>,
 }
 
 impl Default for AppState {
@@ -81,6 +88,8 @@ impl Default for AppState {
             selected_monitor_index: 0, // Primary monitor
             preview_image_path: None,
             preview_generation: 0,
+            selected_language: Language::English,
+            custom_goal_phrases: Vec::new(),
         }
     }
 }
