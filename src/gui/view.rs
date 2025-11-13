@@ -618,8 +618,8 @@ impl MainView {
         let subscription = cx.subscribe(
             &self.language_select,
             |this, _, event: &SelectEvent<Vec<LanguageOption>>, _cx| {
-                if let SelectEvent::Confirm(Some(lang_option)) = event {
-                    if let Err(err) = this.controller.set_selected_language(*lang_option.value()) {
+                if let SelectEvent::Confirm(Some(language)) = event {
+                    if let Err(err) = this.controller.set_selected_language(*language) {
                         this.status_text = format!("{err:#}").into();
                     } else {
                         this.refresh_status();
