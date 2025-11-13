@@ -387,7 +387,7 @@ impl MainView {
             .collect::<Vec<_>>();
         let language_select = {
             let lang_data = language_options.clone();
-            cx.new(move |cx| SelectState::new(lang_data.clone(), None, window, cx))
+            cx.new(|cx| SelectState::new(lang_data.clone(), None, window, cx))
         };
 
         // Custom phrase input
@@ -3339,23 +3339,17 @@ impl MainView {
                             .child("Choose language for goal phrase detection."),
                     ),
             )
-            .child(
-                Select::new(&self.language_select)
-                    .child(Input::new(&self.language_select))
-                    .on_change(cx.listener(
-                        |this, event: &SelectEvent<Vec<LanguageOption>>, _cx| {
-                            if let Some(selected) = &event.selected_item {
-                                if let Err(err) =
-                                    this.controller.set_selected_language(*selected.value())
-                                {
-                                    this.status_text = format!("{err:#}").into();
-                                } else {
-                                    this.refresh_status();
-                                }
-                            }
-                        },
-                    )),
-            )
+            .child(Select::new(&self.language_select).on_change(cx.listener(
+                |this, event: &SelectEvent<Vec<LanguageOption>>, _window, _cx| {
+                    if let Some(selected) = &event.selected_item {
+                        if let Err(err) = this.controller.set_selected_language(*selected.value()) {
+                            this.status_text = format!("{err:#}").into();
+                        } else {
+                            this.refresh_status();
+                        }
+                    }
+                },
+            )))
     }
 
     fn render_custom_phrases_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -3369,8 +3363,9 @@ impl MainView {
                     if !input_text.trim().is_empty() {
                         match this.controller.add_custom_goal_phrase(input_text) {
                             Ok(_) => {
-                                this.custom_phrase_input.update(cx, |state, cx| {
-                                    state.clear(cx);
+                                this.custom_phrase_input.update(cx, |state, _cx| {
+                                    // Clear the input by replacing all text
+                                    state.delete_text(0..state.len(), _cx);
                                 });
                                 this.refresh_status();
                             }
@@ -3435,7 +3430,7 @@ impl MainView {
                             .px(px(8.0))
                             .py(px(6.0))
                             .rounded_md()
-                            .bg(cx.theme().muted_background)
+                            .bg(cx.theme().secondary_foreground)
                             .child(div().text_sm().child(phrase.clone()))
                             .child(
                                 Button::new(("remove-phrase", idx as u32))
