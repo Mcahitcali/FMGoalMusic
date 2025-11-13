@@ -3163,6 +3163,7 @@ impl MainView {
     fn render_detection_sensitivity_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let ocr_value = self.ocr_threshold_value(&self.ocr_slider, cx);
         let debounce_value = self.debounce_value(&self.debounce_slider, cx);
+
         let ocr_label = if ocr_value <= 0.5 {
             "Auto (Otsu)".to_string()
         } else {
@@ -3170,6 +3171,27 @@ impl MainView {
         };
 
         let debounce_label = format!("{:.1}s", debounce_value / 1000.0);
+
+        let slider_row = |label: &str, value: String, slider: Slider| {
+            let label_text = label.to_string();
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .flex()
+                        .justify_between()
+                        .child(div().text_sm().font_semibold().child(label_text))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(value),
+                        ),
+                )
+                .child(slider)
+        };
 
         div()
             .border_1()
@@ -3191,61 +3213,22 @@ impl MainView {
                     .text_color(cx.theme().muted_foreground)
                     .child("Adjust sensitivity to match your scoreboard's typography."),
             )
+            .child(slider_row(
+                "OCR Threshold",
+                ocr_label,
+                Slider::new(&self.ocr_slider),
+            ))
             .child(
                 div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_sm().font_semibold().child("OCR Threshold"))
-                    .child(
-                        div()
-                            .flex()
-                            .justify_between()
-                            .items_center()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Auto (Otsu) when below 0.5"),
-                    )
-                    .child(
-                        div().flex().gap_2().child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(Slider::new(&self.ocr_slider))
-                                .child(
-                                    div()
-                                        .min_w(px(52.0))
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(ocr_label),
-                                ),
-                        ),
-                    ),
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("(Auto Otsu mode below 0.5)"),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_sm().font_semibold().child("Goal Debounce"))
-                    .child(
-                        div().flex().gap_2().child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(Slider::new(&self.debounce_slider))
-                                .child(
-                                    div()
-                                        .min_w(px(52.0))
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(debounce_label),
-                                ),
-                        ),
-                    ),
-            )
+            .child(slider_row(
+                "Goal Debounce",
+                debounce_label,
+                Slider::new(&self.debounce_slider),
+            ))
     }
 
     fn render_update_section(
