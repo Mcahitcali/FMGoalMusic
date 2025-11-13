@@ -911,7 +911,7 @@ impl MainView {
                         .gap_3()
                         .child(
                             div()
-                                .text_4xl()
+                                .text_2xl()
                                 .child("⚽"),
                         )
                         .child(
