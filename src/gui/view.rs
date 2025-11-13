@@ -868,40 +868,73 @@ impl MainView {
                     ),
             )
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        if let Some(team) = selected_team {
+                if let Some(team) = selected_team.clone() {
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_4()
+                        .p_4()
+                        .rounded_lg()
+                        .bg(cx.theme().tab_active)
+                        .child(
+                            // Team Logo
+                            self.render_team_logo(&team.team_key, &team.league, 64.0, cx),
+                        )
+                        .child(
+                            // Team Info
                             div()
                                 .flex()
-                                .items_center()
+                                .flex_col()
                                 .gap_2()
-                                .px_3()
-                                .py_2()
-                                .rounded_lg()
-                                .bg(cx.theme().tab_active)
-                                .child(self.render_png_icon("assets/icons/team.png", 16.0, "🏟"))
+                                .child(
+                                    div()
+                                        .text_xl()
+                                        .font_bold()
+                                        .text_color(cx.theme().foreground)
+                                        .child(team.display_name.clone()),
+                                )
                                 .child(
                                     div()
                                         .text_sm()
-                                        .font_semibold()
-                                        .child(team.display_name),
-                                )
-                                .into_any_element()
-                        } else {
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(format!("League: {}", team.league)),
+                                ),
+                        )
+                        .into_any_element()
+                } else {
+                    div()
+                        .p_4()
+                        .rounded_lg()
+                        .bg(cx.theme().muted)
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .child(
                             div()
-                                .px_2()
-                                .py_1()
-                                .rounded_full()
-                                .bg(cx.theme().muted)
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("No team selected")
-                                .into_any_element()
-                        },
-                    ),
+                                .text_4xl()
+                                .child("⚽"),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_lg()
+                                        .font_semibold()
+                                        .text_color(cx.theme().foreground)
+                                        .child("No Team Selected"),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Click Configure to select a team"),
+                                ),
+                        )
+                        .into_any_element()
+                },
             );
 
         // Get music library data from state
