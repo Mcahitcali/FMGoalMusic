@@ -19,6 +19,33 @@ pub fn contains_goal_text(text: &str) -> bool {
     normalized.contains("GOAL FOR") || normalized.contains("GOL ")
 }
 
+/// Check if text contains goal-related keywords including custom phrases
+///
+/// Checks for hardcoded patterns and also looks for custom phrases.
+///
+/// # Arguments
+/// * `text` - The OCR-extracted text to check
+/// * `custom_phrases` - Optional list of custom goal phrases to check for
+///
+/// # Returns
+/// `true` if goal text is detected (hardcoded or custom), `false` otherwise
+pub fn contains_goal_text_with_custom(text: &str, custom_phrases: &[String]) -> bool {
+    // Check hardcoded patterns first
+    if contains_goal_text(text) {
+        return true;
+    }
+
+    // Check custom phrases
+    let normalized = text.trim().to_uppercase();
+    for phrase in custom_phrases {
+        if normalized.contains(&phrase.to_uppercase()) {
+            return true;
+        }
+    }
+
+    false
+}
+
 /// Extract team name from goal text
 ///
 /// Parses text like "GOAL FOR Manchester United" or "GOL Barcelona"

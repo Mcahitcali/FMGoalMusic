@@ -234,6 +234,33 @@ impl SelectItem for MonitorOption {
     }
 }
 
+#[derive(Clone)]
+struct LanguageOption {
+    label: SharedString,
+    language: crate::detection::i18n::Language,
+}
+
+impl LanguageOption {
+    fn new(label: impl Into<SharedString>, language: crate::detection::i18n::Language) -> Self {
+        Self {
+            label: label.into(),
+            language,
+        }
+    }
+}
+
+impl SelectItem for LanguageOption {
+    type Value = crate::detection::i18n::Language;
+
+    fn title(&self) -> SharedString {
+        self.label.clone()
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.language
+    }
+}
+
 pub struct MainView {
     controller: GuiController,
     focus_handle: FocusHandle,
@@ -246,6 +273,8 @@ pub struct MainView {
     ambiance_length_slider: Entity<SliderState>,
     ocr_slider: Entity<SliderState>,
     debounce_slider: Entity<SliderState>,
+    language_select: Entity<SelectState<Vec<LanguageOption>>>,
+    custom_phrase_input: Entity<InputState>,
     subscriptions: Vec<Subscription>,
     music_preview: Option<PreviewSound>,
     music_preview_playing: bool,
@@ -350,6 +379,21 @@ impl MainView {
                 .default_value(debounce_ms as f32)
         });
 
+        // Language selector
+        let languages = GuiController::get_available_languages();
+        let language_options = languages
+            .into_iter()
+            .map(|(lang, name)| LanguageOption::new(name, lang))
+            .collect::<Vec<_>>();
+        let language_select = {
+            let lang_data = language_options.clone();
+            cx.new(|cx| SelectState::new(lang_data.clone(), None, window, cx))
+        };
+
+        // Custom phrase input
+        let custom_phrase_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Add custom goal phrase"));
+
         let active_league = selected_team.as_ref().map(|team| team.league.clone());
 
         let team_name_input = cx.new(|cx| {
@@ -409,6 +453,8 @@ impl MainView {
             ambiance_length_slider,
             ocr_slider,
             debounce_slider,
+            language_select,
+            custom_phrase_input,
             subscriptions: Vec::new(),
             music_preview: None,
             music_preview_playing: false,
@@ -435,6 +481,7 @@ impl MainView {
 
         view.register_slider_subscriptions(cx);
         view.register_monitor_subscription(cx);
+        view.register_language_subscription(cx);
         view
     }
 
@@ -557,6 +604,22 @@ impl MainView {
             |this, _, event: &SelectEvent<Vec<MonitorOption>>, _cx| {
                 if let SelectEvent::Confirm(Some(index)) = event {
                     if let Err(err) = this.controller.set_monitor_index(*index) {
+                        this.status_text = format!("{err:#}").into();
+                    } else {
+                        this.refresh_status();
+                    }
+                }
+            },
+        );
+        self.subscriptions.push(subscription);
+    }
+
+    fn register_language_subscription(&mut self, cx: &mut Context<Self>) {
+        let subscription = cx.subscribe(
+            &self.language_select,
+            |this, _, event: &SelectEvent<Vec<LanguageOption>>, _cx| {
+                if let SelectEvent::Confirm(Some(language)) = event {
+                    if let Err(err) = this.controller.set_selected_language(*language) {
                         this.status_text = format!("{err:#}").into();
                     } else {
                         this.refresh_status();
@@ -868,40 +931,73 @@ impl MainView {
                     ),
             )
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        if let Some(team) = selected_team {
+                if let Some(team) = selected_team.clone() {
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_4()
+                        .p_4()
+                        .rounded_lg()
+                        .bg(cx.theme().tab_active)
+                        .child(
+                            // Team Logo
+                            self.render_team_logo(&team.team_key, &team.league, 64.0, cx),
+                        )
+                        .child(
+                            // Team Info
                             div()
                                 .flex()
-                                .items_center()
+                                .flex_col()
                                 .gap_2()
-                                .px_3()
-                                .py_2()
-                                .rounded_lg()
-                                .bg(cx.theme().tab_active)
-                                .child(self.render_png_icon("assets/icons/team.png", 16.0, "🏟"))
+                                .child(
+                                    div()
+                                        .text_xl()
+                                        .font_bold()
+                                        .text_color(cx.theme().foreground)
+                                        .child(team.display_name.clone()),
+                                )
                                 .child(
                                     div()
                                         .text_sm()
-                                        .font_semibold()
-                                        .child(team.display_name),
-                                )
-                                .into_any_element()
-                        } else {
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(format!("League: {}", team.league)),
+                                ),
+                        )
+                        .into_any_element()
+                } else {
+                    div()
+                        .p_4()
+                        .rounded_lg()
+                        .bg(cx.theme().muted)
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .child(
                             div()
-                                .px_2()
-                                .py_1()
-                                .rounded_full()
-                                .bg(cx.theme().muted)
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("No team selected")
-                                .into_any_element()
-                        },
-                    ),
+                                .text_2xl()
+                                .child("⚽"),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .text_lg()
+                                        .font_semibold()
+                                        .text_color(cx.theme().foreground)
+                                        .child("No Team Selected"),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Click Configure to select a team"),
+                                ),
+                        )
+                        .into_any_element()
+                },
             );
 
         // Get music library data from state
@@ -2630,6 +2726,9 @@ impl MainView {
             .flex_col()
             .gap_4()
             .child(self.render_audio_section(cx))
+            .child(self.render_detection_sensitivity_section(cx))
+            .child(self.render_language_section(cx))
+            .child(self.render_custom_phrases_section(cx))
             .child(
                 div()
                     .flex()
@@ -2861,92 +2960,13 @@ impl MainView {
             .flex()
             .flex_col()
             .gap_4()
-            .child(
-                div()
-                    .text_lg()
-                    .font_semibold()
-                    .child("🎯 Detection Settings"),
-            )
+            .child(div().text_lg().font_semibold().child("📋 Detection Info"))
             .child(
                 div()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child("Adjust sensitivity to match your scoreboard’s typography."),
+                    .child("Detection sensitivity settings have been moved to the Settings tab."),
             )
-            .child(self.render_detection_sliders(cx))
-    }
-
-    fn render_detection_sliders(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let ocr_value = self.slider_value(&self.ocr_slider, cx);
-        let debounce_value = self.slider_value(&self.debounce_slider, cx);
-        let ocr_label = if ocr_value <= 0.5 {
-            "Auto (Otsu)".to_string()
-        } else {
-            format!("{:.0}", ocr_value)
-        };
-
-        let debounce_label = format!("{:.1}s", debounce_value / 1000.0);
-
-        div()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_sm().font_semibold().child("OCR Threshold"))
-                    .child(
-                        div()
-                            .flex()
-                            .justify_between()
-                            .items_center()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Auto (Otsu) when below 0.5"),
-                    )
-                    .child(
-                        div().flex().gap_2().child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(Slider::new(&self.ocr_slider))
-                                .child(
-                                    div()
-                                        .min_w(px(52.0))
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(ocr_label),
-                                ),
-                        ),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_sm().font_semibold().child("Goal Debounce"))
-                    .child(
-                        div().flex().gap_2().child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(Slider::new(&self.debounce_slider))
-                                .child(
-                                    div()
-                                        .min_w(px(52.0))
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(debounce_label),
-                                ),
-                        ),
-                    ),
-            )
-            .into_any_element()
     }
 
     fn render_preview_section(
@@ -3169,10 +3189,10 @@ impl MainView {
     }
 
     fn render_audio_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let music_volume = self.slider_value(&self.music_volume_slider, cx);
-        let ambiance_volume = self.slider_value(&self.ambiance_volume_slider, cx);
-        let music_length = self.slider_value(&self.music_length_slider, cx);
-        let ambiance_length = self.slider_value(&self.ambiance_length_slider, cx);
+        let music_volume = self.music_volume_value(&self.music_volume_slider, cx);
+        let ambiance_volume = self.ambiance_volume_value(&self.ambiance_volume_slider, cx);
+        let music_length = self.music_length_value(&self.music_length_slider, cx);
+        let ambiance_length = self.ambiance_length_value(&self.ambiance_length_slider, cx);
 
         let slider_row = |label: &str, value: String, slider: Slider| {
             let label_text = label.to_string();
@@ -3236,6 +3256,205 @@ impl MainView {
                 format!("{:.0}s", ambiance_length),
                 Slider::new(&self.ambiance_length_slider),
             ))
+    }
+
+    fn render_detection_sensitivity_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let ocr_value = self.ocr_threshold_value(&self.ocr_slider, cx);
+        let debounce_value = self.debounce_value(&self.debounce_slider, cx);
+
+        let ocr_label = if ocr_value <= 0.5 {
+            "Auto (Otsu)".to_string()
+        } else {
+            format!("{:.0}", ocr_value)
+        };
+
+        let debounce_label = format!("{:.1}s", debounce_value / 1000.0);
+
+        let slider_row = |label: &str, value: String, slider: Slider| {
+            let label_text = label.to_string();
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(
+                    div()
+                        .flex()
+                        .justify_between()
+                        .child(div().text_sm().font_semibold().child(label_text))
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(value),
+                        ),
+                )
+                .child(slider)
+        };
+
+        div()
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(
+                div()
+                    .text_lg()
+                    .font_semibold()
+                    .child("🎯 Detection Sensitivity"),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Adjust sensitivity to match your scoreboard's typography."),
+            )
+            .child(slider_row(
+                "OCR Threshold",
+                ocr_label,
+                Slider::new(&self.ocr_slider),
+            ))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("(Auto Otsu mode below 0.5)"),
+            )
+            .child(slider_row(
+                "Goal Debounce",
+                debounce_label,
+                Slider::new(&self.debounce_slider),
+            ))
+    }
+
+    fn render_language_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_semibold()
+                            .child("🌍 Detection Language"),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Choose language for goal phrase detection."),
+                    ),
+            )
+            .child(Select::new(&self.language_select))
+    }
+
+    fn render_custom_phrases_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let custom_phrases = self.controller.get_custom_goal_phrases();
+
+        let add_phrase_button =
+            Button::new("add-phrase-btn")
+                .label("Add Phrase")
+                .on_click(cx.listener(|this, _: &ClickEvent, _window, cx| {
+                    let input_text = this.custom_phrase_input.read(cx).value().to_string();
+                    if !input_text.trim().is_empty() {
+                        match this.controller.add_custom_goal_phrase(input_text) {
+                            Ok(_) => {
+                                this.refresh_status();
+                            }
+                            Err(err) => {
+                                this.status_text = format!("{err:#}").into();
+                            }
+                        }
+                    }
+                }));
+
+        div()
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_semibold()
+                            .child("✏️ Custom Goal Phrases"),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Add phrases in your language for better detection."),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .w_full()
+                    .child(Input::new(&self.custom_phrase_input).flex_1())
+                    .child(add_phrase_button),
+            )
+            .child(if custom_phrases.is_empty() {
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("No custom phrases added yet.")
+                    .into_any_element()
+            } else {
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .children(custom_phrases.iter().enumerate().map(|(idx, phrase)| {
+                        let phrase_clone = phrase.clone();
+                        div()
+                            .flex()
+                            .justify_between()
+                            .items_center()
+                            .px(px(8.0))
+                            .py(px(6.0))
+                            .rounded_md()
+                            .bg(cx.theme().secondary_foreground)
+                            .child(div().text_sm().child(phrase.clone()))
+                            .child(
+                                Button::new(("remove-phrase", idx as u32))
+                                    .ghost()
+                                    .label("Remove")
+                                    .on_click(cx.listener(
+                                        move |this, _: &ClickEvent, _window, _cx| {
+                                            if let Err(err) = this
+                                                .controller
+                                                .remove_custom_goal_phrase(&phrase_clone)
+                                            {
+                                                this.status_text = format!("{err:#}").into();
+                                            } else {
+                                                this.refresh_status();
+                                            }
+                                        },
+                                    )),
+                            )
+                    }))
+                    .into_any_element()
+            })
     }
 
     fn render_update_section(
@@ -3414,7 +3633,78 @@ impl MainView {
     }
 
     fn slider_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
-        slider.read(cx).value().start()
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            0.0
+        } else {
+            value
+        }
+    }
+
+    fn ocr_threshold_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            guard.ocr_threshold as f32
+        } else {
+            value
+        }
+    }
+
+    fn debounce_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            guard.debounce_ms as f32
+        } else {
+            value
+        }
+    }
+
+    fn music_volume_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            guard.music_volume * 100.0
+        } else {
+            value
+        }
+    }
+
+    fn ambiance_volume_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            guard.ambiance_volume * 100.0
+        } else {
+            value
+        }
+    }
+
+    fn music_length_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            (guard.music_length_ms as f32 / 1000.0).clamp(1.0, 60.0)
+        } else {
+            value
+        }
+    }
+
+    fn ambiance_length_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            (guard.ambiance_length_ms as f32 / 1000.0).clamp(1.0, 60.0)
+        } else {
+            value
+        }
     }
 
     fn toggle_music_preview(&mut self) -> Result<(), String> {
@@ -3804,13 +4094,6 @@ impl MainView {
             })
             .collect::<Vec<_>>();
 
-        let quick_start_button = self.help_link_button(
-            "help-open-plan",
-            "Open Setup Guide (Doc/Plan.md)",
-            PathBuf::from("Doc/Plan.md"),
-            cx,
-        );
-
         let quick_start_card = div()
             .border_1()
             .border_color(cx.theme().border)
@@ -3826,8 +4109,7 @@ impl MainView {
                     .text_color(cx.theme().muted_foreground)
                     .child("Follow these steps to get cheers playing in minutes."),
             )
-            .child(div().flex().flex_col().gap_2().children(quick_step_rows))
-            .child(quick_start_button);
+            .child(div().flex().flex_col().gap_2().children(quick_step_rows));
 
         let shortcuts = [
             ("Cmd + 1", "Start/stop monitoring instantly"),
@@ -3859,13 +4141,6 @@ impl MainView {
             })
             .collect::<Vec<_>>();
 
-        let shortcuts_button = self.help_link_button(
-            "help-open-readme",
-            "View full shortcut list (README.md)",
-            PathBuf::from("README.md"),
-            cx,
-        );
-
         let shortcuts_card = div()
             .border_1()
             .border_color(cx.theme().border)
@@ -3880,23 +4155,35 @@ impl MainView {
                     .font_semibold()
                     .child("⌨️ Keyboard Shortcuts"),
             )
-            .child(div().flex().flex_col().gap_2().children(shortcut_rows))
-            .child(shortcuts_button);
+            .child(div().flex().flex_col().gap_2().children(shortcut_rows));
 
         let troubleshooting_tips = [
-            "Region preview empty? Re-run Select Region and ensure permissions are granted.",
-            "Missed detections? Increase OCR threshold or enable morphological opening.",
-            "Audio stutters? Shorten clip length or lower volume balancing.",
+            ("Region preview empty?", "Re-run Select Region and ensure screen recording permissions are granted in System Settings."),
+            ("Missed detections?", "Adjust OCR Threshold and Debounce settings in the Settings tab under Detection Sensitivity."),
+            ("Audio stutters?", "Reduce playback length or lower volume levels in Settings → Playback & Mix."),
+            ("Still having issues?", "Check the log files to diagnose problems. Logs contain detailed error messages and detection info."),
         ];
 
         let troubleshooting_rows = troubleshooting_tips
             .iter()
-            .map(|tip| {
+            .map(|(issue, solution)| {
                 div()
                     .flex()
-                    .gap_2()
-                    .child(div().text_sm().text_color(cx.theme().accent).child("•"))
-                    .child(div().text_sm().child(*tip))
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(cx.theme().accent)
+                            .child(*issue),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(*solution),
+                    )
             })
             .collect::<Vec<_>>();
 
@@ -3905,7 +4192,7 @@ impl MainView {
             let logs_for_button = logs_path.clone();
             Button::new("help-open-logs")
                 .ghost()
-                .label("Open Logs Folder")
+                .label("📁 Open Logs Folder")
                 .w_full()
                 .on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
                     if let Some(path) = logs_for_button.clone() {
@@ -3940,19 +4227,40 @@ impl MainView {
                 div()
                     .flex()
                     .flex_col()
-                    .gap_2()
+                    .gap_3()
                     .children(troubleshooting_rows),
             )
-            .child(div().flex().flex_wrap().gap_2().child(logs_button).child(
-                self.help_link_button(
-                    "help-open-detection-docs",
-                    "Review detection tuning (Doc/Design.md)",
-                    PathBuf::from("Doc/Design.md"),
-                    cx,
-                ),
-            ));
+            .child(logs_button);
 
-        let support_card = div()
+        // Application Info Card
+        let app_version = "0.2.4";
+        let config_path = self.controller.config_file_path();
+        let config_button = {
+            let config_for_button = config_path.clone();
+            Button::new("help-open-config")
+                .ghost()
+                .label("⚙️ Open Config Folder")
+                .w_full()
+                .on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
+                    if let Some(path) = config_for_button.as_ref().and_then(|p| p.parent()) {
+                        match open::that(path) {
+                            Ok(()) => {
+                                this.controller
+                                    .set_status(format!("Opened config at {}", path.display()));
+                                this.refresh_status();
+                            }
+                            Err(err) => {
+                                this.status_text = format!("Failed to open config: {err:#}").into();
+                            }
+                        }
+                    } else {
+                        this.status_text = "Config folder unavailable.".into();
+                    }
+                    cx.notify();
+                }))
+        };
+
+        let app_info_card = div()
             .border_1()
             .border_color(cx.theme().border)
             .rounded_lg()
@@ -3960,42 +4268,48 @@ impl MainView {
             .flex()
             .flex_col()
             .gap_3()
-            .child(
-                div()
-                    .text_lg()
-                    .font_semibold()
-                    .child("🌐 Reference & Support"),
-            )
+            .child(div().text_lg().font_semibold().child("ℹ️ Application Info"))
             .child(
                 div()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child("Deep-dive into architecture, specs, and planning documents."),
+                    .child("Version and configuration details."),
             )
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(self.help_link_button(
-                        "help-open-architecture",
-                        "ARCHITECTURE.md",
-                        PathBuf::from("ARCHITECTURE.md"),
-                        cx,
-                    ))
-                    .child(self.help_link_button(
-                        "help-open-project",
-                        "openspec/project.md",
-                        PathBuf::from("openspec/project.md"),
-                        cx,
-                    ))
-                    .child(self.help_link_button(
-                        "help-open-design",
-                        "Doc/Design.md",
-                        PathBuf::from("Doc/Design.md"),
-                        cx,
-                    )),
-            );
+                    .justify_between()
+                    .child(div().text_sm().font_semibold().child("Version"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().foreground)
+                            .child(format!("v{}", app_version)),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .child(div().text_sm().font_semibold().child("App Name"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().foreground)
+                            .child("FM Goal Music"),
+                    ),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(if let Some(ref path) = config_path {
+                        format!("Config: {}", path.display())
+                    } else {
+                        "Config location unavailable".to_string()
+                    }),
+            )
+            .child(config_button);
 
         div()
             .flex()
@@ -4020,33 +4334,8 @@ impl MainView {
                             .min_w(px(320.0))
                             .child(troubleshooting_card),
                     )
-                    .child(div().flex_grow().min_w(px(320.0)).child(support_card)),
+                    .child(div().flex_grow().min_w(px(320.0)).child(app_info_card)),
             )
-    }
-
-    fn help_link_button(
-        &mut self,
-        id: &'static str,
-        label: &'static str,
-        target: PathBuf,
-        cx: &mut Context<Self>,
-    ) -> Button {
-        Button::new(id)
-            .ghost()
-            .label(label)
-            .w_full()
-            .on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
-                match open::that(&target) {
-                    Ok(()) => {
-                        this.controller.set_status(format!("Opened {label}"));
-                        this.refresh_status();
-                    }
-                    Err(err) => {
-                        this.status_text = format!("Failed to open {label}: {err:#}").into();
-                    }
-                }
-                cx.notify();
-            }))
     }
 
     fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {

@@ -164,6 +164,39 @@ impl OcrManager {
         Ok(text_extraction::extract_team_name(&alt_text))
     }
 
+    /// Detect if goal text is present using custom phrases
+    ///
+    /// Looks for custom goal phrases in addition to hardcoded patterns.
+    ///
+    /// # Arguments
+    /// * `image` - RGBA screen capture
+    /// * `custom_phrases` - List of custom goal detection phrases
+    ///
+    /// # Returns
+    /// `Ok(true)` if goal detected (hardcoded or custom), `Ok(false)` otherwise, or error on OCR failure
+    pub fn detect_goal_with_custom_phrases(
+        &mut self,
+        image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
+        custom_phrases: &[String],
+    ) -> Result<bool, Box<dyn std::error::Error>> {
+        // Preprocess image
+        let binary = self.preprocessor.preprocess(image);
+
+        // Perform OCR
+        let text = self.detector.detect_text(&binary)?;
+
+        // Check for goal text (hardcoded or custom)
+        if text_extraction::contains_goal_text_with_custom(&text, custom_phrases) {
+            return Ok(true);
+        }
+
+        // If not detected, try alternative preprocessing methods
+        let alt_images = self.preprocessor.try_alternative_methods(image);
+        let alt_text = self.detector.detect_text_multi(alt_images)?;
+
+        Ok(text_extraction::contains_goal_text_with_custom(&alt_text, custom_phrases))
+    }
+
     /// Get detected text (for debugging)
     ///
     /// Returns the raw OCR text without any filtering.
