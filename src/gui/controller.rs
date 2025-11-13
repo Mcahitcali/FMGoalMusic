@@ -502,6 +502,7 @@ impl GuiController {
                 ambiance_enabled: state.ambiance_enabled,
                 music_length_ms: state.music_length_ms,
                 ambiance_length_ms: state.ambiance_length_ms,
+                custom_goal_phrases: state.custom_goal_phrases.clone(),
             }
         };
 
@@ -913,6 +914,7 @@ struct DetectionSetup {
     ambiance_enabled: bool,
     music_length_ms: u64,
     ambiance_length_ms: u64,
+    custom_goal_phrases: Vec<String>,
 }
 
 pub struct RegionCapture {
@@ -965,6 +967,7 @@ fn run_detection_loop(
         ambiance_enabled,
         music_length_ms,
         ambiance_length_ms,
+        custom_goal_phrases,
     } = setup;
 
     let music_name = music_entry.name.clone();
@@ -1054,11 +1057,22 @@ fn run_detection_loop(
                 }
             }
         } else {
-            match ocr_manager.detect_goal(&image) {
-                Ok(result) => result,
-                Err(err) => {
-                    warn!("OCR error: {err}");
-                    false
+            // Use custom phrases if available, otherwise use standard detection
+            if !custom_goal_phrases.is_empty() {
+                match ocr_manager.detect_goal_with_custom_phrases(&image, &custom_goal_phrases) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        warn!("OCR error: {err}");
+                        false
+                    }
+                }
+            } else {
+                match ocr_manager.detect_goal(&image) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        warn!("OCR error: {err}");
+                        false
+                    }
                 }
             }
         };
