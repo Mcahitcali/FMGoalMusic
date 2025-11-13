@@ -1,29 +1,53 @@
 {
   "Premier League": {
-    "manchester_united": {
-      "display_name": "Manchester Utd",
-      "variations": [
-        "Man United",
-        "Manchester Utd",
-        "Manchester United",
-        "Manchester United FC",
-        "Man Utd"
-      ]
-    },
-    "liverpool": {
-      "display_name": "Liverpool",
-      "variations": [
-        "Liverpool",
-        "Liverpool FC",
-        "The Reds"
-      ]
-    },
     "arsenal": {
       "display_name": "Arsenal",
       "variations": [
         "Arsenal",
         "Arsenal FC",
-        "The Gunners"
+        "The Gunners",
+        "AFC"
+      ]
+    },
+    "aston_villa": {
+      "display_name": "Aston Villa",
+      "variations": [
+        "Aston Villa",
+        "Aston Villa FC",
+        "Villa"
+      ]
+    },
+    "bournemouth": {
+      "display_name": "AFC Bournemouth",
+      "variations": [
+        "Bournemouth",
+        "AFC Bournemouth",
+        "The Cherries"
+      ]
+    },
+    "brentford": {
+      "display_name": "Brentford",
+      "variations": [
+        "Brentford",
+        "Brentford FC",
+        "The Bees"
+      ]
+    },
+    "brighton": {
+      "display_name": "Brighton & Hove Albion",
+      "variations": [
+        "Brighton",
+        "Brighton & Hove Albion",
+        "Brighton and Hove Albion",
+        "The Seagulls"
+      ]
+    },
+    "burnley": {
+      "display_name": "Burnley",
+      "variations": [
+        "Burnley",
+        "Burnley FC",
+        "The Clarets"
       ]
     },
     "chelsea": {
@@ -34,6 +58,50 @@
         "The Blues"
       ]
     },
+    "crystal_palace": {
+      "display_name": "Crystal Palace",
+      "variations": [
+        "Crystal Palace",
+        "Crystal Palace FC",
+        "Palace",
+        "The Eagles"
+      ]
+    },
+    "everton": {
+      "display_name": "Everton",
+      "variations": [
+        "Everton",
+        "Everton FC",
+        "The Toffees",
+        "EFC"
+      ]
+    },
+    "fulham": {
+      "display_name": "Fulham",
+      "variations": [
+        "Fulham",
+        "Fulham FC",
+        "The Cottagers"
+      ]
+    },
+    "leeds": {
+      "display_name": "Leeds United",
+      "variations": [
+        "Leeds United",
+        "Leeds",
+        "Leeds United AFC",
+        "The Whites"
+      ]
+    },
+    "liverpool": {
+      "display_name": "Liverpool",
+      "variations": [
+        "Liverpool",
+        "Liverpool FC",
+        "The Reds",
+        "LFC"
+      ]
+    },
     "manchester_city": {
       "display_name": "Manchester City",
       "variations": [
@@ -42,17 +110,73 @@
         "Manchester City FC",
         "MCFC"
       ]
+    },
+    "manchester_united": {
+      "display_name": "Manchester United",
+      "variations": [
+        "Man United",
+        "Manchester Utd",
+        "Manchester United",
+        "Manchester United FC",
+        "Man Utd",
+        "MUFC"
+      ]
+    },
+    "newcastle": {
+      "display_name": "Newcastle United",
+      "variations": [
+        "Newcastle United",
+        "Newcastle",
+        "Newcastle United FC",
+        "The Magpies"
+      ]
+    },
+    "nottingham_forest": {
+      "display_name": "Nottingham Forest",
+      "variations": [
+        "Nottingham Forest",
+        "Nottingham Forest FC",
+        "Forest",
+        "NFFC"
+      ]
+    },
+    "sunderland": {
+      "display_name": "Sunderland",
+      "variations": [
+        "Sunderland",
+        "Sunderland AFC",
+        "The Black Cats"
+      ]
+    },
+    "tottenham": {
+      "display_name": "Tottenham Hotspur",
+      "variations": [
+        "Tottenham",
+        "Tottenham Hotspur",
+        "Spurs",
+        "Tottenham Hotspur FC"
+      ]
+    },
+    "west_ham": {
+      "display_name": "West Ham United",
+      "variations": [
+        "West Ham",
+        "West Ham United",
+        "West Ham United FC",
+        "The Hammers"
+      ]
+    },
+    "wolverhampton": {
+      "display_name": "Wolverhampton Wanderers",
+      "variations": [
+        "Wolves",
+        "Wolverhampton",
+        "Wolverhampton Wanderers",
+        "Wolverhampton Wanderers FC"
+      ]
     }
   },
   "La Liga": {
-    "real_madrid": {
-      "display_name": "Real Madrid",
-      "variations": [
-        "Real Madrid",
-        "Real Madrid CF",
-        "Madrid"
-      ]
-    },
     "barcelona": {
       "display_name": "Barcelona",
       "variations": [
@@ -62,31 +186,202 @@
         "Barça"
       ]
     },
-    "atletico_madrid": {
-      "display_name": "Atletico Madrid",
+    "real_madrid": {
+      "display_name": "Real Madrid",
       "variations": [
-        "Atletico Madrid",
+        "Real Madrid",
+        "Real Madrid CF",
+        "Madrid",
+        "Los Blancos"
+      ]
+    },
+    "atletico_madrid": {
+      "display_name": "Atlético Madrid",
+      "variations": [
         "Atlético Madrid",
-        "Atletico",
-        "Atlético"
+        "Atletico Madrid",
+        "Atlético",
+        "Atletico"
+      ]
+    },
+    "villarreal": {
+      "display_name": "Villarreal",
+      "variations": [
+        "Villarreal",
+        "Villarreal CF",
+        "The Yellow Submarine"
+      ]
+    },
+    "athletic_bilbao": {
+      "display_name": "Athletic Bilbao",
+      "variations": [
+        "Athletic Bilbao",
+        "Athletic Club",
+        "Bilbao"
+      ]
+    },
+    "girona": {
+      "display_name": "Girona",
+      "variations": [
+        "Girona",
+        "Girona FC"
+      ]
+    },
+    "real_sociedad": {
+      "display_name": "Real Sociedad",
+      "variations": [
+        "Real Sociedad",
+        "Real Sociedad CF",
+        "Sociedad"
+      ]
+    },
+    "celta_vigo": {
+      "display_name": "Celta Vigo",
+      "variations": [
+        "Celta Vigo",
+        "RC Celta",
+        "Celta"
+      ]
+    },
+    "getafe": {
+      "display_name": "Getafe",
+      "variations": [
+        "Getafe",
+        "Getafe CF"
+      ]
+    },
+    "sevilla": {
+      "display_name": "Sevilla",
+      "variations": [
+        "Sevilla",
+        "Sevilla FC",
+        "Seville"
+      ]
+    },
+    "espanyol": {
+      "display_name": "Espanyol",
+      "variations": [
+        "Espanyol",
+        "RCD Espanyol",
+        "Espanyol"
+      ]
+    },
+    "valencia": {
+      "display_name": "Valencia",
+      "variations": [
+        "Valencia",
+        "Valencia CF"
+      ]
+    },
+    "osasuna": {
+      "display_name": "Osasuna",
+      "variations": [
+        "Osasuna",
+        "CA Osasuna"
+      ]
+    },
+    "real_betis": {
+      "display_name": "Real Betis",
+      "variations": [
+        "Real Betis",
+        "Betis"
+      ]
+    },
+    "rayo_vallecano": {
+      "display_name": "Rayo Vallecano",
+      "variations": [
+        "Rayo Vallecano",
+        "Rayo",
+        "Vallecano"
+      ]
+    },
+    "real_mallorca": {
+      "display_name": "Real Mallorca",
+      "variations": [
+        "Real Mallorca",
+        "Mallorca"
+      ]
+    },
+    "alaves": {
+      "display_name": "Alavés",
+      "variations": [
+        "Alavés",
+        "Alaves",
+        "Deportivo Alavés"
+      ]
+    },
+    "levante": {
+      "display_name": "Levante",
+      "variations": [
+        "Levante",
+        "Levante UD"
+      ]
+    },
+    "elche": {
+      "display_name": "Elche",
+      "variations": [
+        "Elche",
+        "Elche CF"
+      ]
+    },
+    "oviedo": {
+      "display_name": "Real Oviedo",
+      "variations": [
+        "Real Oviedo",
+        "Oviedo",
+        "Real Oviedo CF"
       ]
     }
   },
   "Serie A": {
-    "juventus": {
-      "display_name": "Juventus",
+    "atalanta": {
+      "display_name": "Atalanta",
       "variations": [
-        "Juventus",
-        "Juventus FC",
-        "Juve"
+        "Atalanta",
+        "Atalanta BC"
       ]
     },
-    "ac_milan": {
-      "display_name": "AC Milan",
+    "bologna": {
+      "display_name": "Bologna",
       "variations": [
-        "AC Milan",
-        "Milan",
-        "ACM"
+        "Bologna",
+        "FC Bologna"
+      ]
+    },
+    "cagliari": {
+      "display_name": "Cagliari",
+      "variations": [
+        "Cagliari",
+        "Cagliari Calcio"
+      ]
+    },
+    "como": {
+      "display_name": "Como",
+      "variations": [
+        "Como",
+        "Como 1907"
+      ]
+    },
+    "cremonese": {
+      "display_name": "Cremonese",
+      "variations": [
+        "Cremonese",
+        "US Cremonese"
+      ]
+    },
+    "fiorentina": {
+      "display_name": "Fiorentina",
+      "variations": [
+        "Fiorentina",
+        "ACF Fiorentina",
+        "The Violets"
+      ]
+    },
+    "genoa": {
+      "display_name": "Genoa",
+      "variations": [
+        "Genoa",
+        "Genoa CFC"
       ]
     },
     "inter_milan": {
@@ -95,7 +390,99 @@
         "Inter Milan",
         "Inter",
         "FC Internazionale",
-        "FC. INTERNAZIONALE MILANO"
+        "FC. INTERNAZIONALE MILANO",
+        "Internazionale"
+      ]
+    },
+    "juventus": {
+      "display_name": "Juventus",
+      "variations": [
+        "Juventus",
+        "Juventus FC",
+        "Juve",
+        "The Old Lady"
+      ]
+    },
+    "lazio": {
+      "display_name": "Lazio",
+      "variations": [
+        "Lazio",
+        "SS Lazio"
+      ]
+    },
+    "lecce": {
+      "display_name": "Lecce",
+      "variations": [
+        "Lecce",
+        "US Lecce"
+      ]
+    },
+    "ac_milan": {
+      "display_name": "AC Milan",
+      "variations": [
+        "AC Milan",
+        "Milan",
+        "Milan AC",
+        "Associazione Calcio Milan"
+      ]
+    },
+    "napoli": {
+      "display_name": "Napoli",
+      "variations": [
+        "Napoli",
+        "SSC Napoli",
+        "Naples"
+      ]
+    },
+    "parma": {
+      "display_name": "Parma",
+      "variations": [
+        "Parma",
+        "Parma Calcio"
+      ]
+    },
+    "pisa": {
+      "display_name": "Pisa",
+      "variations": [
+        "Pisa",
+        "Pisa SC"
+      ]
+    },
+    "roma": {
+      "display_name": "Roma",
+      "variations": [
+        "Roma",
+        "AS Roma",
+        "Rome"
+      ]
+    },
+    "sassuolo": {
+      "display_name": "Sassuolo",
+      "variations": [
+        "Sassuolo",
+        "US Sassuolo"
+      ]
+    },
+    "torino": {
+      "display_name": "Torino",
+      "variations": [
+        "Torino",
+        "Torino FC",
+        "Turin"
+      ]
+    },
+    "udinese": {
+      "display_name": "Udinese",
+      "variations": [
+        "Udinese",
+        "Udinese Calcio"
+      ]
+    },
+    "verona": {
+      "display_name": "Verona",
+      "variations": [
+        "Verona",
+        "Hellas Verona"
       ]
     }
   },
@@ -106,7 +493,8 @@
         "Bayern Munich",
         "Bayern München",
         "Bayern",
-        "FC Bayern"
+        "FC Bayern",
+        "Bayern FC"
       ]
     },
     "borussia_dortmund": {
@@ -114,7 +502,140 @@
       "variations": [
         "Borussia Dortmund",
         "Dortmund",
-        "BVB"
+        "BVB",
+        "Borussia"
+      ]
+    },
+    "bayer_leverkusen": {
+      "display_name": "Bayer Leverkusen",
+      "variations": [
+        "Bayer Leverkusen",
+        "Bayer 04 Leverkusen",
+        "Leverkusen"
+      ]
+    },
+    "eintracht_frankfurt": {
+      "display_name": "Eintracht Frankfurt",
+      "variations": [
+        "Eintracht Frankfurt",
+        "Frankfurt",
+        "Eintracht"
+      ]
+    },
+    "rb_leipzig": {
+      "display_name": "RB Leipzig",
+      "variations": [
+        "RB Leipzig",
+        "Leipzig",
+        "Red Bull Leipzig"
+      ]
+    },
+    "vfb_stuttgart": {
+      "display_name": "VfB Stuttgart",
+      "variations": [
+        "VfB Stuttgart",
+        "Stuttgart",
+        "Verein für Bewegungsspiele"
+      ]
+    },
+    "vfl_wolfsburg": {
+      "display_name": "VfL Wolfsburg",
+      "variations": [
+        "VfL Wolfsburg",
+        "Wolfsburg",
+        "Verein für Leibesübungen"
+      ]
+    },
+    "fc_pauli": {
+      "display_name": "FC St. Pauli",
+      "variations": [
+        "FC St. Pauli",
+        "St. Pauli",
+        "FC Sankt Pauli"
+      ]
+    },
+    "heidenheim": {
+      "display_name": "1. FC Heidenheim",
+      "variations": [
+        "1. FC Heidenheim",
+        "Heidenheim",
+        "FC Heidenheim"
+      ]
+    },
+    "hamburg": {
+      "display_name": "Hamburger SV",
+      "variations": [
+        "Hamburger SV",
+        "Hamburg",
+        "HSV"
+      ]
+    },
+    "fc_koln": {
+      "display_name": "1. FC Köln",
+      "variations": [
+        "1. FC Köln",
+        "1. FC Koln",
+        "Köln",
+        "Koln",
+        "FC Cologne"
+      ]
+    },
+    "werder_bremen": {
+      "display_name": "Werder Bremen",
+      "variations": [
+        "Werder Bremen",
+        "Bremen",
+        "Werder"
+      ]
+    },
+    "borussia_monchengladbach": {
+      "display_name": "Borussia Mönchengladbach",
+      "variations": [
+        "Borussia Mönchengladbach",
+        "Borussia Mönchengladbach",
+        "Mönchengladbach",
+        "Gladbach",
+        "BMG"
+      ]
+    },
+    "hoffenheim": {
+      "display_name": "TSG Hoffenheim",
+      "variations": [
+        "TSG Hoffenheim",
+        "Hoffenheim",
+        "TSG"
+      ]
+    },
+    "fc_augsburg": {
+      "display_name": "FC Augsburg",
+      "variations": [
+        "FC Augsburg",
+        "Augsburg",
+        "FCA"
+      ]
+    },
+    "union_berlin": {
+      "display_name": "Union Berlin",
+      "variations": [
+        "Union Berlin",
+        "Union",
+        "1. FC Union Berlin"
+      ]
+    },
+    "sc_freiburg": {
+      "display_name": "SC Freiburg",
+      "variations": [
+        "SC Freiburg",
+        "Freiburg",
+        "Sport-Club Freiburg"
+      ]
+    },
+    "mainz_05": {
+      "display_name": "Mainz 05",
+      "variations": [
+        "Mainz 05",
+        "FSV Mainz 05",
+        "Mainz"
       ]
     }
   },
@@ -124,7 +645,8 @@
       "variations": [
         "Paris Saint-Germain",
         "Paris SG",
-        "PSG"
+        "PSG",
+        "Paris"
       ]
     },
     "marseille": {
@@ -132,7 +654,124 @@
       "variations": [
         "Marseille",
         "Olympique de Marseille",
-        "OM"
+        "OM",
+        "Olympique Marseille"
+      ]
+    },
+    "monaco": {
+      "display_name": "Monaco",
+      "variations": [
+        "Monaco",
+        "AS Monaco",
+        "Association Sportive Monaco"
+      ]
+    },
+    "lyon": {
+      "display_name": "Lyon",
+      "variations": [
+        "Lyon",
+        "Olympique Lyonnais",
+        "OL"
+      ]
+    },
+    "lille": {
+      "display_name": "Lille",
+      "variations": [
+        "Lille",
+        "LOSC Lille",
+        "Losc"
+      ]
+    },
+    "rennes": {
+      "display_name": "Rennes",
+      "variations": [
+        "Rennes",
+        "Stade Rennais"
+      ]
+    },
+    "nice": {
+      "display_name": "Nice",
+      "variations": [
+        "Nice",
+        "OGC Nice",
+        "Olympique Gymnaste Club Nice"
+      ]
+    },
+    "toulouse": {
+      "display_name": "Toulouse",
+      "variations": [
+        "Toulouse",
+        "Toulouse FC"
+      ]
+    },
+    "strasbourg": {
+      "display_name": "Strasbourg",
+      "variations": [
+        "Strasbourg",
+        "RC Strasbourg"
+      ]
+    },
+    "auxerre": {
+      "display_name": "Auxerre",
+      "variations": [
+        "Auxerre",
+        "AJ Auxerre"
+      ]
+    },
+    "nantes": {
+      "display_name": "Nantes",
+      "variations": [
+        "Nantes",
+        "FC Nantes"
+      ]
+    },
+    "lens": {
+      "display_name": "Lens",
+      "variations": [
+        "Lens",
+        "RC Lens"
+      ]
+    },
+    "angers": {
+      "display_name": "Angers",
+      "variations": [
+        "Angers",
+        "Angers SCO"
+      ]
+    },
+    "brest": {
+      "display_name": "Brest",
+      "variations": [
+        "Brest",
+        "Stade Brest"
+      ]
+    },
+    "le_havre": {
+      "display_name": "Le Havre",
+      "variations": [
+        "Le Havre",
+        "Le Havre AC"
+      ]
+    },
+    "lorient": {
+      "display_name": "Lorient",
+      "variations": [
+        "Lorient",
+        "FC Lorient"
+      ]
+    },
+    "paris_fc": {
+      "display_name": "Paris FC",
+      "variations": [
+        "Paris FC",
+        "PFC"
+      ]
+    },
+    "metz": {
+      "display_name": "Metz",
+      "variations": [
+        "Metz",
+        "FC Metz"
       ]
     }
   },
@@ -149,16 +788,6 @@
         "Antalyaspor"
       ]
     },
-    "basaksehir": {
-      "display_name": "İstanbul Başakşehir",
-      "variations": [
-        "İstanbul Başakşehir",
-        "Istanbul Basaksehir",
-        "İstanbul Basaksehir",
-        "Başakşehir",
-        "Basaksehir"
-      ]
-    },
     "besiktas": {
       "display_name": "Beşiktaş",
       "variations": [
@@ -166,6 +795,14 @@
         "Besiktas",
         "Beşiktaş JK",
         "Besiktas JK"
+      ]
+    },
+    "rizespor": {
+      "display_name": "Çaykur Rizespor",
+      "variations": [
+        "Çaykur Rizespor",
+        "Caykur Rizespor",
+        "Rizespor"
       ]
     },
     "eyupspor": {
@@ -231,6 +868,16 @@
         "Goztepe SK"
       ]
     },
+    "basaksehir": {
+      "display_name": "İstanbul Başakşehir",
+      "variations": [
+        "İstanbul Başakşehir",
+        "Istanbul Basaksehir",
+        "İstanbul Basaksehir",
+        "Başakşehir",
+        "Basaksehir"
+      ]
+    },
     "kasimpasa": {
       "display_name": "Kasımpaşa",
       "variations": [
@@ -259,14 +906,6 @@
         "Konyaspor",
         "Tümosan Konyaspor",
         "Tumosan Konyaspor"
-      ]
-    },
-    "rizespor": {
-      "display_name": "Çaykur Rizespor",
-      "variations": [
-        "Çaykur Rizespor",
-        "Caykur Rizespor",
-        "Rizespor"
       ]
     },
     "samsunspor": {

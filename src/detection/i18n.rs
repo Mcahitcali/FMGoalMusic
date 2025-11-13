@@ -1,9 +1,10 @@
 /// Internationalization support for detection phrases
 ///
 /// Provides language-specific phrases for detecting game events.
+use serde::{Deserialize, Serialize};
 
 /// Supported languages
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Language {
     English,
     Turkish,

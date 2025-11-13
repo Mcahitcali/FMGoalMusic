@@ -56,6 +56,7 @@ open = "5.0"  # Open URLs in default browser
 
 # Hotkey listener
 rdev = "0.5"
+global-hotkey = "0.6"  # System-wide hotkey registration
 
 # Error handling
 anyhow = "1.0"      # Application errors with context
@@ -93,3 +94,5 @@ opt-level = 3           # Optimize dependencies too
 
 [build-dependencies]
 winres = "0.1"
+resvg = "0.43"
+walkdir = "2.5"

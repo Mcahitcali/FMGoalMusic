@@ -14,6 +14,7 @@ use crate::audio::AudioManager;
 use crate::audio_converter;
 use crate::capture::{CaptureManager, CaptureRegion};
 use crate::config::{Config, MusicEntry as ConfigMusicEntry, SelectedTeam};
+use crate::detection::i18n::{I18nPhrases, Language};
 use crate::ocr::OcrManager;
 use crate::slug::slugify;
 use crate::state::{AppState, MusicEntry, ProcessState};
@@ -119,9 +120,13 @@ impl GuiController {
     }
 
     pub fn capture_preview(&self) -> Result<PathBuf> {
-        let (region, monitor_index) = {
+        let (region, monitor_index, generation) = {
             let state = self.inner.state.lock();
-            (state.capture_region, state.selected_monitor_index)
+            (
+                state.capture_region,
+                state.selected_monitor_index,
+                state.preview_generation,
+            )
         };
 
         let mut capture_manager =
@@ -131,14 +136,29 @@ impl GuiController {
             .capture_region()
             .map_err(|err| anyhow!("Failed to capture preview: {err}"))?;
 
-        let preview_path = preview_image_path()?;
+        // Use generation counter in filename to bust cache
+        let new_generation = generation.wrapping_add(1);
+        let preview_path = preview_image_path_with_generation(new_generation)?;
+
         DynamicImage::ImageRgba8(image)
             .save(&preview_path)
             .map_err(|err| anyhow!("Failed to save preview: {err}"))?;
 
+        // Clean up old preview files
+        if let Ok(old_path) = preview_image_path_with_generation(generation) {
+            let _ = fs::remove_file(old_path); // Ignore errors if file doesn't exist
+        }
+        // Also clean up the one before that (in case of rapid clicks)
+        if generation > 0 {
+            if let Ok(old_path) = preview_image_path_with_generation(generation - 1) {
+                let _ = fs::remove_file(old_path);
+            }
+        }
+
         {
             let mut state = self.inner.state.lock();
             state.preview_image_path = Some(preview_path.clone());
+            state.preview_generation = new_generation;
             state.status_message = "Capture preview updated".into();
         }
 
@@ -301,6 +321,7 @@ impl GuiController {
         team_name: String,
         variations: Vec<String>,
         allow_create_league: bool,
+        logo_path: Option<PathBuf>,
     ) -> Result<SelectedTeam> {
         let mut guard = self.inner.team_database.lock();
         let db = guard
@@ -326,6 +347,10 @@ impl GuiController {
         db.save()
             .map_err(|err| anyhow!("failed to save team database: {err}"))?;
 
+        if let Some(path) = logo_path {
+            self.save_team_logo(&league_name, &team_key, &path)?;
+        }
+
         let selected_team = SelectedTeam {
             league: league_name.clone(),
             team_key: team_key.clone(),
@@ -340,6 +365,58 @@ impl GuiController {
 
         self.save_config()?;
         Ok(selected_team)
+    }
+
+    fn save_team_logo(
+        &self,
+        league_name: &str,
+        team_key: &str,
+        source_path: &PathBuf,
+    ) -> Result<()> {
+        if !source_path.exists() {
+            return Err(anyhow!(format!(
+                "Logo file does not exist: {}",
+                source_path.display()
+            )));
+        }
+
+        let extension_valid = source_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("png"))
+            .unwrap_or(false);
+
+        if !extension_valid {
+            return Err(anyhow!("Team logo must be a PNG file"));
+        }
+
+        let base_dir = config_dir()
+            .ok_or_else(|| anyhow!("Could not determine user config directory"))?
+            .join("FMGoalMusic")
+            .join("teams")
+            .join(league_name);
+
+        fs::create_dir_all(&base_dir)
+            .with_context(|| format!("Failed to create logo directory: {}", base_dir.display()))?;
+
+        let target_path = base_dir.join(format!("{}.png", team_key));
+
+        fs::copy(source_path, &target_path).with_context(|| {
+            format!(
+                "Failed to copy logo from {} to {}",
+                source_path.display(),
+                target_path.display()
+            )
+        })?;
+
+        info!(
+            "[logo] Saved custom team logo for {} ({}) to {}",
+            team_key,
+            league_name,
+            target_path.display()
+        );
+
+        Ok(())
     }
 
     pub fn clear_team_selection(&self) -> Result<()> {
@@ -429,6 +506,8 @@ impl GuiController {
                 ambiance_enabled: state.ambiance_enabled,
                 music_length_ms: state.music_length_ms,
                 ambiance_length_ms: state.ambiance_length_ms,
+                custom_goal_phrases: state.custom_goal_phrases.clone(),
+                selected_language: state.selected_language,
             }
         };
 
@@ -505,6 +584,17 @@ impl GuiController {
         let mut state = self.inner.state.lock();
         state.process_state = ProcessState::Stopped;
         state.status_message = "Monitoring stopped".to_string();
+        Ok(())
+    }
+
+    /// Stop currently playing goal celebration music without stopping monitoring
+    pub fn stop_goal_music(&self) -> Result<()> {
+        if let Some(tx) = self.inner.detection_cmd_tx.lock().as_ref() {
+            tx.send(DetectionCommand::StopAudio)
+                .map_err(|e| anyhow::anyhow!("Failed to send stop audio command: {}", e))?;
+            let mut state = self.inner.state.lock();
+            state.status_message = "Goal music stopped".to_string();
+        }
         Ok(())
     }
 
@@ -664,6 +754,72 @@ impl GuiController {
         self.update_capture_region(region)
     }
 
+    pub fn set_selected_language(&self, language: Language) -> Result<()> {
+        {
+            let mut state = self.inner.state.lock();
+            state.selected_language = language;
+            state.status_message = format!("Language set to {}", language.name());
+        }
+        self.save_config()
+    }
+
+    pub fn get_available_languages() -> Vec<(Language, String)> {
+        vec![
+            (Language::English, Language::English.name().to_string()),
+            (Language::Turkish, Language::Turkish.name().to_string()),
+            (Language::Spanish, Language::Spanish.name().to_string()),
+            (Language::French, Language::French.name().to_string()),
+            (Language::German, Language::German.name().to_string()),
+            (Language::Italian, Language::Italian.name().to_string()),
+            (
+                Language::Portuguese,
+                Language::Portuguese.name().to_string(),
+            ),
+        ]
+    }
+
+    pub fn add_custom_goal_phrase(&self, phrase: String) -> Result<()> {
+        // Validate phrase
+        let trimmed = phrase.trim();
+        if trimmed.is_empty() {
+            return Err(anyhow!("Phrase cannot be empty"));
+        }
+        if trimmed.len() > 100 {
+            return Err(anyhow!("Phrase too long (max 100 characters)"));
+        }
+
+        {
+            let mut state = self.inner.state.lock();
+            // Check if phrase already exists
+            if state
+                .custom_goal_phrases
+                .iter()
+                .any(|p| p.eq_ignore_ascii_case(trimmed))
+            {
+                return Err(anyhow!("Phrase already exists"));
+            }
+            state.custom_goal_phrases.push(trimmed.to_string());
+            state.status_message = format!("Custom goal phrase added: '{}'", trimmed);
+        }
+
+        self.save_config()
+    }
+
+    pub fn remove_custom_goal_phrase(&self, phrase: &str) -> Result<()> {
+        {
+            let mut state = self.inner.state.lock();
+            state
+                .custom_goal_phrases
+                .retain(|p| !p.eq_ignore_ascii_case(phrase));
+            state.status_message = format!("Custom goal phrase removed: '{}'", phrase);
+        }
+        self.save_config()
+    }
+
+    pub fn get_custom_goal_phrases(&self) -> Vec<String> {
+        self.inner.state.lock().custom_goal_phrases.clone()
+    }
+
     pub fn check_for_updates(&self) {
         self.set_status("Checking for updates...");
         let state = Arc::clone(&self.inner.state);
@@ -714,6 +870,8 @@ impl GuiController {
             auto_check_updates: state.auto_check_updates,
             skipped_version: state.skipped_version.clone(),
             selected_monitor_index: state.selected_monitor_index,
+            selected_language: state.selected_language,
+            custom_goal_phrases: state.custom_goal_phrases.clone(),
         };
         drop(state);
 
@@ -749,6 +907,8 @@ fn apply_config(state: &Arc<Mutex<AppState>>, config: &Config) {
     st.auto_check_updates = config.auto_check_updates;
     st.skipped_version = config.skipped_version.clone();
     st.selected_monitor_index = config.selected_monitor_index;
+    st.selected_language = config.selected_language;
+    st.custom_goal_phrases = config.custom_goal_phrases.clone();
     st.status_message = "Ready".to_string();
     st.process_state = ProcessState::Stopped;
     st.preview_image_path = None;
@@ -768,6 +928,8 @@ struct DetectionSetup {
     ambiance_enabled: bool,
     music_length_ms: u64,
     ambiance_length_ms: u64,
+    custom_goal_phrases: Vec<String>,
+    selected_language: Language,
 }
 
 pub struct RegionCapture {
@@ -782,6 +944,13 @@ fn preview_image_path() -> Result<PathBuf> {
     let dir = base.join("FMGoalMusic").join("previews");
     fs::create_dir_all(&dir).context("Failed to create preview directory")?;
     Ok(dir.join("capture_preview.png"))
+}
+
+fn preview_image_path_with_generation(generation: u32) -> Result<PathBuf> {
+    let base = config_dir().ok_or_else(|| anyhow!("Unable to locate config directory"))?;
+    let dir = base.join("FMGoalMusic").join("previews");
+    fs::create_dir_all(&dir).context("Failed to create preview directory")?;
+    Ok(dir.join(format!("capture_preview_{}.png", generation)))
 }
 
 fn region_selection_image_path() -> Result<PathBuf> {
@@ -813,6 +982,8 @@ fn run_detection_loop(
         ambiance_enabled,
         music_length_ms,
         ambiance_length_ms,
+        custom_goal_phrases,
+        selected_language,
     } = setup;
 
     let music_name = music_entry.name.clone();
@@ -902,11 +1073,27 @@ fn run_detection_loop(
                 }
             }
         } else {
-            match ocr_manager.detect_goal(&image) {
-                Ok(result) => result,
-                Err(err) => {
-                    warn!("OCR error: {err}");
-                    false
+            // Load embedded phrases for selected language and combine with custom phrases
+            let i18n_phrases = I18nPhrases::new(selected_language);
+            let mut all_phrases = i18n_phrases.goal_phrases.clone();
+            all_phrases.extend(custom_goal_phrases.clone());
+
+            // Use combined phrases if available, otherwise use standard detection
+            if !all_phrases.is_empty() {
+                match ocr_manager.detect_goal_with_custom_phrases(&image, &all_phrases) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        warn!("OCR error: {err}");
+                        false
+                    }
+                }
+            } else {
+                match ocr_manager.detect_goal(&image) {
+                    Ok(result) => result,
+                    Err(err) => {
+                        warn!("OCR error: {err}");
+                        false
+                    }
                 }
             }
         };
