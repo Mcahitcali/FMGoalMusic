@@ -2630,6 +2630,7 @@ impl MainView {
             .flex_col()
             .gap_4()
             .child(self.render_audio_section(cx))
+            .child(self.render_detection_sensitivity_section(cx))
             .child(
                 div()
                     .flex()
@@ -2861,92 +2862,13 @@ impl MainView {
             .flex()
             .flex_col()
             .gap_4()
-            .child(
-                div()
-                    .text_lg()
-                    .font_semibold()
-                    .child("🎯 Detection Settings"),
-            )
+            .child(div().text_lg().font_semibold().child("📋 Detection Info"))
             .child(
                 div()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child("Adjust sensitivity to match your scoreboard’s typography."),
+                    .child("Detection sensitivity settings have been moved to the Settings tab."),
             )
-            .child(self.render_detection_sliders(cx))
-    }
-
-    fn render_detection_sliders(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let ocr_value = self.ocr_threshold_value(&self.ocr_slider, cx);
-        let debounce_value = self.debounce_value(&self.debounce_slider, cx);
-        let ocr_label = if ocr_value <= 0.5 {
-            "Auto (Otsu)".to_string()
-        } else {
-            format!("{:.0}", ocr_value)
-        };
-
-        let debounce_label = format!("{:.1}s", debounce_value / 1000.0);
-
-        div()
-            .flex()
-            .flex_col()
-            .gap_4()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_sm().font_semibold().child("OCR Threshold"))
-                    .child(
-                        div()
-                            .flex()
-                            .justify_between()
-                            .items_center()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Auto (Otsu) when below 0.5"),
-                    )
-                    .child(
-                        div().flex().gap_2().child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(Slider::new(&self.ocr_slider))
-                                .child(
-                                    div()
-                                        .min_w(px(52.0))
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(ocr_label),
-                                ),
-                        ),
-                    ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_sm().font_semibold().child("Goal Debounce"))
-                    .child(
-                        div().flex().gap_2().child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(Slider::new(&self.debounce_slider))
-                                .child(
-                                    div()
-                                        .min_w(px(52.0))
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child(debounce_label),
-                                ),
-                        ),
-                    ),
-            )
-            .into_any_element()
     }
 
     fn render_preview_section(
@@ -3236,6 +3158,94 @@ impl MainView {
                 format!("{:.0}s", ambiance_length),
                 Slider::new(&self.ambiance_length_slider),
             ))
+    }
+
+    fn render_detection_sensitivity_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let ocr_value = self.ocr_threshold_value(&self.ocr_slider, cx);
+        let debounce_value = self.debounce_value(&self.debounce_slider, cx);
+        let ocr_label = if ocr_value <= 0.5 {
+            "Auto (Otsu)".to_string()
+        } else {
+            format!("{:.0}", ocr_value)
+        };
+
+        let debounce_label = format!("{:.1}s", debounce_value / 1000.0);
+
+        div()
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded_lg()
+            .p_4()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(
+                div()
+                    .text_lg()
+                    .font_semibold()
+                    .child("🎯 Detection Sensitivity"),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Adjust sensitivity to match your scoreboard's typography."),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(div().text_sm().font_semibold().child("OCR Threshold"))
+                    .child(
+                        div()
+                            .flex()
+                            .justify_between()
+                            .items_center()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Auto (Otsu) when below 0.5"),
+                    )
+                    .child(
+                        div().flex().gap_2().child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(Slider::new(&self.ocr_slider))
+                                .child(
+                                    div()
+                                        .min_w(px(52.0))
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(ocr_label),
+                                ),
+                        ),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(div().text_sm().font_semibold().child("Goal Debounce"))
+                    .child(
+                        div().flex().gap_2().child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .child(Slider::new(&self.debounce_slider))
+                                .child(
+                                    div()
+                                        .min_w(px(52.0))
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(debounce_label),
+                                ),
+                        ),
+                    ),
+            )
     }
 
     fn render_update_section(
