@@ -19,7 +19,6 @@ on:
 jobs:
   build:
     name: Build Windows Release
-    # Build sadece skip_build false olduğunda veya tag push olduğunda çalışacak
     if: github.event_name != 'workflow_dispatch' || inputs.skip_build != 'true'
     runs-on: self-hosted
     timeout-minutes: 180
