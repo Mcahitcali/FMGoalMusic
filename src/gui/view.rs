@@ -815,6 +815,13 @@ impl MainView {
     }
 
     fn render_dashboard_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        // Get selected team from state
+        let state = self.controller.state();
+        let selected_team = {
+            let guard = state.lock();
+            guard.selected_team.clone()
+        };
+
         // Team callout tile
         let team_callout = div()
             .bg(cx.theme().group_box)
@@ -866,16 +873,42 @@ impl MainView {
                     .items_center()
                     .gap_2()
                     .child(
-                        div()
-                            .px_2()
-                            .py_1()
-                            .rounded_full()
-                            .bg(cx.theme().muted)
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Home Team"),
+                        if let Some(team) = selected_team {
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .px_3()
+                                .py_2()
+                                .rounded_lg()
+                                .bg(cx.theme().tab_active)
+                                .child(self.render_png_icon("assets/icons/team.png", 16.0, "🏟"))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_semibold()
+                                        .child(team.display_name),
+                                )
+                                .into_any_element()
+                        } else {
+                            div()
+                                .px_2()
+                                .py_1()
+                                .rounded_full()
+                                .bg(cx.theme().muted)
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("No team selected")
+                                .into_any_element()
+                        },
                     ),
             );
+
+        // Get music library data from state
+        let (music_list, selected_music_index) = {
+            let guard = state.lock();
+            (guard.music_list.clone(), guard.selected_music_index)
+        };
 
         // Music cards with a hero area
         let goal_music = div()
@@ -919,7 +952,15 @@ impl MainView {
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child("Manage celebration tracks for goals."),
+                            .child(if let Some(idx) = selected_music_index {
+                                if let Some(entry) = music_list.get(idx) {
+                                    format!("Currently: {}", entry.name)
+                                } else {
+                                    "Manage celebration tracks for goals.".to_string()
+                                }
+                            } else {
+                                "Manage celebration tracks for goals.".to_string()
+                            }),
                     )
                     .child(
                         Button::new("dash-open-library-1")
@@ -930,6 +971,12 @@ impl MainView {
                             })),
                     ),
             );
+
+        // Get ambiance data from state
+        let ambiance_path = {
+            let guard = state.lock();
+            guard.goal_ambiance_path.clone()
+        };
 
         let other_music = div()
             .bg(cx.theme().group_box)
@@ -973,7 +1020,16 @@ impl MainView {
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child("Optional crowd or ambient layers."),
+                            .child(if let Some(path) = ambiance_path {
+                                use std::path::Path;
+                                let filename = Path::new(&path)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("Unknown");
+                                format!("Currently: {}", filename)
+                            } else {
+                                "Optional crowd or ambient layers.".to_string()
+                            }),
                     )
                     .child(
                         Button::new("dash-open-library-2")
@@ -2546,7 +2602,13 @@ impl MainView {
             .flex()
             .flex_col()
             .gap_4()
-            .child(self.render_capture_region_card(region, monitor_index, preview_path.clone(), preview_generation, cx))
+            .child(self.render_capture_region_card(
+                region,
+                monitor_index,
+                preview_path.clone(),
+                preview_generation,
+                cx,
+            ))
             .child(self.render_detection_settings_card(cx));
 
         if let Some(selector) = self.render_region_modal(cx) {
@@ -2652,18 +2714,13 @@ impl MainView {
                         .border_color(cx.theme().border)
                         .bg(cx.theme().background)
                         .child(
-                            div()
-                                .flex_1()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(
-                                    div()
-                                        .text_xl()
-                                        .font_semibold()
-                                        .text_color(cx.theme().foreground)
-                                        .child(value.to_string()),
-                                ),
+                            div().flex_1().flex().items_center().justify_center().child(
+                                div()
+                                    .text_xl()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child(value.to_string()),
+                            ),
                         )
                         .child(decrease)
                         .child(increase),
@@ -2707,18 +2764,19 @@ impl MainView {
                 context.notify();
             }));
 
-        let reset_button = Button::new("reset-region")
-            .ghost()
-            .label("Reset")
-            .on_click(cx.listener(|this, _event: &ClickEvent, _window, context| {
-                let defaults = [0, 900, 1024, 50];
-                if let Err(err) = this.controller.reset_capture_region(defaults) {
-                    this.status_text = format!("{err:#}").into();
-                } else {
-                    this.refresh_status();
-                }
-                context.notify();
-            }));
+        let reset_button =
+            Button::new("reset-region")
+                .ghost()
+                .label("Reset")
+                .on_click(cx.listener(|this, _event: &ClickEvent, _window, context| {
+                    let defaults = [0, 900, 1024, 50];
+                    if let Err(err) = this.controller.reset_capture_region(defaults) {
+                        this.status_text = format!("{err:#}").into();
+                    } else {
+                        this.refresh_status();
+                    }
+                    context.notify();
+                }));
 
         let monitor_dropdown = Select::new(&self.monitor_select)
             .small()
@@ -2738,17 +2796,13 @@ impl MainView {
             .gap_5()
             // Header
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        div()
-                            .text_xl()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child("📐 Capture Region"),
-                    ),
+                div().flex().items_center().gap_3().child(
+                    div()
+                        .text_xl()
+                        .font_semibold()
+                        .text_color(cx.theme().foreground)
+                        .child("📐 Capture Region"),
+                ),
             )
             // Coordinate inputs grid (2x2)
             .child(
@@ -2757,21 +2811,9 @@ impl MainView {
                     .flex_col()
                     .gap_4()
                     // First row: X and Y
-                    .child(
-                        div()
-                            .flex()
-                            .gap_4()
-                            .child(x_input)
-                            .child(y_input),
-                    )
+                    .child(div().flex().gap_4().child(x_input).child(y_input))
                     // Second row: Width and Height
-                    .child(
-                        div()
-                            .flex()
-                            .gap_4()
-                            .child(width_input)
-                            .child(height_input),
-                    ),
+                    .child(div().flex().gap_4().child(width_input).child(height_input)),
             )
             // Action buttons
             .child(
