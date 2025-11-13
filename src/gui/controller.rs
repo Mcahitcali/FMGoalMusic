@@ -14,7 +14,7 @@ use crate::audio::AudioManager;
 use crate::audio_converter;
 use crate::capture::{CaptureManager, CaptureRegion};
 use crate::config::{Config, MusicEntry as ConfigMusicEntry, SelectedTeam};
-use crate::detection::i18n::Language;
+use crate::detection::i18n::{I18nPhrases, Language};
 use crate::ocr::OcrManager;
 use crate::slug::slugify;
 use crate::state::{AppState, MusicEntry, ProcessState};
@@ -507,6 +507,7 @@ impl GuiController {
                 music_length_ms: state.music_length_ms,
                 ambiance_length_ms: state.ambiance_length_ms,
                 custom_goal_phrases: state.custom_goal_phrases.clone(),
+                selected_language: state.selected_language,
             }
         };
 
@@ -928,6 +929,7 @@ struct DetectionSetup {
     music_length_ms: u64,
     ambiance_length_ms: u64,
     custom_goal_phrases: Vec<String>,
+    selected_language: Language,
 }
 
 pub struct RegionCapture {
@@ -981,6 +983,7 @@ fn run_detection_loop(
         music_length_ms,
         ambiance_length_ms,
         custom_goal_phrases,
+        selected_language,
     } = setup;
 
     let music_name = music_entry.name.clone();
@@ -1070,9 +1073,14 @@ fn run_detection_loop(
                 }
             }
         } else {
-            // Use custom phrases if available, otherwise use standard detection
-            if !custom_goal_phrases.is_empty() {
-                match ocr_manager.detect_goal_with_custom_phrases(&image, &custom_goal_phrases) {
+            // Load embedded phrases for selected language and combine with custom phrases
+            let i18n_phrases = I18nPhrases::new(selected_language);
+            let mut all_phrases = i18n_phrases.goal_phrases.clone();
+            all_phrases.extend(custom_goal_phrases.clone());
+
+            // Use combined phrases if available, otherwise use standard detection
+            if !all_phrases.is_empty() {
+                match ocr_manager.detect_goal_with_custom_phrases(&image, &all_phrases) {
                     Ok(result) => result,
                     Err(err) => {
                         warn!("OCR error: {err}");
