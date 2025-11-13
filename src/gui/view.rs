@@ -3169,10 +3169,10 @@ impl MainView {
     }
 
     fn render_audio_section(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        let music_volume = self.slider_value(&self.music_volume_slider, cx);
-        let ambiance_volume = self.slider_value(&self.ambiance_volume_slider, cx);
-        let music_length = self.slider_value(&self.music_length_slider, cx);
-        let ambiance_length = self.slider_value(&self.ambiance_length_slider, cx);
+        let music_volume = self.music_volume_value(&self.music_volume_slider, cx);
+        let ambiance_volume = self.ambiance_volume_value(&self.ambiance_volume_slider, cx);
+        let music_length = self.music_length_value(&self.music_length_slider, cx);
+        let ambiance_length = self.ambiance_length_value(&self.ambiance_length_slider, cx);
 
         let slider_row = |label: &str, value: String, slider: Slider| {
             let label_text = label.to_string();
@@ -3439,6 +3439,50 @@ impl MainView {
             let state = self.controller.state();
             let guard = state.lock();
             guard.debounce_ms as f32
+        } else {
+            value
+        }
+    }
+
+    fn music_volume_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            guard.music_volume * 100.0
+        } else {
+            value
+        }
+    }
+
+    fn ambiance_volume_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            guard.ambiance_volume * 100.0
+        } else {
+            value
+        }
+    }
+
+    fn music_length_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            (guard.music_length_ms as f32 / 1000.0).clamp(1.0, 60.0)
+        } else {
+            value
+        }
+    }
+
+    fn ambiance_length_value(&self, slider: &Entity<SliderState>, cx: &mut Context<Self>) -> f32 {
+        let value = slider.read(cx).value().start();
+        if value.is_nan() {
+            let state = self.controller.state();
+            let guard = state.lock();
+            (guard.ambiance_length_ms as f32 / 1000.0).clamp(1.0, 60.0)
         } else {
             value
         }
