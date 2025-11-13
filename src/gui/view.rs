@@ -3885,13 +3885,6 @@ impl MainView {
             })
             .collect::<Vec<_>>();
 
-        let quick_start_button = self.help_link_button(
-            "help-open-plan",
-            "Open Setup Guide (Doc/Plan.md)",
-            PathBuf::from("Doc/Plan.md"),
-            cx,
-        );
-
         let quick_start_card = div()
             .border_1()
             .border_color(cx.theme().border)
@@ -3907,8 +3900,7 @@ impl MainView {
                     .text_color(cx.theme().muted_foreground)
                     .child("Follow these steps to get cheers playing in minutes."),
             )
-            .child(div().flex().flex_col().gap_2().children(quick_step_rows))
-            .child(quick_start_button);
+            .child(div().flex().flex_col().gap_2().children(quick_step_rows));
 
         let shortcuts = [
             ("Cmd + 1", "Start/stop monitoring instantly"),
@@ -3940,13 +3932,6 @@ impl MainView {
             })
             .collect::<Vec<_>>();
 
-        let shortcuts_button = self.help_link_button(
-            "help-open-readme",
-            "View full shortcut list (README.md)",
-            PathBuf::from("README.md"),
-            cx,
-        );
-
         let shortcuts_card = div()
             .border_1()
             .border_color(cx.theme().border)
@@ -3961,23 +3946,35 @@ impl MainView {
                     .font_semibold()
                     .child("⌨️ Keyboard Shortcuts"),
             )
-            .child(div().flex().flex_col().gap_2().children(shortcut_rows))
-            .child(shortcuts_button);
+            .child(div().flex().flex_col().gap_2().children(shortcut_rows));
 
         let troubleshooting_tips = [
-            "Region preview empty? Re-run Select Region and ensure permissions are granted.",
-            "Missed detections? Increase OCR threshold or enable morphological opening.",
-            "Audio stutters? Shorten clip length or lower volume balancing.",
+            ("Region preview empty?", "Re-run Select Region and ensure screen recording permissions are granted in System Settings."),
+            ("Missed detections?", "Adjust OCR Threshold and Debounce settings in the Settings tab under Detection Sensitivity."),
+            ("Audio stutters?", "Reduce playback length or lower volume levels in Settings → Playback & Mix."),
+            ("Still having issues?", "Check the log files to diagnose problems. Logs contain detailed error messages and detection info."),
         ];
 
         let troubleshooting_rows = troubleshooting_tips
             .iter()
-            .map(|tip| {
+            .map(|(issue, solution)| {
                 div()
                     .flex()
-                    .gap_2()
-                    .child(div().text_sm().text_color(cx.theme().accent).child("•"))
-                    .child(div().text_sm().child(*tip))
+                    .flex_col()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_semibold()
+                            .text_color(cx.theme().accent)
+                            .child(*issue),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(*solution),
+                    )
             })
             .collect::<Vec<_>>();
 
@@ -3986,7 +3983,7 @@ impl MainView {
             let logs_for_button = logs_path.clone();
             Button::new("help-open-logs")
                 .ghost()
-                .label("Open Logs Folder")
+                .label("📁 Open Logs Folder")
                 .w_full()
                 .on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
                     if let Some(path) = logs_for_button.clone() {
@@ -4021,19 +4018,40 @@ impl MainView {
                 div()
                     .flex()
                     .flex_col()
-                    .gap_2()
+                    .gap_3()
                     .children(troubleshooting_rows),
             )
-            .child(div().flex().flex_wrap().gap_2().child(logs_button).child(
-                self.help_link_button(
-                    "help-open-detection-docs",
-                    "Review detection tuning (Doc/Design.md)",
-                    PathBuf::from("Doc/Design.md"),
-                    cx,
-                ),
-            ));
+            .child(logs_button);
 
-        let support_card = div()
+        // Application Info Card
+        let app_version = "0.2.4";
+        let config_path = self.controller.config_file_path();
+        let config_button = {
+            let config_for_button = config_path.clone();
+            Button::new("help-open-config")
+                .ghost()
+                .label("⚙️ Open Config Folder")
+                .w_full()
+                .on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
+                    if let Some(path) = config_for_button.as_ref().and_then(|p| p.parent()) {
+                        match open::that(path) {
+                            Ok(()) => {
+                                this.controller
+                                    .set_status(format!("Opened config at {}", path.display()));
+                                this.refresh_status();
+                            }
+                            Err(err) => {
+                                this.status_text = format!("Failed to open config: {err:#}").into();
+                            }
+                        }
+                    } else {
+                        this.status_text = "Config folder unavailable.".into();
+                    }
+                    cx.notify();
+                }))
+        };
+
+        let app_info_card = div()
             .border_1()
             .border_color(cx.theme().border)
             .rounded_lg()
@@ -4041,42 +4059,48 @@ impl MainView {
             .flex()
             .flex_col()
             .gap_3()
-            .child(
-                div()
-                    .text_lg()
-                    .font_semibold()
-                    .child("🌐 Reference & Support"),
-            )
+            .child(div().text_lg().font_semibold().child("ℹ️ Application Info"))
             .child(
                 div()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child("Deep-dive into architecture, specs, and planning documents."),
+                    .child("Version and configuration details."),
             )
             .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(self.help_link_button(
-                        "help-open-architecture",
-                        "ARCHITECTURE.md",
-                        PathBuf::from("ARCHITECTURE.md"),
-                        cx,
-                    ))
-                    .child(self.help_link_button(
-                        "help-open-project",
-                        "openspec/project.md",
-                        PathBuf::from("openspec/project.md"),
-                        cx,
-                    ))
-                    .child(self.help_link_button(
-                        "help-open-design",
-                        "Doc/Design.md",
-                        PathBuf::from("Doc/Design.md"),
-                        cx,
-                    )),
-            );
+                    .justify_between()
+                    .child(div().text_sm().font_semibold().child("Version"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().foreground)
+                            .child(format!("v{}", app_version)),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .justify_between()
+                    .child(div().text_sm().font_semibold().child("App Name"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().foreground)
+                            .child("FM Goal Music"),
+                    ),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(if let Some(ref path) = config_path {
+                        format!("Config: {}", path.display())
+                    } else {
+                        "Config location unavailable".to_string()
+                    }),
+            )
+            .child(config_button);
 
         div()
             .flex()
@@ -4101,33 +4125,8 @@ impl MainView {
                             .min_w(px(320.0))
                             .child(troubleshooting_card),
                     )
-                    .child(div().flex_grow().min_w(px(320.0)).child(support_card)),
+                    .child(div().flex_grow().min_w(px(320.0)).child(app_info_card)),
             )
-    }
-
-    fn help_link_button(
-        &mut self,
-        id: &'static str,
-        label: &'static str,
-        target: PathBuf,
-        cx: &mut Context<Self>,
-    ) -> Button {
-        Button::new(id)
-            .ghost()
-            .label(label)
-            .w_full()
-            .on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
-                match open::that(&target) {
-                    Ok(()) => {
-                        this.controller.set_status(format!("Opened {label}"));
-                        this.refresh_status();
-                    }
-                    Err(err) => {
-                        this.status_text = format!("Failed to open {label}: {err:#}").into();
-                    }
-                }
-                cx.notify();
-            }))
     }
 
     fn render_footer(&self, cx: &mut Context<Self>) -> impl IntoElement {
