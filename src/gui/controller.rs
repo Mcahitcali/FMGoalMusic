@@ -122,7 +122,11 @@ impl GuiController {
     pub fn capture_preview(&self) -> Result<PathBuf> {
         let (region, monitor_index, generation) = {
             let state = self.inner.state.lock();
-            (state.capture_region, state.selected_monitor_index, state.preview_generation)
+            (
+                state.capture_region,
+                state.selected_monitor_index,
+                state.preview_generation,
+            )
         };
 
         let mut capture_manager =
@@ -766,7 +770,10 @@ impl GuiController {
             (Language::French, Language::French.name().to_string()),
             (Language::German, Language::German.name().to_string()),
             (Language::Italian, Language::Italian.name().to_string()),
-            (Language::Portuguese, Language::Portuguese.name().to_string()),
+            (
+                Language::Portuguese,
+                Language::Portuguese.name().to_string(),
+            ),
         ]
     }
 
@@ -783,7 +790,11 @@ impl GuiController {
         {
             let mut state = self.inner.state.lock();
             // Check if phrase already exists
-            if state.custom_goal_phrases.iter().any(|p| p.eq_ignore_ascii_case(trimmed)) {
+            if state
+                .custom_goal_phrases
+                .iter()
+                .any(|p| p.eq_ignore_ascii_case(trimmed))
+            {
                 return Err(anyhow!("Phrase already exists"));
             }
             state.custom_goal_phrases.push(trimmed.to_string());
@@ -796,7 +807,9 @@ impl GuiController {
     pub fn remove_custom_goal_phrase(&self, phrase: &str) -> Result<()> {
         {
             let mut state = self.inner.state.lock();
-            state.custom_goal_phrases.retain(|p| !p.eq_ignore_ascii_case(phrase));
+            state
+                .custom_goal_phrases
+                .retain(|p| !p.eq_ignore_ascii_case(phrase));
             state.status_message = format!("Custom goal phrase removed: '{}'", phrase);
         }
         self.save_config()

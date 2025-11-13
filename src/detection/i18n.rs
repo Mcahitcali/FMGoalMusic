@@ -1,7 +1,6 @@
 /// Internationalization support for detection phrases
 ///
 /// Provides language-specific phrases for detecting game events.
-
 use serde::{Deserialize, Serialize};
 
 /// Supported languages
