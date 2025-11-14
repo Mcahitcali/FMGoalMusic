@@ -44,8 +44,8 @@ impl TesseractDetector {
             // Set TESSDATA_PREFIX to the current directory's tessdata folder
             let tessdata_dir = std::path::Path::new("./tessdata");
             if tessdata_dir.exists() {
-                let tessdata_path = tessdata_dir
-                    .canonicalize()
+                let tessdata_path = std::env::current_dir()
+                    .map(|dir| dir.join("tessdata"))
                     .unwrap_or_else(|_| tessdata_dir.to_path_buf());
                 std::env::set_var("TESSDATA_PREFIX", &tessdata_path);
                 tracing::info!(
