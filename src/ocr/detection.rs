@@ -41,16 +41,14 @@ impl TesseractDetector {
     fn setup_tesseract_data_path() -> Result<(), Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         {
-            // Set TESSDATA_PREFIX to the current directory's tessdata folder
-            let tessdata_dir = std::path::Path::new("./tessdata");
+            // Set TESSDATA_PREFIX to the repo root so Tesseract can find ./tessdata
+            let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let tessdata_dir = repo_root.join("tessdata");
             if tessdata_dir.exists() {
-                let tessdata_path = std::env::current_dir()
-                    .map(|dir| dir.join("tessdata"))
-                    .unwrap_or_else(|_| tessdata_dir.to_path_buf());
-                std::env::set_var("TESSDATA_PREFIX", &tessdata_path);
+                std::env::set_var("TESSDATA_PREFIX", &repo_root);
                 tracing::info!(
                     "✓ Using bundled Tesseract data from {}",
-                    tessdata_path.display()
+                    tessdata_dir.display()
                 );
             } else {
                 tracing::info!(
