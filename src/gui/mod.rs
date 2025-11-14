@@ -169,7 +169,7 @@ pub fn run() -> anyhow::Result<()> {
             move |window, cx| {
                 let controller = controller.clone();
                 let view = cx.new(|cx| MainView::new(window, cx, controller.clone()));
-                cx.new(|cx| gpui_component::Root::new(view.into(), window, cx))
+                cx.new(|cx| gpui_component::Root::new(view, window, cx))
             },
         )
         .expect("failed to open GPUI window");
