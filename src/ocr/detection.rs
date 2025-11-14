@@ -22,10 +22,15 @@ impl TesseractDetector {
         tracing::info!("Initializing Tesseract OCR...");
 
         // Set up Tesseract data path for Windows bundled distribution
-        Self::setup_tesseract_data_path()?;
+        let tessdata_path = Self::setup_tesseract_data_path()?;
 
         // Initialize Tesseract
-        let mut tess = LepTess::new(None, "eng")?;
+        let mut tess = if let Some(path_buf) = tessdata_path.and_then(|p| p.to_str().map(|s| s.to_string())) {
+            tracing::info!("Initializing Tesseract with datapath: {}", path_buf);
+            LepTess::new(Some(&path_buf), "eng")?
+        } else {
+            LepTess::new(None, "eng")?
+        };
 
         // Set to auto page segmentation mode
         // PSM 3 = Fully automatic page segmentation, but no OSD
@@ -38,11 +43,11 @@ impl TesseractDetector {
     }
 
     /// Set up Tesseract data path for Windows bundled distribution
-    fn setup_tesseract_data_path() -> Result<(), Box<dyn std::error::Error>> {
+    fn setup_tesseract_data_path() -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         {
             // Set TESSDATA_PREFIX to the repo root so Tesseract can find ./tessdata
-            let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
             let tessdata_dir = repo_root.join("tessdata");
             if tessdata_dir.exists() {
                 std::env::set_var("TESSDATA_PREFIX", &repo_root);
@@ -50,13 +55,19 @@ impl TesseractDetector {
                     "✓ Using bundled Tesseract data from {}",
                     tessdata_dir.display()
                 );
-            } else {
-                tracing::info!(
-                    "⚠️  Bundled tessdata not found, falling back to system Tesseract"
-                );
+                return Ok(Some(tessdata_dir));
             }
+
+            tracing::info!(
+                "⚠️  Bundled tessdata not found, falling back to system Tesseract"
+            );
+            return Ok(None);
         }
-        Ok(())
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            Ok(None)
+        }
     }
 
     /// Perform OCR on a binary (preprocessed) image
