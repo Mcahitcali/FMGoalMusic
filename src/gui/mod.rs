@@ -13,8 +13,6 @@ use gpui::{
     px, size, App, AppContext, Application, Bounds, KeyBinding, WindowBounds, WindowOptions,
 };
 use hotkeys::{ActionId, HotkeyConfig};
-use parking_lot::Mutex;
-use std::sync::Arc;
 use view::MainView;
 
 /// Register keyboard shortcuts from the hotkey configuration
@@ -147,8 +145,8 @@ pub fn run() -> anyhow::Result<()> {
 
     // Initialize global hotkeys (work system-wide, even when app is not focused)
     let global_hotkeys = GlobalHotkeySystem::new(controller.clone())?;
-    let global_hotkeys = Arc::new(Mutex::new(global_hotkeys));
-    start_global_hotkey_listener(global_hotkeys.clone())?;
+    let handler = global_hotkeys.create_handler();
+    start_global_hotkey_listener(handler)?;
 
     let application = Application::new();
 
