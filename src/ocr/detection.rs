@@ -42,11 +42,20 @@ impl TesseractDetector {
         #[cfg(target_os = "windows")]
         {
             // Set TESSDATA_PREFIX to the current directory's tessdata folder
-            if std::path::Path::new("./tessdata").exists() {
-                std::env::set_var("TESSDATA_PREFIX", "./");
-                tracing::info!("✓ Using bundled Tesseract data from ./tessdata");
+            let tessdata_dir = std::path::Path::new("./tessdata");
+            if tessdata_dir.exists() {
+                let tessdata_path = tessdata_dir
+                    .canonicalize()
+                    .unwrap_or_else(|_| tessdata_dir.to_path_buf());
+                std::env::set_var("TESSDATA_PREFIX", tessdata_path);
+                tracing::info!(
+                    "✓ Using bundled Tesseract data from {}",
+                    tessdata_path.display()
+                );
             } else {
-                tracing::info!("⚠️  Bundled tessdata not found, falling back to system Tesseract");
+                tracing::info!(
+                    "⚠️  Bundled tessdata not found, falling back to system Tesseract"
+                );
             }
         }
         Ok(())
