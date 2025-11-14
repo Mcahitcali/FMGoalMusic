@@ -47,7 +47,7 @@ impl TesseractDetector {
                 let tessdata_path = tessdata_dir
                     .canonicalize()
                     .unwrap_or_else(|_| tessdata_dir.to_path_buf());
-                std::env::set_var("TESSDATA_PREFIX", tessdata_path);
+                std::env::set_var("TESSDATA_PREFIX", &tessdata_path);
                 tracing::info!(
                     "✓ Using bundled Tesseract data from {}",
                     tessdata_path.display()

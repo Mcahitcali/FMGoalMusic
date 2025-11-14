@@ -10,7 +10,8 @@ use actions::*;
 use controller::GuiController;
 use global_hotkeys::{start_global_hotkey_listener, GlobalHotkeySystem};
 use gpui::{
-    px, size, App, AppContext, Application, Bounds, KeyBinding, WindowBounds, WindowOptions,
+    px, size, AnyView, App, AppContext, Application, Bounds, KeyBinding, WindowBounds,
+    WindowOptions,
 };
 use hotkeys::{ActionId, HotkeyConfig};
 use view::MainView;
@@ -169,7 +170,8 @@ pub fn run() -> anyhow::Result<()> {
             move |window, cx| {
                 let controller = controller.clone();
                 let view = cx.new(|cx| MainView::new(window, cx, controller.clone()));
-                cx.new(|cx| gpui_component::Root::new(view, window, cx))
+                let any_view: AnyView = view.into();
+                cx.new(|cx| gpui_component::Root::new(any_view, window, cx))
             },
         )
         .expect("failed to open GPUI window");
