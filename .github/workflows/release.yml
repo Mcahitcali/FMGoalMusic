@@ -149,7 +149,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ inputs.version || github.ref_name }}
-          name: "FM Goal Musics v${{ inputs.version || github.ref_name }}"
+          name: "FM Goal Musics ${{ inputs.version || github.ref_name }}"
           files: |
             artifacts/FMGoalMusic-Windows/FMGoalMusicInstaller.exe
             artifacts/FMGoalMusic-Windows/fm-goal-musics-gui.exe
