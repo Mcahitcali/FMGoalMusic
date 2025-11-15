@@ -137,6 +137,13 @@ fn register_keybindings(cx: &mut App) {
                     Some("main_view"),
                 )]);
             }
+            ActionId::QuitApp => {
+                cx.bind_keys([KeyBinding::new(
+                    keystroke.as_str(),
+                    QuitApp,
+                    Some("main_view"),
+                )]);
+            }
         }
     }
 }

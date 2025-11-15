@@ -877,6 +877,11 @@ impl MainView {
         cx.notify();
     }
 
+    /// Quit the entire application (e.g., via Cmd+Q on macOS)
+    fn quit_app(&mut self, _: &QuitApp, _window: &mut Window, cx: &mut Context<Self>) {
+        cx.quit();
+    }
+
     fn render_dashboard_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         // Get selected team from state
         let state = self.controller.state();
@@ -4400,6 +4405,7 @@ impl Render for MainView {
             // Application shortcuts
             .on_action(cx.listener(Self::open_settings))
             .on_action(cx.listener(Self::check_for_updates))
+            .on_action(cx.listener(Self::quit_app))
             .flex()
             .size_full()
             .bg(cx.theme().background)

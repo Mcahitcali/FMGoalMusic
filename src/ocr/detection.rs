@@ -66,7 +66,40 @@ impl TesseractDetector {
 
         #[cfg(not(target_os = "windows"))]
         {
+            // On macOS, try to use tessdata bundled inside the .app Resources directory
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(dir) = Self::macos_bundled_tessdata_path() {
+                    tracing::info!(
+                        "✓ Using bundled Tesseract data from {}",
+                        dir.display()
+                    );
+                    return Ok(Some(dir));
+                }
+                tracing::info!(
+                    "⚠️  Bundled tessdata not found in app bundle, falling back to system Tesseract"
+                );
+            }
+
+            // Other platforms (or macOS fallback): rely on system installation
             Ok(None)
+        }
+    }
+
+    /// On macOS, compute the tessdata path inside the .app bundle, if present.
+    #[cfg(target_os = "macos")]
+    fn macos_bundled_tessdata_path() -> Option<PathBuf> {
+        // Example executable path:
+        //   /Applications/FM Goal Musics.app/Contents/MacOS/fm-goal-musics-gui
+        let exe = std::env::current_exe().ok()?;
+        let macos_dir = exe.parent()?; // .../Contents/MacOS
+        let contents_dir = macos_dir.parent()?; // .../Contents
+        let resources_dir = contents_dir.join("Resources");
+        let tessdata_dir = resources_dir.join("tessdata");
+        if tessdata_dir.exists() {
+            Some(tessdata_dir)
+        } else {
+            None
         }
     }
 

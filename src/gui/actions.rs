@@ -33,6 +33,8 @@ actions!(
         // Misc
         OpenSettings,
         CheckForUpdates,
+        // Application lifecycle
+        QuitApp,
     ]
 );
 

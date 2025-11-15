@@ -105,6 +105,7 @@ pub enum ActionId {
     DecreaseAmbianceVolume,
     OpenSettings,
     CheckForUpdates,
+    QuitApp,
 }
 
 impl ActionId {
@@ -127,6 +128,7 @@ impl ActionId {
             ActionId::DecreaseAmbianceVolume => "Decrease ambiance volume",
             ActionId::OpenSettings => "Open settings",
             ActionId::CheckForUpdates => "Check for updates",
+            ActionId::QuitApp => "Quit application",
         }
     }
 
@@ -145,7 +147,9 @@ impl ActionId {
             | ActionId::IncreaseAmbianceVolume
             | ActionId::DecreaseAmbianceVolume => "Volume",
             ActionId::NextTab | ActionId::PreviousTab | ActionId::OpenHelp => "Navigation",
-            ActionId::OpenSettings | ActionId::CheckForUpdates => "Application",
+            ActionId::OpenSettings | ActionId::CheckForUpdates | ActionId::QuitApp => {
+                "Application"
+            }
         }
     }
 
@@ -168,6 +172,7 @@ impl ActionId {
             ActionId::DecreaseAmbianceVolume,
             ActionId::OpenSettings,
             ActionId::CheckForUpdates,
+            ActionId::QuitApp,
         ]
     }
 }
@@ -227,6 +232,7 @@ impl Default for HotkeyConfig {
         bindings.insert(ActionId::OpenSettings, Keybinding::ctrl_cmd(","));
         bindings.insert(ActionId::CapturePreview, Keybinding::ctrl_cmd("p"));
         bindings.insert(ActionId::CheckForUpdates, Keybinding::ctrl_cmd("u"));
+        bindings.insert(ActionId::QuitApp, Keybinding::ctrl_cmd("q"));
 
         Self { bindings }
     }
@@ -239,7 +245,16 @@ impl HotkeyConfig {
 
         if config_path.exists() {
             let content = fs::read_to_string(&config_path)?;
-            let config: HotkeyConfig = serde_json::from_str(&content)?;
+            let loaded: HotkeyConfig = serde_json::from_str(&content)?;
+
+            // Merge loaded bindings over defaults so new actions (like QuitApp)
+            // automatically get default shortcuts if they were not present
+            // when the config file was first created.
+            let mut config = HotkeyConfig::default();
+            for (action, binding) in loaded.bindings {
+                config.bindings.insert(action, binding);
+            }
+
             tracing::info!("✓ Loaded hotkey config from: {}", config_path.display());
             Ok(config)
         } else {

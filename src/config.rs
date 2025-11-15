@@ -153,7 +153,7 @@ impl Default for Config {
             bench_frames: 500,
             music_list: Vec::new(),
             selected_music_index: None,
-            goal_ambiance_path: Some("goal_crowd_cheer.wav".to_string()),
+            goal_ambiance_path: None,
             ambiance_enabled: default_ambiance_enabled(),
             music_volume: default_music_volume(),
             ambiance_volume: default_ambiance_volume(),
