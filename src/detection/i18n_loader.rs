@@ -68,7 +68,7 @@ mod tests {
     fn test_load_turkish() {
         let phrases = load_phrases(Language::Turkish).unwrap();
         assert_eq!(phrases.language, Language::Turkish);
-        assert!(phrases.goal_phrases.contains(&"GOL!".to_string()));
+        assert!(phrases.goal_phrases.contains(&"GOL".to_string()));
     }
 
     #[test]

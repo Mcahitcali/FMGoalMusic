@@ -25,6 +25,8 @@ pub struct AppState {
     // Music library
     pub music_list: Vec<MusicEntry>,
     pub selected_music_index: Option<usize>,
+    pub goal_music_indices: Vec<usize>,
+    pub last_played_music_index: Option<usize>,
 
     // Detection process
     pub process_state: ProcessState,
@@ -69,6 +71,8 @@ impl Default for AppState {
         Self {
             music_list: Vec::new(),
             selected_music_index: None,
+            goal_music_indices: Vec::new(),
+            last_played_music_index: None,
             process_state: ProcessState::Stopped,
             detection_count: 0,
             status_message: "Ready".to_string(),
@@ -204,11 +208,12 @@ impl AppState {
 
     /// Validate music selection
     pub fn validate_music_selection(&self) -> Result<(), ValidationError> {
-        let Some(index) = self.selected_music_index else {
+        let indices = self.goal_playlist_indices();
+        let Some(index) = indices.first() else {
             return Err(ValidationError::NoMusicSelected);
         };
 
-        let Some(entry) = self.music_list.get(index) else {
+        let Some(entry) = self.music_list.get(*index) else {
             return Err(ValidationError::NoMusicSelected);
         };
 
@@ -252,6 +257,30 @@ impl AppState {
     pub fn selected_music(&self) -> Option<&MusicEntry> {
         self.selected_music_index
             .and_then(|i| self.music_list.get(i))
+    }
+
+    /// Effective goal playlist indices, with fallback to legacy single selection.
+    ///
+    /// - If `goal_music_indices` is non-empty, it is used as the playlist.
+    /// - Otherwise, if `selected_music_index` is set, it is treated as a
+    ///   single-track playlist.
+    /// - Indices that are out of bounds are filtered out.
+    pub fn goal_playlist_indices(&self) -> Vec<usize> {
+        let base_indices: Vec<usize> = if !self.goal_music_indices.is_empty() {
+            self.goal_music_indices.clone()
+        } else if let Some(idx) = self.selected_music_index {
+            vec![idx]
+        } else {
+            Vec::new()
+        };
+
+        let mut deduped = Vec::new();
+        for idx in base_indices {
+            if idx < self.music_list.len() && !deduped.contains(&idx) {
+                deduped.push(idx);
+            }
+        }
+        deduped
     }
 
     /// Check if detection can be started

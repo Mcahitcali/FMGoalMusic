@@ -74,6 +74,10 @@ pub struct Config {
     /// Index of the selected music file
     pub selected_music_index: Option<usize>,
 
+    /// Indices of music files selected for the goal playlist
+    #[serde(default)]
+    pub goal_music_indices: Vec<usize>,
+
     /// Path to goal ambiance sound
     #[serde(default)]
     pub goal_ambiance_path: Option<String>,
@@ -153,6 +157,7 @@ impl Default for Config {
             bench_frames: 500,
             music_list: Vec::new(),
             selected_music_index: None,
+            goal_music_indices: Vec::new(),
             goal_ambiance_path: None,
             ambiance_enabled: default_ambiance_enabled(),
             music_volume: default_music_volume(),

@@ -9,14 +9,15 @@ use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
 use dirs::config_dir;
 use image::DynamicImage;
 use parking_lot::Mutex;
+use rand::seq::SliceRandom;
 
 use crate::audio::AudioManager;
 use crate::audio_converter;
 use crate::capture::{CaptureManager, CaptureRegion};
 use crate::config::{Config, MusicEntry as ConfigMusicEntry, SelectedTeam};
 use crate::detection::i18n::{I18nPhrases, Language};
-use crate::ocr::OcrManager;
 use crate::ocr::text_extraction;
+use crate::ocr::OcrManager;
 use crate::slug::slugify;
 use crate::state::{AppState, MusicEntry, ProcessState};
 use crate::team_matcher::TeamMatcher;
@@ -246,6 +247,19 @@ impl GuiController {
                         state.selected_music_index = Some(sel - 1);
                     }
                 }
+                state.goal_music_indices.retain(|&i| i != index);
+                for idx_ref in &mut state.goal_music_indices {
+                    if *idx_ref > index {
+                        *idx_ref -= 1;
+                    }
+                }
+                if let Some(last) = state.last_played_music_index {
+                    if last == index {
+                        state.last_played_music_index = None;
+                    } else if last > index {
+                        state.last_played_music_index = Some(last - 1);
+                    }
+                }
                 state.status_message = "Music entry removed".to_string();
             }
         }
@@ -261,6 +275,33 @@ impl GuiController {
             Some(idx) => format!("Selected music #{idx}"),
             None => "No music selected".to_string(),
         };
+    }
+
+    pub fn set_goal_playlist_membership(&self, index: usize, in_playlist: bool) -> Result<()> {
+        {
+            let mut state = self.inner.state.lock();
+            if index >= state.music_list.len() {
+                return Ok(());
+            }
+
+            if in_playlist {
+                if !state.goal_music_indices.contains(&index) {
+                    state.goal_music_indices.push(index);
+                }
+                state.status_message = format!("Added track #{} to goal playlist", index + 1);
+            } else {
+                state.goal_music_indices.retain(|&i| i != index);
+                if let Some(last) = state.last_played_music_index {
+                    if last == index {
+                        state.last_played_music_index = None;
+                    }
+                }
+                state.status_message = format!("Removed track #{} from goal playlist", index + 1);
+            }
+        }
+
+        self.save_config()?;
+        Ok(())
     }
 
     pub fn set_league(&self, league: Option<String>) {
@@ -484,17 +525,21 @@ impl GuiController {
                 .validate_music_selection()
                 .map_err(|err| anyhow!(err.to_string()))?;
 
-            let selected_idx = state
-                .selected_music_index
-                .ok_or_else(|| anyhow!("Select a music file before starting detection"))?;
-            let music_entry = state
-                .music_list
-                .get(selected_idx)
-                .ok_or_else(|| anyhow!("Selected music entry no longer exists"))?
-                .clone();
+            let playlist_indices = state.goal_playlist_indices();
+            if playlist_indices.is_empty() {
+                return Err(anyhow!(
+                    "Select at least one music file before starting detection"
+                ));
+            }
+
+            let playlist_entries: Vec<MusicEntry> = playlist_indices
+                .iter()
+                .filter_map(|&idx| state.music_list.get(idx).cloned())
+                .collect();
 
             DetectionSetup {
-                music_entry,
+                playlist_indices,
+                playlist_entries,
                 capture_region: state.capture_region,
                 monitor_index: state.selected_monitor_index,
                 ocr_threshold: state.ocr_threshold,
@@ -512,15 +557,19 @@ impl GuiController {
             }
         };
 
-        let music_bytes = match fs::read(&setup.music_entry.path)
-            .with_context(|| format!("Failed to read audio {}", setup.music_entry.path.display()))
-        {
-            Ok(bytes) => Arc::new(bytes),
-            Err(err) => {
-                self.mark_start_failure(format!("{err:#}"));
-                return Err(err);
-            }
-        };
+        let mut music_bytes_list: Vec<Arc<Vec<u8>>> = Vec::new();
+        for entry in &setup.playlist_entries {
+            let bytes = match fs::read(&entry.path)
+                .with_context(|| format!("Failed to read audio {}", entry.path.display()))
+            {
+                Ok(bytes) => bytes,
+                Err(err) => {
+                    self.mark_start_failure(format!("{err:#}"));
+                    return Err(err);
+                }
+            };
+            music_bytes_list.push(Arc::new(bytes));
+        }
 
         let ambiance_bytes = if setup.ambiance_enabled {
             if let Some(ref path) = setup.ambiance_path {
@@ -543,7 +592,15 @@ impl GuiController {
                 .and_then(|db| db.find_team(&team.league, &team.team_key))
         });
 
-        let track_name = setup.music_entry.name.clone();
+        let track_name = if setup.playlist_entries.len() == 1 {
+            setup
+                .playlist_entries
+                .get(0)
+                .map(|e| e.name.clone())
+                .unwrap_or_else(|| "Unknown track".to_string())
+        } else {
+            format!("{} tracks (random playlist)", setup.playlist_entries.len())
+        };
 
         {
             let mut state = self.inner.state.lock();
@@ -566,7 +623,7 @@ impl GuiController {
                 state_arc,
                 cmd_rx,
                 setup,
-                music_bytes,
+                music_bytes_list,
                 ambiance_bytes,
                 team_profile,
             ) {
@@ -861,6 +918,7 @@ impl GuiController {
                 })
                 .collect(),
             selected_music_index: state.selected_music_index,
+            goal_music_indices: state.goal_music_indices.clone(),
             goal_ambiance_path: state.goal_ambiance_path.clone(),
             ambiance_enabled: state.ambiance_enabled,
             music_volume: state.music_volume,
@@ -898,6 +956,8 @@ fn apply_config(state: &Arc<Mutex<AppState>>, config: &Config) {
         })
         .collect();
     st.selected_music_index = config.selected_music_index;
+    st.goal_music_indices = config.goal_music_indices.clone();
+    st.last_played_music_index = None;
     st.goal_ambiance_path = config.goal_ambiance_path.clone();
     st.ambiance_enabled = config.ambiance_enabled;
     st.music_volume = config.music_volume;
@@ -916,7 +976,8 @@ fn apply_config(state: &Arc<Mutex<AppState>>, config: &Config) {
 }
 
 struct DetectionSetup {
-    music_entry: MusicEntry,
+    playlist_indices: Vec<usize>,
+    playlist_entries: Vec<MusicEntry>,
     capture_region: [u32; 4],
     monitor_index: usize,
     ocr_threshold: u8,
@@ -977,12 +1038,13 @@ fn run_detection_loop(
     state: Arc<Mutex<AppState>>,
     cmd_rx: Receiver<DetectionCommand>,
     setup: DetectionSetup,
-    music_bytes: Arc<Vec<u8>>,
+    music_bytes_list: Vec<Arc<Vec<u8>>>,
     ambiance_bytes: Option<Arc<Vec<u8>>>,
     team_profile: Option<Team>,
 ) -> Result<()> {
     let DetectionSetup {
-        music_entry,
+        playlist_indices,
+        playlist_entries,
         capture_region,
         monitor_index,
         ocr_threshold,
@@ -999,9 +1061,16 @@ fn run_detection_loop(
         selected_language,
     } = setup;
 
-    let music_name = music_entry.name.clone();
+    if playlist_entries.is_empty() || playlist_indices.is_empty() || music_bytes_list.is_empty() {
+        return Err(anyhow!("No goal music tracks available in playlist"));
+    }
 
-    let audio_manager = AudioManager::from_preloaded(music_bytes)
+    let first_bytes = music_bytes_list
+        .get(0)
+        .cloned()
+        .ok_or_else(|| anyhow!("No audio data for goal playlist"))?;
+
+    let mut audio_manager = AudioManager::from_preloaded(first_bytes)
         .map_err(|err| anyhow!("Failed to initialize audio output: {err}"))?;
     audio_manager.set_volume(music_volume);
 
@@ -1092,8 +1161,7 @@ fn run_detection_loop(
             // 1) Language phrases (if configured)
             if has_language_phrases && i18n_phrases.contains_goal_phrase(&text) {
                 goal_detected = true;
-            } else if has_custom_phrases
-                && contains_custom_goal_phrase(&text, &custom_goal_phrases)
+            } else if has_custom_phrases && contains_custom_goal_phrase(&text, &custom_goal_phrases)
             {
                 // 2) Custom phrases (if any)
                 goal_detected = true;
@@ -1125,6 +1193,35 @@ fn run_detection_loop(
                     warn!("Failed to play ambiance: {err}");
                 }
             }
+            let playlist_len = playlist_indices.len();
+            let chosen_pos = if playlist_len <= 1 {
+                0
+            } else {
+                let last_played = {
+                    let st = state.lock();
+                    st.last_played_music_index
+                };
+
+                let mut positions: Vec<usize> = (0..playlist_len).collect();
+                if let Some(last) = last_played {
+                    positions.retain(|&pos| playlist_indices[pos] != last);
+                    if positions.is_empty() {
+                        positions = (0..playlist_len).collect();
+                    }
+                }
+
+                let mut rng = rand::thread_rng();
+                *positions.choose(&mut rng).unwrap_or(&0)
+            };
+
+            if let Some(bytes) = music_bytes_list.get(chosen_pos) {
+                audio_manager.set_audio_data(Arc::clone(bytes));
+            }
+
+            let selected_name = playlist_entries
+                .get(chosen_pos)
+                .map(|e| e.name.clone())
+                .unwrap_or_else(|| "Unknown track".to_string());
 
             let music_result = if music_length_ms > 0 {
                 audio_manager.play_sound_with_fade_and_limit(AUDIO_FADE_MS, music_length_ms)
@@ -1138,6 +1235,9 @@ fn run_detection_loop(
             } else {
                 let mut st = state.lock();
                 st.detection_count += 1;
+                if let Some(original_idx) = playlist_indices.get(chosen_pos) {
+                    st.last_played_music_index = Some(*original_idx);
+                }
                 let ambiance_note = if ambiance_manager.is_some() {
                     " + crowd cheer"
                 } else {
@@ -1145,7 +1245,7 @@ fn run_detection_loop(
                 };
                 st.status_message = format!(
                     "Goal detected! Played '{}'{} (total: {})",
-                    music_name, ambiance_note, st.detection_count
+                    selected_name, ambiance_note, st.detection_count
                 );
 
                 if let Some(team) = &selected_team {

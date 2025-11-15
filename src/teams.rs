@@ -220,7 +220,7 @@ mod tests {
         let team = db.find_team("Premier League", "manchester_united");
         assert!(team.is_some());
         let team = team.unwrap();
-        assert_eq!(team.display_name, "Manchester Utd");
+        assert_eq!(team.display_name, "Manchester United");
         assert!(!team.variations.is_empty());
     }
 

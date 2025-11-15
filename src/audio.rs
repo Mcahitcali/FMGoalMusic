@@ -274,6 +274,14 @@ impl AudioManager {
         }
     }
 
+    /// Replace the in-memory audio data with a different preloaded buffer.
+    ///
+    /// This allows reusing the same AudioManager instance to play multiple
+    /// different tracks without reinitializing the audio stream.
+    pub fn set_audio_data(&mut self, data: Arc<Vec<u8>>) {
+        self.audio_data = data;
+    }
+
     /// Stop any currently playing audio and clear queued sounds
     pub fn stop(&self) {
         if let Ok(mut sink) = self.sink.lock() {

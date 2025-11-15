@@ -40,6 +40,9 @@ rayon = "1.10"
 # Regular expressions for text parsing
 regex = "1.10"
 
+# Randomness for goal playlist selection
+rand = "0.8"
+
 # Platform directories
 dirs = "5.0"
 

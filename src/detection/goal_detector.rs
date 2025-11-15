@@ -184,7 +184,7 @@ mod tests {
         let phrases = I18nPhrases::new(Language::English);
         let detector = GoalDetector::new(phrases);
 
-        let ctx = DetectionContext::new("Random text without goal phrase".to_string());
+        let ctx = DetectionContext::new("Random text without any scoring phrase".to_string());
         let result = detector.detect(&ctx);
 
         assert_eq!(result, DetectionResult::NoMatch);

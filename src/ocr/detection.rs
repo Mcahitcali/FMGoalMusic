@@ -25,12 +25,13 @@ impl TesseractDetector {
         let tessdata_path = Self::setup_tesseract_data_path()?;
 
         // Initialize Tesseract
-        let mut tess = if let Some(path_buf) = tessdata_path.and_then(|p| p.to_str().map(|s| s.to_string())) {
-            tracing::info!("Initializing Tesseract with datapath: {}", path_buf);
-            LepTess::new(Some(&path_buf), "eng")?
-        } else {
-            LepTess::new(None, "eng")?
-        };
+        let mut tess =
+            if let Some(path_buf) = tessdata_path.and_then(|p| p.to_str().map(|s| s.to_string())) {
+                tracing::info!("Initializing Tesseract with datapath: {}", path_buf);
+                LepTess::new(Some(&path_buf), "eng")?
+            } else {
+                LepTess::new(None, "eng")?
+            };
 
         // Set to auto page segmentation mode
         // PSM 3 = Fully automatic page segmentation, but no OSD
@@ -73,9 +74,7 @@ impl TesseractDetector {
                 return Ok(Some(tessdata_dir));
             }
 
-            tracing::info!(
-                "⚠️  Bundled tessdata not found, falling back to system Tesseract"
-            );
+            tracing::info!("⚠️  Bundled tessdata not found, falling back to system Tesseract");
             return Ok(None);
         }
 
@@ -85,10 +84,7 @@ impl TesseractDetector {
             #[cfg(target_os = "macos")]
             {
                 if let Some(dir) = Self::macos_bundled_tessdata_path() {
-                    tracing::info!(
-                        "✓ Using bundled Tesseract data from {}",
-                        dir.display()
-                    );
+                    tracing::info!("✓ Using bundled Tesseract data from {}", dir.display());
                     return Ok(Some(dir));
                 }
                 tracing::info!(

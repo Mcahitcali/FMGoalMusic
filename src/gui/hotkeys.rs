@@ -147,9 +147,7 @@ impl ActionId {
             | ActionId::IncreaseAmbianceVolume
             | ActionId::DecreaseAmbianceVolume => "Volume",
             ActionId::NextTab | ActionId::PreviousTab | ActionId::OpenHelp => "Navigation",
-            ActionId::OpenSettings | ActionId::CheckForUpdates | ActionId::QuitApp => {
-                "Application"
-            }
+            ActionId::OpenSettings | ActionId::CheckForUpdates | ActionId::QuitApp => "Application",
         }
     }
 

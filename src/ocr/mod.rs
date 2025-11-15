@@ -194,7 +194,10 @@ impl OcrManager {
         let alt_images = self.preprocessor.try_alternative_methods(image);
         let alt_text = self.detector.detect_text_multi(alt_images)?;
 
-        Ok(text_extraction::contains_goal_text_with_custom(&alt_text, custom_phrases))
+        Ok(text_extraction::contains_goal_text_with_custom(
+            &alt_text,
+            custom_phrases,
+        ))
     }
 
     /// Get detected text (for debugging)

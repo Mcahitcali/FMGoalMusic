@@ -883,11 +883,15 @@ impl MainView {
     }
 
     fn render_dashboard_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
-        // Get selected team from state
+        // Get core dashboard state
         let state = self.controller.state();
-        let selected_team = {
+        let (selected_team, music_list, playlist_indices) = {
             let guard = state.lock();
-            guard.selected_team.clone()
+            (
+                guard.selected_team.clone(),
+                guard.music_list.clone(),
+                guard.goal_playlist_indices(),
+            )
         };
 
         // Team callout tile
@@ -1005,12 +1009,6 @@ impl MainView {
                 },
             );
 
-        // Get music library data from state
-        let (music_list, selected_music_index) = {
-            let guard = state.lock();
-            (guard.music_list.clone(), guard.selected_music_index)
-        };
-
         // Music cards with a hero area
         let goal_music = div()
             .bg(cx.theme().group_box)
@@ -1053,14 +1051,22 @@ impl MainView {
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child(if let Some(idx) = selected_music_index {
-                                if let Some(entry) = music_list.get(idx) {
-                                    format!("Currently: {}", entry.name)
-                                } else {
+                            .child({
+                                if playlist_indices.is_empty() {
                                     "Manage celebration tracks for goals.".to_string()
+                                } else if playlist_indices.len() == 1 {
+                                    let idx = playlist_indices[0];
+                                    if let Some(entry) = music_list.get(idx) {
+                                        format!("Currently: {}", entry.name)
+                                    } else {
+                                        "Manage celebration tracks for goals.".to_string()
+                                    }
+                                } else {
+                                    format!(
+                                        "Playlist: {} tracks (random, no repeat)",
+                                        playlist_indices.len()
+                                    )
                                 }
-                            } else {
-                                "Manage celebration tracks for goals.".to_string()
                             }),
                     )
                     .child(
@@ -1706,11 +1712,12 @@ impl MainView {
 
     fn render_library_tab(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.controller.state();
-        let (music_list, selected_index, ambiance_enabled, ambiance_path) = {
+        let (music_list, selected_index, playlist_indices, ambiance_enabled, ambiance_path) = {
             let guard = state.lock();
             (
                 guard.music_list.clone(),
                 guard.selected_music_index,
+                guard.goal_music_indices.clone(),
                 guard.ambiance_enabled,
                 guard.goal_ambiance_path.clone(),
             )
@@ -1723,7 +1730,12 @@ impl MainView {
             .flex_col()
             .gap_4()
             .child(header)
-            .child(self.render_music_collection_panel(cx, &music_list, selected_index))
+            .child(self.render_music_collection_panel(
+                cx,
+                &music_list,
+                selected_index,
+                &playlist_indices,
+            ))
             .child(self.render_ambiance_panel(cx, ambiance_enabled, ambiance_path))
     }
 
@@ -1732,6 +1744,7 @@ impl MainView {
         cx: &mut Context<Self>,
         music_list: &[MusicEntry],
         selected_index: Option<usize>,
+        playlist_indices: &[usize],
     ) -> impl IntoElement {
         let header_row = div()
             .flex()
@@ -1757,6 +1770,24 @@ impl MainView {
                         cx.notify();
                     })),
             );
+
+        let playlist_summary = {
+            if playlist_indices.is_empty() {
+                "No tracks in the goal playlist yet.".to_string()
+            } else if playlist_indices.len() == 1 {
+                let idx = playlist_indices[0];
+                if let Some(entry) = music_list.get(idx) {
+                    format!("Playlist: {}", entry.name)
+                } else {
+                    "Playlist: 1 track".to_string()
+                }
+            } else {
+                format!(
+                    "Playlist: {} tracks (random, no repeat last track)",
+                    playlist_indices.len()
+                )
+            }
+        };
 
         let list_body = if music_list.is_empty() {
             div()
@@ -1808,6 +1839,8 @@ impl MainView {
                         .unwrap_or(false)
                         && self.music_preview_playing;
 
+                    let in_playlist = playlist_indices.contains(&idx);
+
                     div()
                         .flex()
                         .items_center()
@@ -1850,6 +1883,21 @@ impl MainView {
                                         .text_color(cx.theme().muted_foreground)
                                         .child(duration),
                                 ),
+                        )
+                        .child(
+                            Switch::new(("goal-playlist-toggle", idx))
+                                .label("In playlist")
+                                .checked(in_playlist)
+                                .on_click(cx.listener(move |this, checked: &bool, _window, cx| {
+                                    if let Err(err) =
+                                        this.controller.set_goal_playlist_membership(idx, *checked)
+                                    {
+                                        this.status_text = format!("{err:#}").into();
+                                    } else {
+                                        this.refresh_status();
+                                    }
+                                    cx.notify();
+                                })),
                         )
                         .child(
                             Button::new(("music-preview", idx))
@@ -1901,6 +1949,12 @@ impl MainView {
             .flex_col()
             .gap_3()
             .child(header_row)
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(playlist_summary),
+            )
             .child(list_body)
     }
 

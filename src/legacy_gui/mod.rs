@@ -426,6 +426,7 @@ impl FMGoalMusicsApp {
                 })
                 .collect(),
             selected_music_index: state.selected_music_index,
+            goal_music_indices: state.goal_music_indices.clone(),
             selected_team: state.selected_team.clone(),
             music_volume: state.music_volume,
             ambiance_volume: state.ambiance_volume,
@@ -436,6 +437,8 @@ impl FMGoalMusicsApp {
             auto_check_updates: state.auto_check_updates,
             skipped_version: state.skipped_version.clone(),
             selected_monitor_index: state.selected_monitor_index,
+            selected_language: state.selected_language,
+            custom_goal_phrases: state.custom_goal_phrases.clone(),
         };
 
         // Load previous config to compare changes
