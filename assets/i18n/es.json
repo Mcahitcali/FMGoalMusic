@@ -3,8 +3,8 @@
   "code": "es",
   "detection": {
     "goal_phrases": [
-      "¡GOL!",
-      "¡Gol!"
+      "GOL",
+      "Gol"
     ],
     "kickoff_phrases": [
       "Saque Inicial",

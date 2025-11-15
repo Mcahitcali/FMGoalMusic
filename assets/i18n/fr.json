@@ -3,8 +3,9 @@
   "code": "fr",
   "detection": {
     "goal_phrases": [
-      "BUT!",
-      "But!"
+      "BUT POUR",
+      "BUT",
+      "But"
     ],
     "kickoff_phrases": [
       "Coup d'envoi",

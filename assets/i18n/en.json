@@ -3,8 +3,8 @@
   "code": "en",
   "detection": {
     "goal_phrases": [
-      "GOAL!",
-      "Goal!"
+      "GOAL",
+      "Goal"
     ],
     "kickoff_phrases": [
       "Kick Off",

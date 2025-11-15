@@ -16,6 +16,7 @@ use crate::capture::{CaptureManager, CaptureRegion};
 use crate::config::{Config, MusicEntry as ConfigMusicEntry, SelectedTeam};
 use crate::detection::i18n::{I18nPhrases, Language};
 use crate::ocr::OcrManager;
+use crate::ocr::text_extraction;
 use crate::slug::slugify;
 use crate::state::{AppState, MusicEntry, ProcessState};
 use crate::team_matcher::TeamMatcher;
@@ -960,6 +961,18 @@ fn region_selection_image_path() -> Result<PathBuf> {
     Ok(dir.join("region_selection.png"))
 }
 
+fn contains_custom_goal_phrase(text: &str, phrases: &[String]) -> bool {
+    if phrases.is_empty() {
+        return false;
+    }
+
+    let normalized = text.to_lowercase();
+    phrases.iter().any(|p| {
+        let p_norm = p.to_lowercase();
+        !p_norm.is_empty() && normalized.contains(&p_norm)
+    })
+}
+
 fn run_detection_loop(
     state: Arc<Mutex<AppState>>,
     cmd_rx: Receiver<DetectionCommand>,
@@ -1056,46 +1069,49 @@ fn run_detection_loop(
             }
         };
 
+        // Run OCR once and apply detection rules in the following order
+        // (for both team-selected and non-team modes):
+        // 1) Language goal phrases (if any)
+        // 2) Custom goal phrases (if any)
+        // 3) Default GOL/GOAL FOR detection
+        let text = match ocr_manager.get_text(&image) {
+            Ok(t) => t,
+            Err(err) => {
+                warn!("OCR error: {err}");
+                String::new()
+            }
+        };
+
+        let i18n_phrases = I18nPhrases::new(selected_language);
+        let has_language_phrases = !i18n_phrases.goal_phrases.is_empty();
+        let has_custom_phrases = !custom_goal_phrases.is_empty();
+
+        let mut goal_detected = false;
+
+        if !text.is_empty() {
+            // 1) Language phrases (if configured)
+            if has_language_phrases && i18n_phrases.contains_goal_phrase(&text) {
+                goal_detected = true;
+            } else if has_custom_phrases
+                && contains_custom_goal_phrase(&text, &custom_goal_phrases)
+            {
+                // 2) Custom phrases (if any)
+                goal_detected = true;
+            } else if text_extraction::contains_goal_text(&text) {
+                // 3) Default GOL/GOAL FOR fallback
+                goal_detected = true;
+            }
+        }
+
         let should_play = if let Some(matcher) = &team_matcher {
-            match ocr_manager.detect_goal_with_team(&image) {
-                Ok(Some(team_name)) => {
-                    if matcher.matches(&team_name) {
-                        info!("Goal detected for selected team: {}", team_name);
-                        true
-                    } else {
-                        false
-                    }
-                }
-                Ok(None) => false,
-                Err(err) => {
-                    warn!("OCR error: {err}");
-                    false
-                }
+            if goal_detected && matcher.matches(&text) {
+                info!("Goal detected for selected team from text: {}", text);
+                true
+            } else {
+                false
             }
         } else {
-            // Load embedded phrases for selected language and combine with custom phrases
-            let i18n_phrases = I18nPhrases::new(selected_language);
-            let mut all_phrases = i18n_phrases.goal_phrases.clone();
-            all_phrases.extend(custom_goal_phrases.clone());
-
-            // Use combined phrases if available, otherwise use standard detection
-            if !all_phrases.is_empty() {
-                match ocr_manager.detect_goal_with_custom_phrases(&image, &all_phrases) {
-                    Ok(result) => result,
-                    Err(err) => {
-                        warn!("OCR error: {err}");
-                        false
-                    }
-                }
-            } else {
-                match ocr_manager.detect_goal(&image) {
-                    Ok(result) => result,
-                    Err(err) => {
-                        warn!("OCR error: {err}");
-                        false
-                    }
-                }
-            }
+            goal_detected
         };
 
         if should_play && debouncer.should_trigger() {

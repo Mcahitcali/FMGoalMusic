@@ -3,9 +3,9 @@
   "code": "it",
   "detection": {
     "goal_phrases": [
-      "GOL!",
-      "Gol!",
-      "RETE!"
+      "GOL",
+      "Gol",
+      "RETE"
     ],
     "kickoff_phrases": [
       "Calcio d'inizio",

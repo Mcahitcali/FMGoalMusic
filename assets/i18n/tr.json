@@ -3,8 +3,8 @@
   "code": "tr",
   "detection": {
     "goal_phrases": [
-      "GOL!",
-      "Gol!"
+      "GOL",
+      "Gol"
     ],
     "kickoff_phrases": [
       "Başlangıç",

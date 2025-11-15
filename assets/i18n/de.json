@@ -3,8 +3,8 @@
   "code": "de",
   "detection": {
     "goal_phrases": [
-      "TOR!",
-      "Tor!"
+      "TOR",
+      "Tor"
     ],
     "kickoff_phrases": [
       "Anstoß",

@@ -3,9 +3,9 @@
   "code": "pt",
   "detection": {
     "goal_phrases": [
-      "GOL!",
-      "Gol!",
-      "GOLO!"
+      "GOL",
+      "Gol",
+      "GOLO"
     ],
     "kickoff_phrases": [
       "Pontapé Inicial",

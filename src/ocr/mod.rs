@@ -206,7 +206,16 @@ impl OcrManager {
         image: &ImageBuffer<Rgba<u8>, Vec<u8>>,
     ) -> Result<String, Box<dyn std::error::Error>> {
         let binary = self.preprocessor.preprocess(image);
-        self.detector.detect_text(&binary)
+        let text = self.detector.detect_text(&binary)?;
+
+        if !text.is_empty() {
+            return Ok(text);
+        }
+
+        let alt_images = self.preprocessor.try_alternative_methods(image);
+        let alt_text = self.detector.detect_text_multi(alt_images)?;
+
+        Ok(alt_text)
     }
 }
 
