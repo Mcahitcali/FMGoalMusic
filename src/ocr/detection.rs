@@ -46,7 +46,22 @@ impl TesseractDetector {
     fn setup_tesseract_data_path() -> Result<Option<PathBuf>, Box<dyn std::error::Error>> {
         #[cfg(target_os = "windows")]
         {
-            // Set TESSDATA_PREFIX to the repo root so Tesseract can find ./tessdata
+            // 1) Try tessdata next to the installed executable (Windows installer scenario)
+            if let Ok(exe_path) = std::env::current_exe() {
+                if let Some(exe_dir) = exe_path.parent() {
+                    let tessdata_dir = exe_dir.join("tessdata");
+                    if tessdata_dir.exists() {
+                        std::env::set_var("TESSDATA_PREFIX", exe_dir);
+                        tracing::info!(
+                            "✓ Using bundled Tesseract data from {}",
+                            tessdata_dir.display()
+                        );
+                        return Ok(Some(tessdata_dir));
+                    }
+                }
+            }
+
+            // 2) Fallback: try tessdata under the current working directory (dev / tests)
             let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
             let tessdata_dir = repo_root.join("tessdata");
             if tessdata_dir.exists() {

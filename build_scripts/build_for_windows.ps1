@@ -161,6 +161,16 @@ if (Test-Path $vcpkgBin) {
     Write-Warning "No vcpkg bin/lib directory found for triplet $triplet."
 }
 
+# Copy tessdata directory for bundled Tesseract data
+$tessdataSrc = Join-Path $repoRoot 'tessdata'
+if (Test-Path $tessdataSrc) {
+    $tessdataDest = Join-Path $stageDir 'tessdata'
+    Copy-Item -Path $tessdataSrc -Destination $tessdataDest -Recurse -Force
+    Write-Host "Copied tessdata -> $tessdataDest"
+} else {
+    Write-Warning "tessdata directory not found at $tessdataSrc; OCR may require system Tesseract."
+}
+
 foreach ($res in @('app.ico','icon.icns')) {
     $src = Join-Path $repoRoot "build\windows\$res"
     if (Test-Path $src) { Copy-Item $src -Destination $stageDir -Force }
